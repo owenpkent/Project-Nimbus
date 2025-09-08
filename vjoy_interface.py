@@ -264,10 +264,10 @@ class VJoyInterface:
         if not self.is_connected or not self.device:
             return False
         
-        # Rate limiting
+        # Rate limiting disabled - was blocking Y axis updates
         current_time = time.time()
-        if current_time - self.last_update_time < self.min_update_interval:
-            return False
+        # if current_time - self.last_update_time < self.min_update_interval:
+        #     return False
         
         # Update command timestamp for failsafe
         self.last_command_time = current_time
@@ -307,11 +307,10 @@ class VJoyInterface:
             
             # Update the axis
             self.device.set_axis(axis_mapping[axis], vjoy_value)
+            self.last_update_time = current_time
             
-            # Store current value
             self.current_values[axis] = (value + 1.0) / 2.0  # Convert to 0.0-1.0 range
             
-            self.last_update_time = current_time
             return True
             
         except Exception as e:

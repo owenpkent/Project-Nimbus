@@ -73,6 +73,12 @@ class ControllerConfig:
                 "update_rate": 60,  # Hz
                 "axis_range": 32767  # VJoy axis range
             },
+            "axis_mapping": {
+                "left_x": "x",      # Left joystick X -> VJoy X axis
+                "left_y": "y",      # Left joystick Y -> VJoy Y axis
+                "right_x": "rx",    # Right joystick X -> VJoy RX axis
+                "right_y": "ry"     # Right joystick Y -> VJoy RY axis
+            },
             "safety": {
                 "enable_failsafe": True,
                 "failsafe_timeout": 5.0,  # seconds

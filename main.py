@@ -10,6 +10,7 @@ from typing import Optional, List, Tuple
 from config import ControllerConfig
 from virtual_joystick import VirtualJoystick
 from vjoy_interface import VJoyInterface
+from axis_config_dialog import AxisConfigDialog
 
 
 class Button:
@@ -95,13 +96,11 @@ class VirtualControllerApp:
         joystick_size = self.config.get("ui.joystick_size", 300)
         joystick_radius = joystick_size // 2
         
-        # Left joystick position
+        # Set up joysticks (adjusted for menu bar)
         left_center_x = self.width // 4
-        left_center_y = self.height // 2 - 50
-        
-        # Right joystick position  
+        left_center_y = self.height // 2 + 20
         right_center_x = 3 * self.width // 4
-        right_center_y = self.height // 2 - 50
+        right_center_y = self.height // 2 + 20
         
         self.left_joystick = VirtualJoystick(
             left_center_x, left_center_y, joystick_radius, self.config, "left"
@@ -117,6 +116,9 @@ class VirtualControllerApp:
         # Set up buttons
         self._setup_buttons()
         
+        # Set up axis configuration dialog
+        self.axis_config_dialog = AxisConfigDialog(self.config, self.screen)
+        
         # Application state
         self.running = True
         self.clock = pygame.time.Clock()
@@ -125,6 +127,12 @@ class VirtualControllerApp:
         # Status display
         self.show_debug_info = False
         
+        # Menu system
+        self.menu_bar_height = 30
+        self.menu_items = self._setup_menu_items()
+        self.active_menu = None
+        self.menu_rects = {}
+        
         print("Virtual Controller initialized successfully")
         print("Controls:")
         print("  - Drag joysticks with mouse")
@@ -132,6 +140,13 @@ class VirtualControllerApp:
         print("  - Use RESET buttons to center joysticks")
         print("  - Press ESC to exit")
         print("  - Press F1 to toggle debug info")
+        print("  - Use File > Configure Axes to map joystick axes")
+    
+    def _setup_menu_items(self) -> dict:
+        """Set up menu structure."""
+        return {
+            "File": ["Configure Axes", "Exit"]
+        }
     
     def _setup_buttons(self) -> None:
         """Set up UI buttons."""
@@ -139,15 +154,15 @@ class VirtualControllerApp:
         button_width = 80
         button_height = 30
         
-        # Left joystick controls
+        # Left joystick controls (adjusted for menu bar)
         left_center_x = self.width // 4
-        left_center_y = self.height // 2 - 50
+        left_center_y = self.height // 2 + 20
         joystick_radius = self.config.get("ui.joystick_size", 300) // 2
         
         # Left Lock X button
         self.left_lock_x_btn = Button(
             left_center_x - joystick_radius - 10 - button_width,
-            left_center_y + joystick_radius + 20,
+            left_center_y - joystick_radius - 50,
             button_width, button_height,
             "Lock X", self.font, self.config
         )
@@ -155,7 +170,7 @@ class VirtualControllerApp:
         # Left RESET button
         self.left_reset_btn = Button(
             left_center_x - button_width // 2,
-            left_center_y + joystick_radius + 20,
+            left_center_y + joystick_radius + 10,
             button_width, button_height,
             "RESET", self.font, self.config
         )
@@ -163,19 +178,19 @@ class VirtualControllerApp:
         # Left Lock Y button
         self.left_lock_y_btn = Button(
             left_center_x + joystick_radius + 10,
-            left_center_y + joystick_radius + 20,
+            left_center_y - joystick_radius - 50,
             button_width, button_height,
             "Lock Y", self.font, self.config
         )
         
-        # Right joystick controls
+        # Right joystick controls (adjusted for menu bar)
         right_center_x = 3 * self.width // 4
-        right_center_y = self.height // 2 - 50
+        right_center_y = self.height // 2 + 20
         
         # Right Lock X button
         self.right_lock_x_btn = Button(
             right_center_x - joystick_radius - 10 - button_width,
-            right_center_y + joystick_radius + 20,
+            right_center_y - joystick_radius - 50,
             button_width, button_height,
             "Lock X", self.font, self.config
         )
@@ -183,7 +198,7 @@ class VirtualControllerApp:
         # Right RESET button
         self.right_reset_btn = Button(
             right_center_x - button_width // 2,
-            right_center_y + joystick_radius + 20,
+            right_center_y + joystick_radius + 10,
             button_width, button_height,
             "RESET", self.font, self.config
         )
@@ -191,7 +206,7 @@ class VirtualControllerApp:
         # Right Lock Y button
         self.right_lock_y_btn = Button(
             right_center_x + joystick_radius + 10,
-            right_center_y + joystick_radius + 20,
+            right_center_y - joystick_radius - 50,
             button_width, button_height,
             "Lock Y", self.font, self.config
         )
@@ -202,16 +217,16 @@ class VirtualControllerApp:
         
         # Emergency stop button
         self.emergency_btn = Button(
-            center_x - button_width // 2,
-            bottom_y,
+            center_x - button_width - 10,
+            bottom_y - 50,
             button_width, button_height,
             "EMERGENCY", self.font, self.config
         )
         
         # Center all button
         self.center_all_btn = Button(
-            center_x - button_width // 2,
-            bottom_y + 40,
+            center_x + 10,
+            bottom_y - 50,
             button_width, button_height,
             "CENTER ALL", self.font, self.config
         )
@@ -225,54 +240,164 @@ class VirtualControllerApp:
     
     def _on_left_joystick_changed(self, x: float, y: float) -> None:
         """Handle left joystick value changes."""
-        # Update VJoy with new values
+        # Get axis mappings from configuration
+        left_x_axis = self.config.get("axis_mapping.left_x", "x")
+        left_y_axis = self.config.get("axis_mapping.left_y", "y")
+        
+        # Update VJoy with new values using configured mappings
         if self.vjoy.is_connected:
-            self.vjoy.update_axis('x', x)
-            self.vjoy.update_axis('y', y)
+            if left_x_axis != "none":
+                self.vjoy.update_axis(left_x_axis, x)
+            if left_y_axis != "none":
+                self.vjoy.update_axis(left_y_axis, y)
     
     def _on_right_joystick_changed(self, x: float, y: float) -> None:
         """Handle right joystick value changes."""
-        # Update VJoy with new values
+        # Get axis mappings from configuration
+        right_x_axis = self.config.get("axis_mapping.right_x", "rx")
+        right_y_axis = self.config.get("axis_mapping.right_y", "ry")
+        
+        # Update VJoy with new values using configured mappings
         if self.vjoy.is_connected:
-            self.vjoy.update_axis('rx', x)
-            self.vjoy.update_axis('ry', y)
+            if right_x_axis != "none":
+                self.vjoy.update_axis(right_x_axis, x)
+            if right_y_axis != "none":
+                self.vjoy.update_axis(right_y_axis, y)
+    
+    def _show_axis_config(self) -> None:
+        """Show the axis configuration dialog."""
+        self.axis_config_dialog.show()
+    
+    def _exit_application(self) -> None:
+        """Exit the application."""
+        self.running = False
     
     def handle_events(self) -> None:
         """Handle pygame events."""
         for event in pygame.event.get():
+            # Let axis config dialog handle events first
+            if self.axis_config_dialog.handle_event(event):
+                continue
+                
             if event.type == pygame.QUIT:
                 self.running = False
             
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    self.running = False
+                    if self.active_menu:
+                        self.active_menu = None
+                    else:
+                        self.running = False
                 elif event.key == pygame.K_F1:
                     self.show_debug_info = not self.show_debug_info
                 elif event.key == pygame.K_SPACE:
                     # Space bar centers both joysticks
                     self.left_joystick.center()
                     self.right_joystick.center()
+                elif event.key == pygame.K_c:
+                    # C key shows axis config dialog
+                    self._show_axis_config()
             
             # Handle joystick events
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left mouse button
-                    # Check joysticks first
-                    if not self.left_joystick.handle_mouse_down(event.pos):
-                        self.right_joystick.handle_mouse_down(event.pos)
+                    # Check menu bar clicks first
+                    if self._handle_menu_click(event.pos):
+                        continue
+                    
+                    # Check button clicks
+                    button_clicked = False
+                    for button in self.all_buttons:
+                        if button.handle_event(event):
+                            self._handle_button_click(button)
+                            button_clicked = True
+                            break
+                    
+                    # Check joysticks if no button was clicked
+                    if not button_clicked:
+                        if not self.left_joystick.handle_mouse_down(event.pos):
+                            self.right_joystick.handle_mouse_down(event.pos)
             
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:  # Left mouse button
+                    # Handle button events
+                    for button in self.all_buttons:
+                        button.handle_event(event)
+                    
                     self.left_joystick.handle_mouse_up(event.pos)
                     self.right_joystick.handle_mouse_up(event.pos)
             
             elif event.type == pygame.MOUSEMOTION:
+                # Handle button hover events
+                for button in self.all_buttons:
+                    button.handle_event(event)
+                
                 self.left_joystick.handle_mouse_motion(event.pos)
                 self.right_joystick.handle_mouse_motion(event.pos)
+    
+    def _handle_menu_click(self, pos: Tuple[int, int]) -> bool:
+        """Handle menu bar clicks. Returns True if click was handled."""
+        mouse_x, mouse_y = pos
+        
+        # First check if we're clicking on submenu items (if menu is open)
+        if self.active_menu and self.active_menu in self.menu_items:
+            if self._handle_submenu_click(pos):
+                return True
+        
+        # Check if click is in menu bar area
+        if mouse_y > self.menu_bar_height:
+            if self.active_menu:
+                self.active_menu = None
+            return False
+        
+        # Check main menu items
+        x_offset = 10
+        for menu_name in self.menu_items.keys():
+            menu_width = len(menu_name) * 10 + 20
+            menu_rect = pygame.Rect(x_offset, 0, menu_width, self.menu_bar_height)
+            if menu_rect.collidepoint(mouse_x, mouse_y):
+                if self.active_menu == menu_name:
+                    self.active_menu = None
+                else:
+                    self.active_menu = menu_name
+                return True
             
-            # Handle button events
-            for button in self.all_buttons:
-                if button.handle_event(event):
-                    self._handle_button_click(button)
+            x_offset += menu_width
+        
+        # Close menu if clicking elsewhere in menu bar
+        self.active_menu = None
+        return True
+    
+    def _handle_submenu_click(self, pos: Tuple[int, int]) -> bool:
+        """Handle submenu item clicks."""
+        mouse_x, mouse_y = pos
+        # Calculate submenu position
+        x_offset = 10
+        for menu_name in self.menu_items.keys():
+            if menu_name == self.active_menu:
+                break
+            x_offset += len(menu_name) * 10 + 20
+        
+        # Check submenu items
+        submenu_y = self.menu_bar_height
+        for i, item in enumerate(self.menu_items[self.active_menu]):
+            item_rect = pygame.Rect(x_offset, submenu_y + i * 25, 150, 25)
+            if item_rect.collidepoint(mouse_x, mouse_y):
+                if item == "Configure Axes":
+                    self._show_axis_config()
+                elif item == "Exit":
+                    pygame.quit()
+                    sys.exit()
+                
+                self.active_menu = None
+                return True
+        
+        return False
+    
+    def _handle_button_clicks(self) -> None:
+        """Handle button clicks."""
+        # This method is no longer needed as button events are handled directly in handle_events
+        pass
     
     def _handle_button_click(self, button: Button) -> None:
         """Handle button click events."""
@@ -330,19 +455,22 @@ class VirtualControllerApp:
         bg_color = self.config.get("ui.background_color", (20, 20, 20))
         self.screen.fill(bg_color)
         
-        # Draw title
+        # Draw menu bar
+        self._draw_menu_bar()
+        
+        # Draw title (adjusted for menu bar)
         title_text = self.title_font.render("Project Nimbus - Virtual Controller", True, 
                                            self.config.get("ui.text_color", (255, 255, 255)))
-        title_rect = title_text.get_rect(center=(self.width // 2, 30))
+        title_rect = title_text.get_rect(center=(self.width // 2, self.menu_bar_height + 20))
         self.screen.blit(title_text, title_rect)
         
-        # Draw joystick labels
+        # Draw joystick labels (adjusted for menu bar)
         left_label = self.font.render("Left Stick", True, self.config.get("ui.text_color", (255, 255, 255)))
-        left_rect = left_label.get_rect(center=(self.width // 4, 80))
+        left_rect = left_label.get_rect(center=(self.width // 4, self.menu_bar_height + 80))
         self.screen.blit(left_label, left_rect)
         
         right_label = self.font.render("Right Stick", True, self.config.get("ui.text_color", (255, 255, 255)))
-        right_rect = right_label.get_rect(center=(3 * self.width // 4, 80))
+        right_rect = right_label.get_rect(center=(3 * self.width // 4, self.menu_bar_height + 80))
         self.screen.blit(right_label, right_rect)
         
         # Draw joysticks
@@ -360,12 +488,86 @@ class VirtualControllerApp:
         if self.show_debug_info:
             self._draw_debug_info()
         
+        # Draw axis configuration dialog
+        self.axis_config_dialog.draw(self.screen)
+        
         # Update display
         pygame.display.flip()
     
+    def _draw_menu_bar(self) -> None:
+        """Draw the menu bar."""
+        # Menu bar background
+        menu_bg_color = (60, 60, 60)
+        menu_rect = pygame.Rect(0, 0, self.width, self.menu_bar_height)
+        pygame.draw.rect(self.screen, menu_bg_color, menu_rect)
+        pygame.draw.line(self.screen, (100, 100, 100), (0, self.menu_bar_height), (self.width, self.menu_bar_height))
+        
+        # Draw menu items
+        x_offset = 10
+        text_color = (255, 255, 255)
+        
+        for menu_name in self.menu_items.keys():
+            menu_width = len(menu_name) * 10 + 20
+            menu_rect = pygame.Rect(x_offset, 0, menu_width, self.menu_bar_height)
+            
+            # Highlight active menu
+            if self.active_menu == menu_name:
+                pygame.draw.rect(self.screen, (80, 80, 80), menu_rect)
+            
+            # Draw menu text
+            menu_text = self.font.render(menu_name, True, text_color)
+            text_rect = menu_text.get_rect(center=menu_rect.center)
+            self.screen.blit(menu_text, text_rect)
+            
+            x_offset += menu_width
+        
+        # Draw submenu if active
+        if self.active_menu and self.active_menu in self.menu_items:
+            self._draw_submenu()
+    
+    def _draw_submenu(self) -> None:
+        """Draw the active submenu."""
+        # Calculate submenu position
+        x_offset = 10
+        for menu_name in self.menu_items.keys():
+            menu_width = len(menu_name) * 10 + 20
+            if menu_name == self.active_menu:
+                break
+            x_offset += menu_width
+        
+        submenu_items = self.menu_items[self.active_menu]
+        submenu_width = 150
+        submenu_height = len(submenu_items) * 25 + 10
+        
+        # Submenu background
+        submenu_rect = pygame.Rect(x_offset, self.menu_bar_height, submenu_width, submenu_height)
+        pygame.draw.rect(self.screen, (50, 50, 50), submenu_rect)
+        pygame.draw.rect(self.screen, (100, 100, 100), submenu_rect, 1)
+        
+        # Draw submenu items
+        submenu_y = self.menu_bar_height + 5
+        text_color = (255, 255, 255)
+        
+        for item_name in submenu_items:
+            item_height = 25
+            item_rect = pygame.Rect(x_offset, submenu_y, submenu_width, item_height)
+            
+            # Check if mouse is hovering over item
+            mouse_pos = pygame.mouse.get_pos()
+            if item_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(self.screen, (70, 70, 70), item_rect)
+            
+            # Draw item text
+            item_text = self.font.render(item_name, True, text_color)
+            text_rect = item_text.get_rect(center=(item_rect.centerx, item_rect.centery))
+            self.screen.blit(item_text, text_rect)
+            
+            submenu_y += item_height
+    
     def _draw_status(self) -> None:
         """Draw status information."""
-        y_offset = self.height - 200
+        x_offset = self.width - 300
+        y_offset = self.menu_bar_height + 10
         text_color = self.config.get("ui.text_color", (255, 255, 255))
         
         # VJoy status
@@ -375,7 +577,7 @@ class VirtualControllerApp:
             status_text += " (FAILSAFE ACTIVE)"
         
         status_surface = self.font.render(status_text, True, text_color)
-        self.screen.blit(status_surface, (10, y_offset))
+        self.screen.blit(status_surface, (x_offset, y_offset))
         
         # Joystick values
         left_x, left_y = self.left_joystick.get_position()
@@ -387,8 +589,8 @@ class VirtualControllerApp:
         left_surface = self.font.render(left_text, True, text_color)
         right_surface = self.font.render(right_text, True, text_color)
         
-        self.screen.blit(left_surface, (10, y_offset + 25))
-        self.screen.blit(right_surface, (10, y_offset + 50))
+        self.screen.blit(left_surface, (x_offset, y_offset + 25))
+        self.screen.blit(right_surface, (x_offset, y_offset + 50))
     
     def _draw_debug_info(self) -> None:
         """Draw debug information."""
