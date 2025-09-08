@@ -49,8 +49,16 @@ class VirtualJoystick:
         
         # Mouse interaction state
         self.is_dragging = False
-        self.mouse_offset_x = 0
-        self.mouse_offset_y = 0
+        self.is_hovered = False
+        
+        # Auto-centering when not being dragged
+        self.auto_center = True
+        
+        # Mouse drag reference point
+        self.drag_start_x = 0
+        self.drag_start_y = 0
+        self.initial_x_pos = 0.0
+        self.initial_y_pos = 0.0
         
         # Smoothing for stability
         self.prev_x = 0.0
@@ -74,10 +82,11 @@ class VirtualJoystick:
         
         if distance <= self.radius:
             self.is_dragging = True
-            # Calculate offset from center to mouse for smooth dragging
-            self.mouse_offset_x = mouse_x - self.center_x
-            self.mouse_offset_y = mouse_y - self.center_y
-            self._update_position_from_offset()
+            # Store the drag start position and current joystick position
+            self.drag_start_x = mouse_x
+            self.drag_start_y = mouse_y
+            self.initial_x_pos = self.x_pos
+            self.initial_y_pos = self.y_pos
             return True
         
         return False
@@ -102,32 +111,36 @@ class VirtualJoystick:
         """
         if self.is_dragging:
             mouse_x, mouse_y = mouse_pos
-            self.mouse_offset_x = mouse_x - self.center_x
-            self.mouse_offset_y = mouse_y - self.center_y
-            self._update_position_from_offset()
+            # Calculate relative movement from drag start position
+            delta_x = mouse_x - self.drag_start_x
+            delta_y = mouse_y - self.drag_start_y
+            
+            # Apply movement to initial position (with proper direction)
+            new_x = self.initial_x_pos + (delta_x / self.radius)
+            new_y = self.initial_y_pos + (delta_y / self.radius)  # Normal Y direction
+            
+            # Clamp to joystick bounds
+            distance = math.sqrt(new_x ** 2 + new_y ** 2)
+            if distance > 1.0:
+                new_x = new_x / distance
+                new_y = new_y / distance
+            
+            # Update positions
+            if not self.x_locked:
+                self.x_pos = new_x
+                self.raw_x = new_x
+            if not self.y_locked:
+                self.y_pos = new_y
+                self.raw_y = new_y
+            
+            # Notify callback
+            if self.on_value_changed:
+                self.on_value_changed(self.x_pos, self.y_pos)
     
     def _update_position_from_offset(self) -> None:
         """Update joystick position based on mouse offset."""
-        # Limit to joystick radius
-        distance = math.sqrt(self.mouse_offset_x ** 2 + self.mouse_offset_y ** 2)
-        
-        if distance > self.radius:
-            # Normalize to radius
-            self.mouse_offset_x = (self.mouse_offset_x / distance) * self.radius
-            self.mouse_offset_y = (self.mouse_offset_y / distance) * self.radius
-        
-        # Convert to normalized coordinates (-1.0 to 1.0)
-        new_raw_x = self.mouse_offset_x / self.radius
-        new_raw_y = -self.mouse_offset_y / self.radius  # Invert Y for standard coordinate system
-        
-        # Apply locks
-        if not self.x_locked:
-            self.raw_x = new_raw_x
-        if not self.y_locked:
-            self.raw_y = new_raw_y
-        
-        # Apply sensitivity curves and smoothing
-        self._apply_processing()
+        # This method is no longer used with the new drag behavior
+        pass
     
     def _apply_processing(self) -> None:
         """Apply sensitivity curves, dead zones, and smoothing."""
@@ -226,62 +239,72 @@ class VirtualJoystick:
         display_y = self.center_y - int(self.raw_y * self.radius)  # Invert Y for display
         return display_x, display_y
     
-    def draw(self, surface: pygame.Surface) -> None:
-        """
-        Draw the joystick on the given surface.
-        
-        Args:
-            surface: Pygame surface to draw on
-        """
-        # Get colors from config
-        bg_color = self.config.get("ui.joystick_bg_color", (80, 20, 20))
-        fg_color = self.config.get("ui.joystick_fg_color", (255, 50, 50))
-        
-        # Draw outer circle (background)
-        pygame.draw.circle(surface, bg_color, (self.center_x, self.center_y), self.radius, 3)
-        
-        # Draw dead zone indicator
-        dead_zone = self.config.get(f"joysticks.{self.joystick_id}.dead_zone", 0.1)
-        dead_zone_radius = int(self.radius * dead_zone)
-        if dead_zone_radius > 0:
-            dead_zone_color = (bg_color[0] // 2, bg_color[1] // 2, bg_color[2] // 2)
-            pygame.draw.circle(surface, dead_zone_color, (self.center_x, self.center_y), dead_zone_radius, 1)
-        
-        # Draw center cross
-        cross_size = 10
-        pygame.draw.line(surface, (100, 100, 100), 
-                        (self.center_x - cross_size, self.center_y),
-                        (self.center_x + cross_size, self.center_y), 1)
-        pygame.draw.line(surface, (100, 100, 100),
-                        (self.center_x, self.center_y - cross_size),
-                        (self.center_x, self.center_y + cross_size), 1)
-        
-        # Draw joystick position
-        display_x, display_y = self.get_display_position()
-        
-        # Draw connection line
-        if self.raw_x != 0 or self.raw_y != 0:
-            pygame.draw.line(surface, (fg_color[0] // 2, fg_color[1] // 2, fg_color[2] // 2),
-                           (self.center_x, self.center_y), (display_x, display_y), 2)
-        
-        # Draw joystick knob
-        knob_radius = 8
-        pygame.draw.circle(surface, fg_color, (display_x, display_y), knob_radius)
-        pygame.draw.circle(surface, (255, 255, 255), (display_x, display_y), knob_radius, 2)
-        
-        # Draw lock indicators
-        if self.x_locked:
-            lock_color = (255, 255, 0)
-            pygame.draw.line(surface, lock_color,
-                           (self.center_x - self.radius - 10, self.center_y),
-                           (self.center_x + self.radius + 10, self.center_y), 3)
-        
-        if self.y_locked:
-            lock_color = (255, 255, 0)
-            pygame.draw.line(surface, lock_color,
-                           (self.center_x, self.center_y - self.radius - 10),
-                           (self.center_x, self.center_y + self.radius + 10), 3)
+    def update(self) -> None:
+        """Update joystick state - auto-center if not being dragged."""
+        if not self.is_dragging:
+            # Gradually move towards center
+            if abs(self.x_pos) > 0.01 or abs(self.y_pos) > 0.01:  # Small deadzone to prevent jitter
+                self.x_pos *= 0.92  # Decay factor - adjust for centering speed
+                self.y_pos *= 0.92
+                self.raw_x *= 0.92
+                self.raw_y *= 0.92
+                
+                if abs(self.x_pos) < 0.01:
+                    self.x_pos = 0.0
+                    self.raw_x = 0.0
+                if abs(self.y_pos) < 0.01:
+                    self.y_pos = 0.0
+                    self.raw_y = 0.0
+                
+                # Notify callback of position change
+                if self.on_value_changed:
+                    self.on_value_changed(self.x_pos, self.y_pos)
     
+    def draw(self, surface: pygame.Surface) -> None:
+        """Draw the joystick on the surface."""
+        # Draw boundary (circle)
+        boundary_color = (100, 150, 255)
+        pygame.draw.circle(surface, (15, 30, 60), (self.center_x, self.center_y), self.radius)
+        pygame.draw.circle(surface, boundary_color, (self.center_x, self.center_y), self.radius, 3)
+        
+        # Draw center lines that move with the knob (clipped to circle)
+        center_color = (50, 100, 200)
+        knob_x = self.center_x + int(self.x_pos * self.radius)
+        knob_y = self.center_y + int(self.y_pos * self.radius)
+        
+        # Calculate intersection points with circle for horizontal line
+        import math
+        # Horizontal line at knob_y
+        dy = knob_y - self.center_y
+        if abs(dy) < self.radius:
+            dx = math.sqrt(self.radius * self.radius - dy * dy)
+            h_start_x = self.center_x - dx
+            h_end_x = self.center_x + dx
+            pygame.draw.line(surface, center_color, 
+                            (int(h_start_x), knob_y), 
+                            (int(h_end_x), knob_y), 1)
+        
+        # Calculate intersection points with circle for vertical line
+        # Vertical line at knob_x
+        dx = knob_x - self.center_x
+        if abs(dx) < self.radius:
+            dy = math.sqrt(self.radius * self.radius - dx * dx)
+            v_start_y = self.center_y - dy
+            v_end_y = self.center_y + dy
+            pygame.draw.line(surface, center_color, 
+                            (knob_x, int(v_start_y)), 
+                            (knob_x, int(v_end_y)), 1)
+        
+        # Calculate knob position
+        knob_x = self.center_x + int(self.x_pos * self.radius)
+        knob_y = self.center_y + int(self.y_pos * self.radius)
+        
+        # Draw knob (circle)
+        knob_radius = 10
+        knob_color = (100, 150, 255)
+        pygame.draw.circle(surface, knob_color, (knob_x, knob_y), knob_radius)
+        pygame.draw.circle(surface, (150, 200, 255), (knob_x, knob_y), knob_radius, 2)
+
     def is_point_inside(self, point: Tuple[int, int]) -> bool:
         """
         Check if a point is inside the joystick area.
