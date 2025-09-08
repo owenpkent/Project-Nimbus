@@ -263,7 +263,7 @@ class VirtualControllerApp:
         
         # Menu system
         self.menu_bar_height = 30
-        self.menu_items = self._setup_menu_items()
+        self.menu_items = self._get_menu_items()
         self.active_menu = None
         self.menu_rects = {}
         
@@ -276,10 +276,11 @@ class VirtualControllerApp:
         print("  - Press F1 to toggle debug info")
         print("  - Use File > Configure Axes to map joystick axes")
     
-    def _setup_menu_items(self) -> dict:
-        """Set up menu structure."""
+    def _get_menu_items(self) -> dict:
+        """Get menu items for the menu bar."""
         return {
-            "File": ["Configure Axes", "Joystick Settings", "Exit"]
+            "File": ["Configure Axes", "Exit"],
+            "Joystick Settings": []
         }
     
     def _setup_buttons(self) -> None:
@@ -407,31 +408,56 @@ class VirtualControllerApp:
             self.emergency_btn, self.center_all_btn
         ] + self.left_buttons + self.right_buttons
     
+    def _apply_sensitivity_curve(self, input_value: float) -> float:
+        """
+        Apply sensitivity curve to joystick input value.
+        
+        Args:
+            input_value: Raw joystick input from -1.0 to 1.0
+            
+        Returns:
+            Processed value with sensitivity curve applied
+        """
+        # Get sensitivity settings from joystick settings dialog
+        if hasattr(self, 'joystick_settings_dialog'):
+            return self.joystick_settings_dialog.calculate_curve_output(input_value)
+        else:
+            # Fallback to raw input if dialog not available
+            return input_value
+    
     def _on_left_joystick_changed(self, x: float, y: float) -> None:
         """Handle left joystick value changes."""
+        # Apply sensitivity curve to input values
+        processed_x = self._apply_sensitivity_curve(x)
+        processed_y = self._apply_sensitivity_curve(y)
+        
         # Get axis mappings from configuration
         left_x_axis = self.config.get("axis_mapping.left_x", "x")
         left_y_axis = self.config.get("axis_mapping.left_y", "y")
         
-        # Update VJoy with new values using configured mappings
+        # Update VJoy with processed values using configured mappings
         if self.vjoy.is_connected:
             if left_x_axis != "none":
-                self.vjoy.update_axis(left_x_axis, x)
+                self.vjoy.update_axis(left_x_axis, processed_x)
             if left_y_axis != "none":
-                self.vjoy.update_axis(left_y_axis, y)
+                self.vjoy.update_axis(left_y_axis, processed_y)
     
     def _on_right_joystick_changed(self, x: float, y: float) -> None:
         """Handle right joystick value changes."""
+        # Apply sensitivity curve to input values
+        processed_x = self._apply_sensitivity_curve(x)
+        processed_y = self._apply_sensitivity_curve(y)
+        
         # Get axis mappings from configuration
         right_x_axis = self.config.get("axis_mapping.right_x", "rx")
         right_y_axis = self.config.get("axis_mapping.right_y", "ry")
         
-        # Update VJoy with new values using configured mappings
+        # Update VJoy with processed values using configured mappings
         if self.vjoy.is_connected:
             if right_x_axis != "none":
-                self.vjoy.update_axis(right_x_axis, x)
+                self.vjoy.update_axis(right_x_axis, processed_x)
             if right_y_axis != "none":
-                self.vjoy.update_axis(right_y_axis, y)
+                self.vjoy.update_axis(right_y_axis, processed_y)
     
     def _on_throttle_changed(self, value: float) -> None:
         """Handle throttle slider value changes."""
@@ -462,18 +488,25 @@ class VirtualControllerApp:
     def handle_events(self) -> None:
         """Handle pygame events."""
         for event in pygame.event.get():
-            # Let dialogs handle events first
+            # Handle quit events first, before dialogs
+            if event.type == pygame.QUIT:
+                self.running = False
+                continue
+            
+            # Let dialogs handle events
             if self.axis_config_dialog.handle_event(event):
                 continue
             if self.joystick_settings_dialog.handle_event(event):
                 continue
-                
-            if event.type == pygame.QUIT:
-                self.running = False
             
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    if self.active_menu:
+                    # Close any open dialogs first, then menus, then app
+                    if self.axis_config_dialog.is_visible:
+                        self.axis_config_dialog.hide()
+                    elif self.joystick_settings_dialog.is_visible:
+                        self.joystick_settings_dialog.hide()
+                    elif self.active_menu:
                         self.active_menu = None
                     else:
                         self.running = False
@@ -570,7 +603,12 @@ class VirtualControllerApp:
             menu_width = len(menu_name) * 10 + 20
             menu_rect = pygame.Rect(x_offset, 0, menu_width, self.menu_bar_height)
             if menu_rect.collidepoint(mouse_x, mouse_y):
-                if self.active_menu == menu_name:
+                # Handle direct menu actions (no submenu)
+                if menu_name == "Joystick Settings":
+                    self._show_joystick_settings()
+                    self.active_menu = None
+                    return True
+                elif self.active_menu == menu_name:
                     self.active_menu = None
                 else:
                     self.active_menu = menu_name

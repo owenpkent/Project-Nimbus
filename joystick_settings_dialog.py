@@ -1,16 +1,17 @@
 """
 Joystick Settings Dialog for Project Nimbus.
-Allows users to configure sensitivity curves, dead zones, and other joystick parameters.
+Allows users to configure sensitivity, deadzone, and extremity deadzone with XY graph visualization.
 """
 
 import pygame
+import math
 from typing import Dict, Optional, List, Tuple
 from config import ControllerConfig
 
 
 class JoystickSettingsDialog:
     """
-    Dialog window for configuring joystick sensitivity curves, dead zones, and other parameters.
+    Dialog window for configuring joystick sensitivity, deadzone, and extremity deadzone with XY graph.
     """
     
     def __init__(self, config: ControllerConfig, parent_surface: pygame.Surface):
@@ -25,42 +26,67 @@ class JoystickSettingsDialog:
         self.parent_surface = parent_surface
         self.font = pygame.font.Font(None, 24)
         self.title_font = pygame.font.Font(None, 32)
-        self.small_font = pygame.font.Font(None, 20)
+        self.small_font = pygame.font.Font(None, 18)
         
-        # Dialog dimensions
-        self.width = 800
-        self.height = 600
-        self.x = (parent_surface.get_width() - self.width) // 2
-        self.y = (parent_surface.get_height() - self.height) // 2
+        # Dialog dimensions - ensure it fits in parent window with margin
+        parent_width = parent_surface.get_width()
+        parent_height = parent_surface.get_height()
         
-        # Available curve types
-        self.curve_types = ["linear", "quadratic", "cubic", "exponential"]
-        self.curve_type_names = {
-            "linear": "Linear",
-            "quadratic": "Quadratic", 
-            "cubic": "Cubic",
-            "exponential": "Exponential"
-        }
-        
-        # Joystick identifiers
-        self.joysticks = ["left", "right"]
-        self.joystick_names = {
-            "left": "Left Joystick",
-            "right": "Right Joystick"
-        }
+        self.width = min(1000, parent_width - 40)  # 20px margin on each side
+        self.height = min(650, parent_height - 40)  # 20px margin top/bottom
+        self.x = (parent_width - self.width) // 2
+        self.y = (parent_height - self.height) // 2
         
         # UI state
         self.is_visible = False
-        self.selected_joystick = "left"
-        self.dropdown_open = None
+        self.dragging_slider = None
         
-        # Current settings (loaded from config)
-        self.current_settings = {}
+        # Settings (0-100% ranges)
+        self.sensitivity = 50.0  # 0-100%
+        self.deadzone = 10.0     # 0-100%
+        self.extremity_deadzone = 5.0  # 0-100%
         
-        # UI elements
-        self.buttons = self._create_buttons()
-        self.sliders = self._create_sliders()
-        self.dropdowns = self._create_dropdowns()
+        # Graph area - adjust size based on dialog dimensions
+        graph_size = min(400, self.height - 200)  # Ensure graph fits with room for buttons
+        self.graph_rect = pygame.Rect(self.x + 50, self.y + 80, graph_size, graph_size)
+        
+        # Slider definitions - position relative to dialog size
+        # Ensure sliders start far enough right to avoid graph overlap
+        min_slider_x = self.graph_rect.right + 80  # 80px gap from graph
+        slider_start_x = max(min_slider_x, self.x + 550)
+        slider_width = min(250, self.width - (slider_start_x - self.x) - 50)
+        
+        self.sliders = {
+            "sensitivity": {
+                "rect": pygame.Rect(slider_start_x, self.y + 120, slider_width, 20),
+                "value": self.sensitivity,
+                "min": 0.0,
+                "max": 100.0,
+                "label": "Sensitivity"
+            },
+            "deadzone": {
+                "rect": pygame.Rect(slider_start_x, self.y + 180, slider_width, 20),
+                "value": self.deadzone,
+                "min": 0.0,
+                "max": 100.0,
+                "label": "Deadzone"
+            },
+            "extremity_deadzone": {
+                "rect": pygame.Rect(slider_start_x, self.y + 240, slider_width, 20),
+                "value": self.extremity_deadzone,
+                "min": 0.0,
+                "max": 100.0,
+                "label": "Extremity Deadzone"
+            }
+        }
+        
+        # Buttons - ensure they're always visible at bottom with margin
+        button_y = self.y + self.height - 50
+        self.buttons = {
+            "ok": pygame.Rect(self.x + self.width - 220, button_y, 100, 40),
+            "cancel": pygame.Rect(self.x + self.width - 110, button_y, 100, 40),
+            "reset": pygame.Rect(self.x + 50, button_y, 100, 40)
+        }
         
         # Colors
         self.bg_color = (40, 40, 40)
@@ -68,113 +94,93 @@ class JoystickSettingsDialog:
         self.text_color = (255, 255, 255)
         self.button_color = (60, 60, 60)
         self.button_hover_color = (80, 80, 80)
-        self.dropdown_color = (50, 50, 50)
-        self.selected_color = (100, 150, 200)
         self.slider_color = (80, 80, 80)
-        self.slider_handle_color = (150, 150, 150)
+        self.slider_handle_color = (100, 150, 255)
+        self.graph_bg_color = (30, 30, 30)
+        self.grid_color = (60, 60, 60)
+        self.curve_color = (100, 150, 255)
+        self.axis_color = (150, 150, 150)
         
         # Load current settings
         self.load_current_settings()
     
-    def _create_buttons(self) -> Dict[str, pygame.Rect]:
-        """Create button rectangles."""
-        button_width = 100
-        button_height = 35
+    def calculate_curve_output(self, input_value: float) -> float:
+        """
+        Calculate the output value based on input and current settings.
         
-        return {
-            "ok": pygame.Rect(self.x + self.width - 220, self.y + self.height - 50, button_width, button_height),
-            "cancel": pygame.Rect(self.x + self.width - 110, self.y + self.height - 50, button_width, button_height),
-            "reset": pygame.Rect(self.x + 20, self.y + self.height - 50, button_width, button_height),
-            "left_tab": pygame.Rect(self.x + 20, self.y + 60, 120, 30),
-            "right_tab": pygame.Rect(self.x + 150, self.y + 60, 120, 30)
-        }
-    
-    def _create_sliders(self) -> Dict[str, Dict]:
-        """Create slider definitions."""
-        slider_width = 200
-        slider_height = 20
-        start_y = self.y + 150
+        Args:
+            input_value: Input value from -1.0 to 1.0
+            
+        Returns:
+            Output value from -1.0 to 1.0
+        """
+        # Convert percentages to normalized values
+        # Scale deadzone to be less aggressive - use square root to make it less linear
+        deadzone = (self.deadzone / 100.0) * 0.25  # Reduce maximum deadzone to 25% of slider value
+        extremity_deadzone = self.extremity_deadzone / 100.0
+        sensitivity = self.sensitivity / 100.0
         
-        return {
-            "dead_zone": {
-                "rect": pygame.Rect(self.x + 200, start_y, slider_width, slider_height),
-                "min": 0.0,
-                "max": 0.5,
-                "value": 0.1
-            },
-            "sensitivity": {
-                "rect": pygame.Rect(self.x + 200, start_y + 60, slider_width, slider_height),
-                "min": 0.1,
-                "max": 3.0,
-                "value": 1.0
-            },
-            "curve_power": {
-                "rect": pygame.Rect(self.x + 200, start_y + 180, slider_width, slider_height),
-                "min": 1.0,
-                "max": 5.0,
-                "value": 2.0
-            },
-            "max_range": {
-                "rect": pygame.Rect(self.x + 200, start_y + 240, slider_width, slider_height),
-                "min": 0.5,
-                "max": 1.0,
-                "value": 1.0
-            }
-        }
-    
-    def _create_dropdowns(self) -> Dict[str, pygame.Rect]:
-        """Create dropdown rectangles."""
-        return {
-            "curve_type": pygame.Rect(self.x + 200, self.y + 270, 200, 30)
-        }
+        # Apply deadzone
+        if abs(input_value) < deadzone:
+            return 0.0
+        
+        # Normalize input after deadzone but before extremity deadzone
+        sign = 1.0 if input_value >= 0 else -1.0
+        abs_input = abs(input_value)
+        
+        # Calculate available range after deadzone
+        available_range = 1.0 - deadzone
+        normalized_input = (abs_input - deadzone) / available_range
+        
+        # Apply sensitivity curve
+        if sensitivity == 0.5:
+            # 50% = perfectly linear
+            output = normalized_input
+        elif sensitivity < 0.5:
+            # Less than 50% = flatter curve (higher power)
+            power = 1.0 + (0.5 - sensitivity) * 6.0  # Range from 1.0 to 4.0
+            output = pow(normalized_input, power)
+        else:
+            # Greater than 50% = steeper curve (lower power)
+            power = 1.0 - (sensitivity - 0.5) * 1.8  # Range from 1.0 to 0.1
+            output = pow(normalized_input, power)
+        
+        # Apply extremity deadzone - scale output to stay within the non-extremity range
+        if extremity_deadzone > 0:
+            # Scale output to fit within (0, 1-extremity_deadzone) range
+            max_output = 1.0 - extremity_deadzone
+            output = output * max_output
+        
+        return output * sign
     
     def load_current_settings(self) -> None:
         """Load current joystick settings from configuration."""
-        for joystick in self.joysticks:
-            self.current_settings[joystick] = {
-                "dead_zone": self.config.get(f"joysticks.{joystick}.dead_zone", 0.1),
-                "sensitivity": self.config.get(f"joysticks.{joystick}.sensitivity", 1.0),
-                "curve_type": self.config.get(f"joysticks.{joystick}.curve_type", "linear"),
-                "curve_power": self.config.get(f"joysticks.{joystick}.curve_power", 2.0),
-                "max_range": self.config.get(f"joysticks.{joystick}.max_range", 1.0),
-                "invert_x": self.config.get(f"joysticks.{joystick}.invert_x", False),
-                "invert_y": self.config.get(f"joysticks.{joystick}.invert_y", False)
-            }
+        self.sensitivity = self.config.get("joystick_settings.sensitivity", 50.0)
+        self.deadzone = self.config.get("joystick_settings.deadzone", 10.0)
+        self.extremity_deadzone = self.config.get("joystick_settings.extremity_deadzone", 5.0)
         
-        # Update slider values for selected joystick
-        self._update_slider_values()
-    
-    def _update_slider_values(self) -> None:
-        """Update slider values based on selected joystick."""
-        settings = self.current_settings[self.selected_joystick]
-        self.sliders["dead_zone"]["value"] = settings["dead_zone"]
-        self.sliders["sensitivity"]["value"] = settings["sensitivity"]
-        self.sliders["curve_power"]["value"] = settings["curve_power"]
-        self.sliders["max_range"]["value"] = settings["max_range"]
+        # Update slider values
+        self.sliders["sensitivity"]["value"] = self.sensitivity
+        self.sliders["deadzone"]["value"] = self.deadzone
+        self.sliders["extremity_deadzone"]["value"] = self.extremity_deadzone
     
     def save_settings(self) -> None:
         """Save current settings to configuration."""
-        for joystick, settings in self.current_settings.items():
-            for key, value in settings.items():
-                self.config.set(f"joysticks.{joystick}.{key}", value)
+        self.config.set("joystick_settings.sensitivity", self.sensitivity)
+        self.config.set("joystick_settings.deadzone", self.deadzone)
+        self.config.set("joystick_settings.extremity_deadzone", self.extremity_deadzone)
         self.config.save_config()
     
     def reset_to_defaults(self) -> None:
         """Reset settings to default values."""
-        defaults = {
-            "dead_zone": 0.1,
-            "sensitivity": 1.0,
-            "curve_type": "linear",
-            "curve_power": 2.0,
-            "max_range": 1.0,
-            "invert_x": False,
-            "invert_y": False
-        }
+        self.sensitivity = 50.0
+        self.deadzone = 10.0
+        self.extremity_deadzone = 5.0
         
-        for joystick in self.joysticks:
-            self.current_settings[joystick].update(defaults)
-        
-        self._update_slider_values()
+        # Update slider values
+        self.sliders["sensitivity"]["value"] = self.sensitivity
+        self.sliders["deadzone"]["value"] = self.deadzone
+        self.sliders["extremity_deadzone"]["value"] = self.extremity_deadzone
     
     def show(self) -> None:
         """Show the dialog."""
@@ -184,7 +190,7 @@ class JoystickSettingsDialog:
     def hide(self) -> None:
         """Hide the dialog."""
         self.is_visible = False
-        self.dropdown_open = None
+        self.dragging_slider = None
     
     def handle_event(self, event: pygame.event.Event) -> bool:
         """
@@ -219,46 +225,22 @@ class JoystickSettingsDialog:
                 elif self.buttons["reset"].collidepoint(mouse_x, mouse_y):
                     self.reset_to_defaults()
                     return True
-                elif self.buttons["left_tab"].collidepoint(mouse_x, mouse_y):
-                    self._save_current_slider_values()
-                    self.selected_joystick = "left"
-                    self._update_slider_values()
-                    return True
-                elif self.buttons["right_tab"].collidepoint(mouse_x, mouse_y):
-                    self._save_current_slider_values()
-                    self.selected_joystick = "right"
-                    self._update_slider_values()
-                    return True
                 
                 # Handle slider clicks
                 for slider_name, slider_data in self.sliders.items():
                     if slider_data["rect"].collidepoint(mouse_x, mouse_y):
+                        self.dragging_slider = slider_name
                         self._handle_slider_click(slider_name, mouse_x)
                         return True
-                
-                # Handle dropdown clicks
-                for dropdown_name, dropdown_rect in self.dropdowns.items():
-                    if dropdown_rect.collidepoint(mouse_x, mouse_y):
-                        self.dropdown_open = dropdown_name if self.dropdown_open != dropdown_name else None
-                        return True
-                
-                # Handle dropdown option clicks
-                if self.dropdown_open == "curve_type":
-                    option_y = self.dropdowns["curve_type"].bottom
-                    for i, curve_type in enumerate(self.curve_types):
-                        option_rect = pygame.Rect(
-                            self.dropdowns["curve_type"].x,
-                            option_y + i * 25,
-                            self.dropdowns["curve_type"].width,
-                            25
-                        )
-                        if option_rect.collidepoint(mouse_x, mouse_y):
-                            self.current_settings[self.selected_joystick]["curve_type"] = curve_type
-                            self.dropdown_open = None
-                            return True
-                
-                # Close dropdown if clicking elsewhere
-                self.dropdown_open = None
+        
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                self.dragging_slider = None
+        
+        elif event.type == pygame.MOUSEMOTION:
+            if self.dragging_slider:
+                mouse_x, mouse_y = event.pos
+                self._handle_slider_click(self.dragging_slider, mouse_x)
         
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
@@ -266,14 +248,6 @@ class JoystickSettingsDialog:
                 return True
         
         return True
-    
-    def _save_current_slider_values(self) -> None:
-        """Save current slider values to settings."""
-        settings = self.current_settings[self.selected_joystick]
-        settings["dead_zone"] = self.sliders["dead_zone"]["value"]
-        settings["sensitivity"] = self.sliders["sensitivity"]["value"]
-        settings["curve_power"] = self.sliders["curve_power"]["value"]
-        settings["max_range"] = self.sliders["max_range"]["value"]
     
     def _handle_slider_click(self, slider_name: str, mouse_x: int) -> None:
         """Handle slider click to update value."""
@@ -286,7 +260,16 @@ class JoystickSettingsDialog:
         
         # Convert to slider value range
         value_range = slider["max"] - slider["min"]
-        slider["value"] = slider["min"] + (relative_x * value_range)
+        new_value = slider["min"] + (relative_x * value_range)
+        
+        # Update both slider and instance variable
+        slider["value"] = new_value
+        if slider_name == "sensitivity":
+            self.sensitivity = new_value
+        elif slider_name == "deadzone":
+            self.deadzone = new_value
+        elif slider_name == "extremity_deadzone":
+            self.extremity_deadzone = new_value
     
     def draw(self, surface: pygame.Surface) -> None:
         """Draw the dialog if visible."""
@@ -309,135 +292,118 @@ class JoystickSettingsDialog:
         title_rect = title_text.get_rect(centerx=self.x + self.width // 2, y=self.y + 15)
         surface.blit(title_text, title_rect)
         
-        # Draw joystick tabs
-        self._draw_tabs(surface)
+        # Draw XY graph
+        self._draw_graph(surface)
         
-        # Draw settings for selected joystick
-        self._draw_settings(surface)
+        # Draw sliders
+        self._draw_sliders(surface)
         
         # Draw buttons
         self._draw_buttons(surface)
-        
-        # Draw dropdown options if open
-        if self.dropdown_open:
-            self._draw_dropdown_options(surface)
     
-    def _draw_tabs(self, surface: pygame.Surface) -> None:
-        """Draw joystick selection tabs."""
-        for joystick in self.joysticks:
-            button_key = f"{joystick}_tab"
-            rect = self.buttons[button_key]
+    def _draw_graph(self, surface: pygame.Surface) -> None:
+        """Draw the XY sensitivity curve graph."""
+        # Draw graph background
+        pygame.draw.rect(surface, self.graph_bg_color, self.graph_rect)
+        pygame.draw.rect(surface, self.border_color, self.graph_rect, 2)
+        
+        # Draw grid
+        grid_spacing = 40
+        for i in range(1, 10):
+            x = self.graph_rect.x + i * grid_spacing
+            y = self.graph_rect.y + i * grid_spacing
+            if x < self.graph_rect.right:
+                pygame.draw.line(surface, self.grid_color, (x, self.graph_rect.y), (x, self.graph_rect.bottom), 1)
+            if y < self.graph_rect.bottom:
+                pygame.draw.line(surface, self.grid_color, (self.graph_rect.x, y), (self.graph_rect.right, y), 1)
+        
+        # Draw axes
+        center_x = self.graph_rect.centerx
+        center_y = self.graph_rect.centery
+        pygame.draw.line(surface, self.axis_color, (self.graph_rect.x, center_y), (self.graph_rect.right, center_y), 2)
+        pygame.draw.line(surface, self.axis_color, (center_x, self.graph_rect.y), (center_x, self.graph_rect.bottom), 2)
+        
+        # Draw axis labels
+        input_label = self.small_font.render("Input", True, self.text_color)
+        surface.blit(input_label, (self.graph_rect.right - 40, center_y + 10))
+        
+        output_label = self.small_font.render("Output", True, self.text_color)
+        rotated_label = pygame.transform.rotate(output_label, 90)
+        surface.blit(rotated_label, (center_x - 25, self.graph_rect.y + 10))
+        
+        # Draw sensitivity curve
+        points = []
+        graph_width = self.graph_rect.width // 2
+        graph_height = self.graph_rect.height // 2
+        
+        # Positive side of curve
+        for i in range(201):  # 0 to 200 for smooth curve
+            input_val = i / 200.0  # 0.0 to 1.0
+            output_val = self.calculate_curve_output(input_val)
             
-            # Tab background
-            is_selected = joystick == self.selected_joystick
-            tab_color = self.selected_color if is_selected else self.button_color
-            pygame.draw.rect(surface, tab_color, rect)
+            # Convert to screen coordinates
+            screen_x = center_x + int(input_val * graph_width)
+            screen_y = center_y - int(output_val * graph_height)
+            points.append((screen_x, screen_y))
+        
+        # Negative side of curve
+        for i in range(1, 201):  # -1.0 to 0.0
+            input_val = -i / 200.0
+            output_val = self.calculate_curve_output(input_val)
+            
+            # Convert to screen coordinates
+            screen_x = center_x + int(input_val * graph_width)
+            screen_y = center_y - int(output_val * graph_height)
+            points.insert(0, (screen_x, screen_y))
+        
+        # Draw the curve
+        if len(points) > 1:
+            pygame.draw.lines(surface, self.curve_color, False, points, 3)
+        
+        # Draw deadzone indicators
+        deadzone_pixels = int((self.deadzone / 100.0) * graph_width)
+        extremity_deadzone_pixels = int((self.extremity_deadzone / 100.0) * graph_width)
+        
+        # Deadzone rectangles
+        if deadzone_pixels > 0:
+            deadzone_rect = pygame.Rect(center_x - deadzone_pixels, center_y - 2, deadzone_pixels * 2, 4)
+            pygame.draw.rect(surface, (255, 100, 100), deadzone_rect)
+        
+        # Extremity deadzone indicators
+        if extremity_deadzone_pixels > 0:
+            left_extremity = pygame.Rect(self.graph_rect.x, center_y - 2, extremity_deadzone_pixels, 4)
+            right_extremity = pygame.Rect(self.graph_rect.right - extremity_deadzone_pixels, center_y - 2, extremity_deadzone_pixels, 4)
+            pygame.draw.rect(surface, (255, 150, 100), left_extremity)
+            pygame.draw.rect(surface, (255, 150, 100), right_extremity)
+    
+    def _draw_sliders(self, surface: pygame.Surface) -> None:
+        """Draw slider controls."""
+        for slider_name, slider_data in self.sliders.items():
+            rect = slider_data["rect"]
+            label = slider_data["label"]
+            value = slider_data["value"]
+            
+            # Draw label - position to the left of slider but ensure no graph overlap
+            label_text = self.font.render(f"{label}:", True, self.text_color)
+            label_width = label_text.get_width()
+            label_x = max(self.graph_rect.right + 10, rect.x - label_width - 10)
+            surface.blit(label_text, (label_x, rect.y - 2))
+            
+            # Draw slider track
+            pygame.draw.rect(surface, self.slider_color, rect)
             pygame.draw.rect(surface, self.border_color, rect, 1)
             
-            # Tab text
-            tab_text = self.font.render(self.joystick_names[joystick], True, self.text_color)
-            text_rect = tab_text.get_rect(center=rect.center)
-            surface.blit(tab_text, text_rect)
-    
-    def _draw_settings(self, surface: pygame.Surface) -> None:
-        """Draw settings controls for selected joystick."""
-        start_y = self.y + 120
-        label_x = self.x + 30
-        
-        # Dead Zone
-        dead_zone_label = self.font.render("Dead Zone:", True, self.text_color)
-        surface.blit(dead_zone_label, (label_x, start_y + 30))
-        self._draw_slider(surface, "dead_zone")
-        
-        # Sensitivity
-        sensitivity_label = self.font.render("Sensitivity:", True, self.text_color)
-        surface.blit(sensitivity_label, (label_x, start_y + 90))
-        self._draw_slider(surface, "sensitivity")
-        
-        # Curve Type
-        curve_label = self.font.render("Curve Type:", True, self.text_color)
-        surface.blit(curve_label, (label_x, start_y + 150))
-        self._draw_dropdown(surface, "curve_type")
-        
-        # Curve Power (only show for non-linear curves)
-        current_curve = self.current_settings[self.selected_joystick]["curve_type"]
-        if current_curve != "linear":
-            power_label = self.font.render("Curve Power:", True, self.text_color)
-            surface.blit(power_label, (label_x, start_y + 210))
-            self._draw_slider(surface, "curve_power")
-        
-        # Max Range
-        range_label = self.font.render("Max Range:", True, self.text_color)
-        surface.blit(range_label, (label_x, start_y + 270))
-        self._draw_slider(surface, "max_range")
-    
-    def _draw_slider(self, surface: pygame.Surface, slider_name: str) -> None:
-        """Draw a slider control."""
-        slider = self.sliders[slider_name]
-        rect = slider["rect"]
-        
-        # Slider track
-        pygame.draw.rect(surface, self.slider_color, rect)
-        pygame.draw.rect(surface, self.border_color, rect, 1)
-        
-        # Slider handle
-        value_ratio = (slider["value"] - slider["min"]) / (slider["max"] - slider["min"])
-        handle_x = rect.x + int(value_ratio * rect.width)
-        handle_rect = pygame.Rect(handle_x - 5, rect.y - 2, 10, rect.height + 4)
-        pygame.draw.rect(surface, self.slider_handle_color, handle_rect)
-        
-        # Value text
-        value_text = self.small_font.render(f"{slider['value']:.2f}", True, self.text_color)
-        surface.blit(value_text, (rect.right + 10, rect.y))
-    
-    def _draw_dropdown(self, surface: pygame.Surface, dropdown_name: str) -> None:
-        """Draw a dropdown control."""
-        rect = self.dropdowns[dropdown_name]
-        
-        # Dropdown background
-        pygame.draw.rect(surface, self.dropdown_color, rect)
-        pygame.draw.rect(surface, self.border_color, rect, 1)
-        
-        # Current value text
-        if dropdown_name == "curve_type":
-            current_value = self.current_settings[self.selected_joystick]["curve_type"]
-            display_text = self.curve_type_names[current_value]
-        else:
-            display_text = "Unknown"
-        
-        text_surface = self.font.render(display_text, True, self.text_color)
-        surface.blit(text_surface, (rect.x + 5, rect.y + 5))
-        
-        # Dropdown arrow
-        arrow_text = self.font.render("▼", True, self.text_color)
-        surface.blit(arrow_text, (rect.right - 20, rect.y + 5))
-    
-    def _draw_dropdown_options(self, surface: pygame.Surface) -> None:
-        """Draw dropdown options."""
-        if self.dropdown_open == "curve_type":
-            dropdown_rect = self.dropdowns["curve_type"]
-            option_y = dropdown_rect.bottom
+            # Draw slider handle
+            value_ratio = (value - slider_data["min"]) / (slider_data["max"] - slider_data["min"])
+            handle_x = rect.x + int(value_ratio * rect.width)
+            handle_rect = pygame.Rect(handle_x - 8, rect.y - 4, 16, rect.height + 8)
+            pygame.draw.rect(surface, self.slider_handle_color, handle_rect)
+            pygame.draw.rect(surface, self.border_color, handle_rect, 2)
             
-            # Background for all options
-            total_height = len(self.curve_types) * 25
-            background_rect = pygame.Rect(dropdown_rect.x, option_y, dropdown_rect.width, total_height)
-            pygame.draw.rect(surface, self.bg_color, background_rect)
-            pygame.draw.rect(surface, self.border_color, background_rect, 2)
-            
-            # Individual options
-            for i, curve_type in enumerate(self.curve_types):
-                option_rect = pygame.Rect(dropdown_rect.x, option_y + i * 25, dropdown_rect.width, 25)
-                
-                # Highlight current selection
-                is_current = self.current_settings[self.selected_joystick]["curve_type"] == curve_type
-                if is_current:
-                    pygame.draw.rect(surface, self.selected_color, option_rect)
-                
-                pygame.draw.rect(surface, self.border_color, option_rect, 1)
-                
-                # Option text
-                option_text = self.font.render(self.curve_type_names[curve_type], True, self.text_color)
-                surface.blit(option_text, (option_rect.x + 5, option_rect.y + 2))
+            # Draw value text
+            value_text = self.small_font.render(f"{value:.1f}%", True, self.text_color)
+            surface.blit(value_text, (rect.right + 15, rect.y - 2))
+    
     
     def _draw_buttons(self, surface: pygame.Surface) -> None:
         """Draw dialog buttons."""
@@ -452,7 +418,7 @@ class JoystickSettingsDialog:
             
             # Button background
             pygame.draw.rect(surface, self.button_color, rect)
-            pygame.draw.rect(surface, self.border_color, rect, 1)
+            pygame.draw.rect(surface, self.border_color, rect, 2)
             
             # Button text
             text = button_texts[button_name]
