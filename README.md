@@ -1,6 +1,10 @@
+<div align="center">
+  <img src="logo.png" alt="Project Nimbus Logo" width="300"/>
+</div>
+
 # Project Nimbus
 
-Project Nimbus is a Python project that bridges mouse and keyboard inputs (via Pygame) to vJoy, creating a software-defined virtual joystick.
+Project Nimbus is a Python-based virtual controller interface that transforms mouse input into virtual joystick commands via the vJoy driver. It provides a comprehensive dual-joystick layout with throttle, rudder controls, and configurable button mapping.
 
 It is designed with accessibility in mind, offering a practical solution for individuals with mobility limitations who may not be able to use traditional physical controllers. By providing a mouse-first input model, it enables users to interact with systems that expect joystick input.
 
@@ -9,24 +13,26 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 ## Features
 
 ### Core Functionality
-- **Virtual joystick output** using the vJoy driver
-- **Mouse-first interface** for generating joystick inputs with dual joystick layout
-- **Real-time Control**: Low-latency input processing suitable for UAV and rover control
-- **Safety Systems**: Built-in failsafe mechanisms and emergency stop functionality
-- **Mission Planner Compatible**: Direct integration with MAVLink-compatible ground control software
+- **Dual Virtual Joysticks**: Left and right joystick controls with independent axis mapping
+- **Throttle & Rudder Controls**: Dedicated vertical throttle slider and horizontal rudder slider
+- **8-Button Support**: Configurable joystick buttons (4 per stick) with VJoy integration
+- **Real-time Control**: Low-latency input processing with 60 FPS update rate
+- **Emergency Systems**: Emergency stop button and center-all functionality
+- **VJoy Integration**: Direct communication with vJoy driver for seamless compatibility
 
 ### Advanced Configuration
-- **Sensitivity Curves**: Linear, exponential, and logarithmic response curves
-- **Dead Zone Control**: Configurable dead zones for each joystick
-- **Axis Locking**: Individual X/Y axis lock functionality for precise control
-- **Input Smoothing**: Optional smoothing for stability in critical applications
-- **Rate Limiting**: Configurable update rates with safety limits
+- **Axis Mapping Dialog**: Configure which VJoy axes each control maps to
+- **Sensitivity Curves**: Adjustable response curves with visual feedback
+- **Individual Axis Locking**: Lock X or Y axes independently on each joystick
+- **Auto-centering**: Configurable auto-center behavior for rudder control
+- **JSON Configuration**: Persistent settings stored in `controller_config.json`
 
 ### User Interface
-- **Accessibility-First Design**: Clean, high-contrast interface optimized for various input methods
-- **Visual Feedback**: Real-time position indicators and comprehensive status display
-- **Lock Indicators**: Clear visual feedback for locked axes
+- **Pygame-based GUI**: Responsive interface with real-time visual feedback
+- **Menu System**: File menu with configuration dialogs and settings
+- **Status Display**: VJoy connection status and real-time value monitoring
 - **Debug Mode**: Comprehensive system information (F1 to toggle)
+- **Keyboard Shortcuts**: ESC to exit, SPACE to center, F1 for debug info
 
 ## Accessibility
 
@@ -72,28 +78,42 @@ This makes it especially valuable for:
 
 4. **Run the application**:
    ```bash
+   python run.py
+   ```
+   
+   Or alternatively:
+   ```bash
    python main.py
    ```
+   
+   **Note**: `run.py` is recommended as it handles virtual environment setup and dependency management automatically.
 
 ## Usage
 
 ### Basic Controls
 - **Mouse Drag**: Click and drag within joystick circles to control position
-- **Lock Buttons**: Click "Lock X" or "Lock Y" to lock individual axes
+- **Throttle Slider**: Vertical slider for throttle control (does not auto-center)
+- **Rudder Slider**: Horizontal slider for rudder control (auto-centers when released)
+- **Lock Buttons**: Click "Lock X" or "Lock Y" to lock individual axes on each joystick
 - **Reset Buttons**: Click "RESET" to center individual joysticks
-- **Center All**: Centers both joysticks simultaneously
-- **Emergency Stop**: Immediately centers all axes and activates failsafe
+- **Joystick Buttons**: 8 configurable buttons (4 per joystick) that send to VJoy
+- **Center All**: Centers both joysticks and resets throttle/rudder
+- **Emergency Stop**: Immediately centers all controls and activates failsafe
+
+### Menu System
+- **File > Configure Axes**: Open axis mapping dialog to assign VJoy axes
+- **Joystick Settings**: Configure sensitivity curves and response settings
 
 ### Keyboard Shortcuts
-- **ESC**: Exit application
+- **ESC**: Exit application (or close open dialogs)
 - **F1**: Toggle debug information display
 - **SPACE**: Center both joysticks
+- **C**: Open axis configuration dialog
 
 ### Status Indicators
-- **VJoy Connection**: Shows VJoy driver connection status
-- **Failsafe Status**: Indicates if failsafe mode is active
+- **VJoy Connection**: Shows VJoy driver connection status in real-time
 - **Real-time Values**: Current joystick positions and processed values
-- **Lock Status**: Visual indicators for locked axes
+- **Lock Status**: Visual indicators showing which axes are locked
 
 ## Configuration
 
@@ -141,12 +161,21 @@ The application uses a JSON-based configuration system stored in `controller_con
 ### Project Structure
 ```
 Project-Nimbus/
-├── main.py              # Main application entry point
-├── config.py            # Configuration management system
-├── virtual_joystick.py  # Virtual joystick implementation
-├── vjoy_interface.py    # VJoy driver interface wrapper
-├── requirements.txt     # Python dependencies
-└── README.md           # This documentation
+├── main.py                    # Main application entry point
+├── run.py                     # Launcher script with auto-setup
+├── config.py                  # Configuration management system
+├── virtual_joystick.py        # Virtual joystick implementation
+├── vjoy_interface.py          # VJoy driver interface wrapper
+├── axis_config_dialog.py      # Axis mapping configuration dialog
+├── joystick_settings_dialog.py # Sensitivity and curve settings dialog
+├── sensitivity_dialog.py      # Sensitivity configuration utilities
+├── test_dialog.py            # Testing and validation utilities
+├── simple_vjoy_test.py       # Simple VJoy connection test
+├── test_vjoy.py              # Comprehensive VJoy testing
+├── requirements.txt          # Python dependencies
+├── run.bat                   # Windows batch launcher
+├── logo.png                  # Project logo
+└── README.md                # This documentation
 ```
 
 ### Key Classes
