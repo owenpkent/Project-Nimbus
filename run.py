@@ -81,7 +81,7 @@ def run_in_venv():
     
     try:
         # Run main.py using the virtual environment Python
-        result = subprocess.run([str(venv_python), "main.py"], cwd=Path.cwd())
+        result = subprocess.run([str(venv_python), "-m", "src.main"], cwd=Path.cwd())
         return result.returncode
     except Exception as e:
         print(f"ERROR: Failed to run application: {e}")

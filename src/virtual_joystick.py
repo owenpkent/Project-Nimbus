@@ -6,7 +6,7 @@ Handles mouse input, position tracking, and visual representation.
 import pygame
 import math
 from typing import Tuple, Optional, Callable
-from config import ControllerConfig
+from .config import ControllerConfig
 
 
 class VirtualJoystick:

@@ -6,7 +6,7 @@ Allows users to configure sensitivity, deadzone, and extremity deadzone with XY 
 import pygame
 import math
 from typing import Dict, Optional, List, Tuple
-from config import ControllerConfig
+from .config import ControllerConfig
 
 
 class JoystickSettingsDialog:
@@ -24,16 +24,16 @@ class JoystickSettingsDialog:
         """
         self.config = config
         self.parent_surface = parent_surface
-        self.font = pygame.font.Font(None, 24)
-        self.title_font = pygame.font.Font(None, 32)
-        self.small_font = pygame.font.Font(None, 18)
+        self.font = pygame.font.SysFont("serif", config.get_scaled_int(20))
+        self.title_font = pygame.font.SysFont("serif", config.get_scaled_int(26))
+        self.small_font = pygame.font.SysFont("serif", config.get_scaled_int(16))
         
         # Dialog dimensions - ensure it fits in parent window with margin
         parent_width = parent_surface.get_width()
         parent_height = parent_surface.get_height()
         
-        self.width = min(1000, parent_width - 40)  # 20px margin on each side
-        self.height = min(650, parent_height - 40)  # 20px margin top/bottom
+        self.width = min(config.get_scaled_int(1000), parent_width - config.get_scaled_int(40))
+        self.height = min(config.get_scaled_int(650), parent_height - config.get_scaled_int(40))
         self.x = (parent_width - self.width) // 2
         self.y = (parent_height - self.height) // 2
         
@@ -47,32 +47,32 @@ class JoystickSettingsDialog:
         self.extremity_deadzone = 5.0  # 0-100%
         
         # Graph area - adjust size based on dialog dimensions
-        graph_size = min(400, self.height - 200)  # Ensure graph fits with room for buttons
-        self.graph_rect = pygame.Rect(self.x + 50, self.y + 80, graph_size, graph_size)
+        graph_size = min(config.get_scaled_int(400), self.height - config.get_scaled_int(200))
+        self.graph_rect = pygame.Rect(self.x + config.get_scaled_int(50), self.y + config.get_scaled_int(80), graph_size, graph_size)
         
         # Slider definitions - position relative to dialog size
         # Ensure sliders start far enough right to avoid graph overlap
-        min_slider_x = self.graph_rect.right + 80  # 80px gap from graph
-        slider_start_x = max(min_slider_x, self.x + 550)
-        slider_width = min(250, self.width - (slider_start_x - self.x) - 50)
+        min_slider_x = self.graph_rect.right + config.get_scaled_int(80)
+        slider_start_x = max(min_slider_x, self.x + config.get_scaled_int(550))
+        slider_width = min(config.get_scaled_int(250), self.width - (slider_start_x - self.x) - config.get_scaled_int(50))
         
         self.sliders = {
             "sensitivity": {
-                "rect": pygame.Rect(slider_start_x, self.y + 120, slider_width, 20),
+                "rect": pygame.Rect(slider_start_x, self.y + config.get_scaled_int(120), slider_width, config.get_scaled_int(20)),
                 "value": self.sensitivity,
                 "min": 0.0,
                 "max": 100.0,
                 "label": "Sensitivity"
             },
             "deadzone": {
-                "rect": pygame.Rect(slider_start_x, self.y + 180, slider_width, 20),
+                "rect": pygame.Rect(slider_start_x, self.y + config.get_scaled_int(200), slider_width, config.get_scaled_int(20)),
                 "value": self.deadzone,
                 "min": 0.0,
                 "max": 100.0,
                 "label": "Deadzone"
             },
             "extremity_deadzone": {
-                "rect": pygame.Rect(slider_start_x, self.y + 240, slider_width, 20),
+                "rect": pygame.Rect(slider_start_x, self.y + config.get_scaled_int(280), slider_width, config.get_scaled_int(20)),
                 "value": self.extremity_deadzone,
                 "min": 0.0,
                 "max": 100.0,
@@ -81,11 +81,11 @@ class JoystickSettingsDialog:
         }
         
         # Buttons - ensure they're always visible at bottom with margin
-        button_y = self.y + self.height - 50
+        button_y = self.y + self.height - config.get_scaled_int(50)
         self.buttons = {
-            "ok": pygame.Rect(self.x + self.width - 220, button_y, 100, 40),
-            "cancel": pygame.Rect(self.x + self.width - 110, button_y, 100, 40),
-            "reset": pygame.Rect(self.x + 50, button_y, 100, 40)
+            "ok": pygame.Rect(self.x + self.width - config.get_scaled_int(220), button_y, config.get_scaled_int(100), config.get_scaled_int(40)),
+            "cancel": pygame.Rect(self.x + self.width - config.get_scaled_int(110), button_y, config.get_scaled_int(100), config.get_scaled_int(40)),
+            "reset": pygame.Rect(self.x + config.get_scaled_int(50), button_y, config.get_scaled_int(100), config.get_scaled_int(40))
         }
         
         # Colors
@@ -400,9 +400,10 @@ class JoystickSettingsDialog:
             pygame.draw.rect(surface, self.slider_handle_color, handle_rect)
             pygame.draw.rect(surface, self.border_color, handle_rect, 2)
             
-            # Draw value text
+            # Draw value text - ensure it doesn't overflow the dialog
             value_text = self.small_font.render(f"{value:.1f}%", True, self.text_color)
-            surface.blit(value_text, (rect.right + 15, rect.y - 2))
+            value_x = min(rect.right + 15, self.x + self.width - value_text.get_width() - 10)
+            surface.blit(value_text, (value_x, rect.y - 2))
     
     
     def _draw_buttons(self, surface: pygame.Surface) -> None:

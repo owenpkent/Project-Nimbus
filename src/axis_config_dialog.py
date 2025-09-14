@@ -5,7 +5,7 @@ Allows users to map UI joystick axes to VJoy axes.
 
 import pygame
 from typing import Dict, Optional, Callable
-from config import ControllerConfig
+from .config import ControllerConfig
 
 
 class AxisConfigDialog:
@@ -23,11 +23,11 @@ class AxisConfigDialog:
         """
         self.config = config
         self.parent_surface = parent_surface
-        self.font = pygame.font.Font(None, 24)
-        self.title_font = pygame.font.Font(None, 32)
+        self.font = pygame.font.SysFont("serif", 20)
+        self.title_font = pygame.font.SysFont("serif", 26)
         
-        # Dialog dimensions
-        self.width = 700
+        # Dialog dimensions - balanced width to fit content without cutting off buttons
+        self.width = 750
         self.height = 450
         self.x = (parent_surface.get_width() - self.width) // 2
         self.y = (parent_surface.get_height() - self.height) // 2
@@ -93,9 +93,9 @@ class AxisConfigDialog:
         button_height = 30
         
         return {
-            "ok": pygame.Rect(self.x + self.width - 180, self.y + self.height - 50, button_width, button_height),
-            "cancel": pygame.Rect(self.x + self.width - 90, self.y + self.height - 50, button_width, button_height),
-            "reset": pygame.Rect(self.x + 20, self.y + self.height - 50, button_width, button_height)
+            "ok": pygame.Rect(self.x + self.width - 180, self.y + self.height - 80, button_width, button_height),
+            "cancel": pygame.Rect(self.x + self.width - 90, self.y + self.height - 80, button_width, button_height),
+            "reset": pygame.Rect(self.x + 20, self.y + self.height - 80, button_width, button_height)
         }
     
     def show(self) -> None:
@@ -214,14 +214,14 @@ class AxisConfigDialog:
         pygame.draw.rect(surface, self.bg_color, dialog_rect)
         pygame.draw.rect(surface, self.border_color, dialog_rect, 2)
         
-        # Draw title
+        # Draw title - moved down more to avoid overlap with title bar
         title_text = self.title_font.render("Configure Axis Mapping", True, self.text_color)
-        title_rect = title_text.get_rect(center=(self.x + self.width // 2, self.y + 30))
+        title_rect = title_text.get_rect(center=(self.x + self.width // 2, self.y + 70))
         surface.blit(title_text, title_rect)
         
         # Draw instructions
         instruction_text = self.font.render("Map UI joystick axes to VJoy axes:", True, self.text_color)
-        surface.blit(instruction_text, (self.x + 20, self.y + 60))
+        surface.blit(instruction_text, (self.x + 20, self.y + 105))
         
         # Draw axis mappings (dropdowns without open options)
         self._draw_axis_mappings(surface)
@@ -235,7 +235,7 @@ class AxisConfigDialog:
     def _draw_axis_mappings(self, surface: pygame.Surface) -> None:
         """Draw the axis mapping interface."""
         row_height = 50
-        start_y = self.y + 100
+        start_y = self.y + 145
         
         for i, ui_axis in enumerate(self.ui_axes):
             row_y = start_y + i * row_height
@@ -246,11 +246,11 @@ class AxisConfigDialog:
             
             # Draw arrow
             arrow_text = self.font.render("→", True, self.text_color)
-            surface.blit(arrow_text, (self.x + 280, row_y + 15))
+            surface.blit(arrow_text, (self.x + 300, row_y + 15))
             
-            # Draw VJoy axis dropdown
+            # Draw VJoy axis dropdown - positioned to fit within dialog bounds
             current_mapping = self.current_mappings.get(ui_axis, "none")
-            dropdown_rect = pygame.Rect(self.x + 320, row_y + 10, 250, 30)
+            dropdown_rect = pygame.Rect(self.x + 340, row_y + 10, 280, 30)
             
             # Dropdown background
             dropdown_color = self.button_hover_color if self.dropdown_open == ui_axis else self.button_color
