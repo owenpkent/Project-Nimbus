@@ -83,11 +83,11 @@ class Slider:
         
         # Calculate slider handle dimensions
         if orientation == "horizontal":
-            self.handle_width = 20
+            self.handle_width = config.get_scaled_int(20)
             self.handle_height = height
         else:  # vertical
             self.handle_width = width
-            self.handle_height = 20
+            self.handle_height = config.get_scaled_int(20)
     
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle mouse events for the slider."""
@@ -262,10 +262,14 @@ class VirtualControllerApp:
         self.show_debug_info = False
         
         # Menu system
-        self.menu_bar_height = 30
+        self.menu_bar_height = self.config.get_scaled_int(30)
         self.menu_items = self._get_menu_items()
         self.active_menu = None
         self.menu_rects = {}
+        
+        # Scaling options
+        self.scale_options = [0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0]
+        self.scale_labels = ["50%", "75%", "90%", "100%", "110%", "125%", "150%", "175%", "200%"]
         
         print("Virtual Controller initialized successfully")
         print("Controls:")
@@ -280,55 +284,48 @@ class VirtualControllerApp:
         """Get menu items for the menu bar."""
         return {
             "File": ["Configure Axes", "Exit"],
+            "View": ["Size"],
             "Joystick Settings": []
         }
     
     def _setup_buttons(self) -> None:
         """Set up UI buttons."""
         self.buttons = []
-        button_width = 80
-        button_height = 30
+        button_width = self.config.get_scaled_int(60)
+        button_height = self.config.get_scaled_int(25)
         
         # Left joystick controls (adjusted for menu bar)
         left_center_x = self.width // 4
-        left_center_y = self.height // 2 - 50
+        left_center_y = self.height // 2 - self.config.get_scaled_int(50)
         joystick_radius = self.config.get("ui.joystick_size", 300) // 2
         
-        # Left Lock X button (above joystick)
+        # Left Lock X button (below joystick)
         self.left_lock_x_btn = Button(
-            left_center_x - button_width - 10,
-            left_center_y - joystick_radius - 60,
+            left_center_x - button_width - self.config.get_scaled_int(5),
+            left_center_y + joystick_radius + self.config.get_scaled_int(10),
             button_width, button_height,
             "Lock X", self.font, self.config
         )
         
-        # Left Lock Y button (above joystick)
+        # Left Lock Y button (below joystick)
         self.left_lock_y_btn = Button(
-            left_center_x + 10,
-            left_center_y - joystick_radius - 60,
+            left_center_x + self.config.get_scaled_int(5),
+            left_center_y + joystick_radius + self.config.get_scaled_int(10),
             button_width, button_height,
             "Lock Y", self.font, self.config
         )
         
-        # Left RESET button
-        self.left_reset_btn = Button(
-            left_center_x - button_width // 2,
-            left_center_y + joystick_radius + 10,
-            button_width, button_height,
-            "RESET", self.font, self.config
-        )
         
         # Left joystick buttons (2x2 grid below left joystick, centered)
-        left_button_start_y = left_center_y + joystick_radius + 70
-        button_size = 40
-        button_spacing = 50
+        left_button_start_y = left_center_y + joystick_radius + self.config.get_scaled_int(70)
+        button_size = self.config.get_scaled_int(40)
         self.left_buttons = []
         for i in range(4):
             row = i // 2
             col = i % 2
             btn = Button(
-                left_center_x - button_size - 5 + (col * (button_size + 10)),
-                left_button_start_y + (row * (button_size + 10)),
+                left_center_x - button_size - self.config.get_scaled_int(5) + (col * (button_size + self.config.get_scaled_int(10))),
+                left_button_start_y + (row * (button_size + self.config.get_scaled_int(10))),
                 button_size, button_size,
                 f"{i+1}", self.font, self.config, button_id=i+1
             )
@@ -336,75 +333,78 @@ class VirtualControllerApp:
         
         # Right joystick controls (adjusted for menu bar)
         right_center_x = 3 * self.width // 4
-        right_center_y = self.height // 2 - 50
+        right_center_y = self.height // 2 - self.config.get_scaled_int(50)
         
-        # Right Lock X button (above joystick)
+        # Right Lock X button (below joystick)
         self.right_lock_x_btn = Button(
-            right_center_x - button_width - 10,
-            right_center_y - joystick_radius - 60,
+            right_center_x - button_width - self.config.get_scaled_int(5),
+            right_center_y + joystick_radius + self.config.get_scaled_int(10),
             button_width, button_height,
             "Lock X", self.font, self.config
         )
         
-        # Right Lock Y button (above joystick)
+        # Right Lock Y button (below joystick)
         self.right_lock_y_btn = Button(
-            right_center_x + 10,
-            right_center_y - joystick_radius - 60,
+            right_center_x + self.config.get_scaled_int(5),
+            right_center_y + joystick_radius + self.config.get_scaled_int(10),
             button_width, button_height,
             "Lock Y", self.font, self.config
         )
         
-        # Right RESET button
-        self.right_reset_btn = Button(
-            right_center_x - button_width // 2,
-            right_center_y + joystick_radius + 10,
-            button_width, button_height,
-            "RESET", self.font, self.config
-        )
         
         # Right joystick buttons (2x2 grid below right joystick, centered)
-        right_button_start_y = right_center_y + joystick_radius + 70
+        right_button_start_y = right_center_y + joystick_radius + self.config.get_scaled_int(70)
         self.right_buttons = []
         for i in range(4):
             row = i // 2
             col = i % 2
             btn = Button(
-                right_center_x - button_size - 5 + (col * (button_size + 10)),
-                right_button_start_y + (row * (button_size + 10)),
+                right_center_x - button_size - self.config.get_scaled_int(5) + (col * (button_size + self.config.get_scaled_int(10))),
+                right_button_start_y + (row * (button_size + self.config.get_scaled_int(10))),
                 button_size, button_size,
                 f"{i+5}", self.font, self.config, button_id=i+5
             )
             self.right_buttons.append(btn)
         
-        # Throttle slider (vertical, center between joysticks) - no auto-center
+        # Throttle slider (vertical, positioned to avoid overlap) - no auto-center
         center_x = self.width // 2
         self.throttle_slider = Slider(
-            center_x - 20, 80, 40, 300, "vertical", self.config, "Throttle", auto_center=False
+            center_x - self.config.get_scaled_int(20), 
+            self.config.get_scaled_int(80), 
+            self.config.get_scaled_int(40), 
+            self.config.get_scaled_int(200), 
+            "vertical", self.config, "Throttle", auto_center=False
         )
         # Set throttle to zero (bottom position)
         self.throttle_slider.value = -1.0
         
-        # Rudder slider (horizontal, bottom center) - auto-centers when not dragging
+        # Rudder slider (horizontal, positioned closer to throttle) - auto-centers when not dragging
         center_x = self.width // 2
         self.rudder_slider = Slider(
-            center_x - 150, self.height - 80, 300, 40, "horizontal", self.config, "Rudder", auto_center=True
+            center_x - self.config.get_scaled_int(120), 
+            self.config.get_scaled_int(350), 
+            self.config.get_scaled_int(240), 
+            self.config.get_scaled_int(30), 
+            "horizontal", self.config, "Rudder", auto_center=True
         )
         
-        # Emergency and Center All buttons (below throttle with more spacing)
-        button_y = self.height - 120
+        # Emergency and Center All buttons (positioned above rudder)
+        button_y = self.config.get_scaled_int(320)
         self.emergency_btn = Button(
-            center_x - 100, button_y, 80, 30,
+            center_x - self.config.get_scaled_int(100), button_y, 
+            self.config.get_scaled_int(80), self.config.get_scaled_int(30),
             "EMERGENCY", self.font, self.config
         )
         self.center_all_btn = Button(
-            center_x + 20, button_y, 80, 30,
+            center_x + self.config.get_scaled_int(20), button_y, 
+            self.config.get_scaled_int(80), self.config.get_scaled_int(30),
             "CENTER ALL", self.font, self.config
         )
         
         # Store all buttons for easy iteration
         self.all_buttons = [
-            self.left_lock_x_btn, self.left_reset_btn, self.left_lock_y_btn,
-            self.right_lock_x_btn, self.right_reset_btn, self.right_lock_y_btn,
+            self.left_lock_x_btn, self.left_lock_y_btn,
+            self.right_lock_x_btn, self.right_lock_y_btn,
             self.emergency_btn, self.center_all_btn
         ] + self.left_buttons + self.right_buttons
     
@@ -484,6 +484,53 @@ class VirtualControllerApp:
     def _exit_application(self) -> None:
         """Exit the application."""
         self.running = False
+    
+    def _set_ui_scale(self, scale_factor: float) -> None:
+        """Set UI scale factor and reinitialize the interface."""
+        # Update configuration
+        self.config.set_scale_factor(scale_factor)
+        
+        # Reinitialize the display with new dimensions
+        self.width = self.config.get("ui.window_width", 1024)
+        self.height = self.config.get("ui.window_height", 850)
+        self.screen = pygame.display.set_mode((self.width, self.height))
+        
+        # Reinitialize fonts with new sizes
+        font_size = self.config.get("ui.font_size", 16)
+        self.font = pygame.font.Font(None, font_size)
+        self.title_font = pygame.font.Font(None, font_size + 8)
+        
+        # Reinitialize joysticks with new positions and sizes
+        self._reinitialize_ui_elements()
+        
+        # Save configuration
+        self.config.save_config()
+        
+        print(f"UI scaled to {scale_factor * 100:.0f}%")
+    
+    def _reinitialize_ui_elements(self) -> None:
+        """Reinitialize all UI elements with new scaling."""
+        # Recalculate joystick positions and sizes
+        joystick_size = self.config.get("ui.joystick_size", 300)
+        joystick_radius = joystick_size // 2
+        
+        # Set up joysticks (adjusted for menu bar)
+        left_center_x = self.width // 4
+        left_center_y = self.height // 2 - self.config.get_scaled_int(50)
+        right_center_x = 3 * self.width // 4
+        right_center_y = self.height // 2 - self.config.get_scaled_int(50)
+        
+        # Update joystick positions and sizes
+        self.left_joystick.center_x = left_center_x
+        self.left_joystick.center_y = left_center_y
+        self.left_joystick.radius = joystick_radius
+        
+        self.right_joystick.center_x = right_center_x
+        self.right_joystick.center_y = right_center_y
+        self.right_joystick.radius = joystick_radius
+        
+        # Reinitialize buttons with new positions and sizes
+        self._setup_buttons()
     
     def handle_events(self) -> None:
         """Handle pygame events."""
@@ -598,9 +645,9 @@ class VirtualControllerApp:
             return False
         
         # Check main menu items
-        x_offset = 10
+        x_offset = self.config.get_scaled_int(10)
         for menu_name in self.menu_items.keys():
-            menu_width = len(menu_name) * 10 + 20
+            menu_width = len(menu_name) * self.config.get_scaled_int(10) + self.config.get_scaled_int(20)
             menu_rect = pygame.Rect(x_offset, 0, menu_width, self.menu_bar_height)
             if menu_rect.collidepoint(mouse_x, mouse_y):
                 # Handle direct menu actions (no submenu)
@@ -624,16 +671,20 @@ class VirtualControllerApp:
         """Handle submenu item clicks."""
         mouse_x, mouse_y = pos
         # Calculate submenu position
-        x_offset = 10
+        x_offset = self.config.get_scaled_int(10)
         for menu_name in self.menu_items.keys():
             if menu_name == self.active_menu:
                 break
-            x_offset += len(menu_name) * 10 + 20
+            x_offset += len(menu_name) * self.config.get_scaled_int(10) + self.config.get_scaled_int(20)
+        
+        # Handle Size submenu specially
+        if self.active_menu == "View":
+            return self._handle_view_submenu_click(pos, x_offset)
         
         # Check submenu items
         submenu_y = self.menu_bar_height
         for i, item in enumerate(self.menu_items[self.active_menu]):
-            item_rect = pygame.Rect(x_offset, submenu_y + i * 25, 150, 25)
+            item_rect = pygame.Rect(x_offset, submenu_y + i * self.config.get_scaled_int(25), self.config.get_scaled_int(150), self.config.get_scaled_int(25))
             if item_rect.collidepoint(mouse_x, mouse_y):
                 if item == "Configure Axes":
                     self._show_axis_config()
@@ -645,6 +696,37 @@ class VirtualControllerApp:
                 
                 self.active_menu = None
                 return True
+        
+        return False
+    
+    def _handle_view_submenu_click(self, pos: Tuple[int, int], x_offset: int) -> bool:
+        """Handle View submenu clicks."""
+        mouse_x, mouse_y = pos
+        submenu_y = self.menu_bar_height
+        
+        # Check if clicking on "Size" item
+        size_rect = pygame.Rect(x_offset, submenu_y, self.config.get_scaled_int(150), self.config.get_scaled_int(25))
+        
+        # Also check for clicks directly on the scale options area
+        scale_submenu_x = x_offset + self.config.get_scaled_int(150)
+        scale_submenu_y = submenu_y
+        
+        # Check scale option clicks first (they have priority)
+        for i, (scale_factor, label) in enumerate(zip(self.scale_options, self.scale_labels)):
+            scale_rect = pygame.Rect(
+                scale_submenu_x, 
+                scale_submenu_y + self.config.get_scaled_int(5) + i * self.config.get_scaled_int(25), 
+                self.config.get_scaled_int(100), 
+                self.config.get_scaled_int(25)
+            )
+            if scale_rect.collidepoint(mouse_x, mouse_y):
+                self._set_ui_scale(scale_factor)
+                self.active_menu = None
+                return True
+        
+        # If not clicking on scale options, check if clicking on Size item (no action needed)
+        if size_rect.collidepoint(mouse_x, mouse_y):
+            return True  # Consume the click but don't close menu
         
         return False
     
@@ -663,9 +745,6 @@ class VirtualControllerApp:
             self.left_joystick.lock_axis("y", not self.left_joystick.y_locked)
             button.text = "Unlock Y" if self.left_joystick.y_locked else "Lock Y"
         
-        elif button == self.left_reset_btn:
-            self.left_joystick.center()
-        
         elif button == self.right_lock_x_btn:
             self.right_joystick.lock_axis("x", not self.right_joystick.x_locked)
             button.text = "Unlock X" if self.right_joystick.x_locked else "Lock X"
@@ -673,9 +752,6 @@ class VirtualControllerApp:
         elif button == self.right_lock_y_btn:
             self.right_joystick.lock_axis("y", not self.right_joystick.y_locked)
             button.text = "Unlock Y" if self.right_joystick.y_locked else "Lock Y"
-        
-        elif button == self.right_reset_btn:
-            self.right_joystick.center()
         
         elif button == self.emergency_btn:
             self.vjoy.emergency_stop()
@@ -731,10 +807,8 @@ class VirtualControllerApp:
         bg_color = self.config.get("ui.background_color", (20, 20, 20))
         self.screen.fill(bg_color)
         
-        # Draw menu bar
-        self._draw_menu_bar()
-        
-        
+        # Draw menu bar background only (no submenus yet)
+        self._draw_menu_bar_background()
         
         # Draw joysticks
         self.left_joystick.draw(self.screen)
@@ -750,11 +824,11 @@ class VirtualControllerApp:
         
         # Draw slider labels with better positioning to avoid overlap
         throttle_label = self.font.render("Throttle", True, self.config.get("ui.text_color", (255, 255, 255)))
-        throttle_rect = throttle_label.get_rect(center=(self.throttle_slider.rect.centerx, self.throttle_slider.rect.y - 25))
+        throttle_rect = throttle_label.get_rect(center=(self.throttle_slider.rect.centerx, self.throttle_slider.rect.y - self.config.get_scaled_int(25)))
         self.screen.blit(throttle_label, throttle_rect)
         
         rudder_label = self.font.render("Rudder", True, self.config.get("ui.text_color", (255, 255, 255)))
-        rudder_rect = rudder_label.get_rect(center=(self.rudder_slider.rect.centerx, self.rudder_slider.rect.bottom + 15))
+        rudder_rect = rudder_label.get_rect(center=(self.rudder_slider.rect.centerx, self.rudder_slider.rect.bottom + self.config.get_scaled_int(15)))
         self.screen.blit(rudder_label, rudder_rect)
         
         # Draw status information
@@ -768,23 +842,30 @@ class VirtualControllerApp:
         self.axis_config_dialog.draw(self.screen)
         self.joystick_settings_dialog.draw(self.screen)
         
+        # Draw menus on top of everything else
+        self._draw_menu_items()
+        if self.active_menu and self.active_menu in self.menu_items:
+            self._draw_submenu()
+        
         # Update display
         pygame.display.flip()
     
-    def _draw_menu_bar(self) -> None:
-        """Draw the menu bar."""
+    def _draw_menu_bar_background(self) -> None:
+        """Draw the menu bar background only."""
         # Menu bar background
         menu_bg_color = (60, 60, 60)
         menu_rect = pygame.Rect(0, 0, self.width, self.menu_bar_height)
         pygame.draw.rect(self.screen, menu_bg_color, menu_rect)
         pygame.draw.line(self.screen, (100, 100, 100), (0, self.menu_bar_height), (self.width, self.menu_bar_height))
-        
+    
+    def _draw_menu_items(self) -> None:
+        """Draw the menu items on top of other UI elements."""
         # Draw menu items
-        x_offset = 10
+        x_offset = self.config.get_scaled_int(10)
         text_color = (255, 255, 255)
         
         for menu_name in self.menu_items.keys():
-            menu_width = len(menu_name) * 10 + 20
+            menu_width = len(menu_name) * self.config.get_scaled_int(10) + self.config.get_scaled_int(20)
             menu_rect = pygame.Rect(x_offset, 0, menu_width, self.menu_bar_height)
             
             # Highlight active menu
@@ -797,24 +878,20 @@ class VirtualControllerApp:
             self.screen.blit(menu_text, text_rect)
             
             x_offset += menu_width
-        
-        # Draw submenu if active
-        if self.active_menu and self.active_menu in self.menu_items:
-            self._draw_submenu()
     
     def _draw_submenu(self) -> None:
         """Draw the active submenu."""
         # Calculate submenu position
-        x_offset = 10
+        x_offset = self.config.get_scaled_int(10)
         for menu_name in self.menu_items.keys():
-            menu_width = len(menu_name) * 10 + 20
+            menu_width = len(menu_name) * self.config.get_scaled_int(10) + self.config.get_scaled_int(20)
             if menu_name == self.active_menu:
                 break
             x_offset += menu_width
         
         submenu_items = self.menu_items[self.active_menu]
-        submenu_width = 150
-        submenu_height = len(submenu_items) * 25 + 10
+        submenu_width = self.config.get_scaled_int(150)
+        submenu_height = len(submenu_items) * self.config.get_scaled_int(25) + self.config.get_scaled_int(10)
         
         # Submenu background
         submenu_rect = pygame.Rect(x_offset, self.menu_bar_height, submenu_width, submenu_height)
@@ -822,17 +899,38 @@ class VirtualControllerApp:
         pygame.draw.rect(self.screen, (100, 100, 100), submenu_rect, 1)
         
         # Draw submenu items
-        submenu_y = self.menu_bar_height + 5
+        submenu_y = self.menu_bar_height + self.config.get_scaled_int(5)
         text_color = (255, 255, 255)
+        mouse_pos = pygame.mouse.get_pos()
+        
+        # Check if we should show scale submenu for View menu
+        show_scale_submenu = False
+        scale_submenu_x = 0
+        scale_submenu_y = 0
         
         for item_name in submenu_items:
-            item_height = 25
+            item_height = self.config.get_scaled_int(25)
             item_rect = pygame.Rect(x_offset, submenu_y, submenu_width, item_height)
             
             # Check if mouse is hovering over item
-            mouse_pos = pygame.mouse.get_pos()
             if item_rect.collidepoint(mouse_pos):
                 pygame.draw.rect(self.screen, (70, 70, 70), item_rect)
+            
+            # Check if we should show scale options for Size item
+            if self.active_menu == "View" and item_name == "Size":
+                scale_submenu_x = x_offset + submenu_width
+                scale_submenu_y = submenu_y
+                
+                # Show scale submenu if hovering over Size item OR over the scale submenu area
+                if item_rect.collidepoint(mouse_pos):
+                    show_scale_submenu = True
+                else:
+                    # Check if mouse is over the scale submenu area
+                    scale_width = self.config.get_scaled_int(100)
+                    scale_height = len(self.scale_options) * self.config.get_scaled_int(25) + self.config.get_scaled_int(10)
+                    scale_rect = pygame.Rect(scale_submenu_x, scale_submenu_y, scale_width, scale_height)
+                    if scale_rect.collidepoint(mouse_pos):
+                        show_scale_submenu = True
             
             # Draw item text
             item_text = self.font.render(item_name, True, text_color)
@@ -840,6 +938,43 @@ class VirtualControllerApp:
             self.screen.blit(item_text, text_rect)
             
             submenu_y += item_height
+        
+        # Draw scale submenu if needed
+        if show_scale_submenu:
+            self._draw_scale_submenu(scale_submenu_x, scale_submenu_y)
+    
+    def _draw_scale_submenu(self, x: int, y: int) -> None:
+        """Draw the scale options submenu."""
+        scale_width = self.config.get_scaled_int(100)
+        scale_height = len(self.scale_options) * self.config.get_scaled_int(25) + self.config.get_scaled_int(10)
+        
+        # Scale submenu background
+        scale_rect = pygame.Rect(x, y, scale_width, scale_height)
+        pygame.draw.rect(self.screen, (40, 40, 40), scale_rect)
+        pygame.draw.rect(self.screen, (100, 100, 100), scale_rect, 1)
+        
+        # Draw scale options
+        scale_y = y + self.config.get_scaled_int(5)
+        text_color = (255, 255, 255)
+        mouse_pos = pygame.mouse.get_pos()
+        current_scale = self.config.get("ui.scale_factor", 1.0)
+        
+        for i, (scale_factor, label) in enumerate(zip(self.scale_options, self.scale_labels)):
+            item_height = self.config.get_scaled_int(25)
+            item_rect = pygame.Rect(x, scale_y, scale_width, item_height)
+            
+            # Highlight current scale
+            if abs(scale_factor - current_scale) < 0.01:
+                pygame.draw.rect(self.screen, (0, 100, 0), item_rect)
+            elif item_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(self.screen, (70, 70, 70), item_rect)
+            
+            # Draw scale text
+            scale_text = self.font.render(label, True, text_color)
+            text_rect = scale_text.get_rect(center=(item_rect.centerx, item_rect.centery))
+            self.screen.blit(scale_text, text_rect)
+            
+            scale_y += item_height
     
     def _draw_status(self) -> None:
         """Draw status information."""
@@ -853,13 +988,13 @@ class VirtualControllerApp:
         
         status_surface = self.font.render(status_text, True, text_color)
         status_rect = status_surface.get_rect()
-        status_rect.bottomright = (self.width - 10, self.height - 10)
+        status_rect.bottomright = (self.width - self.config.get_scaled_int(10), self.height - self.config.get_scaled_int(10))
         self.screen.blit(status_surface, status_rect)
         
     
     def _draw_debug_info(self) -> None:
         """Draw debug information."""
-        debug_y = 100
+        debug_y = self.config.get_scaled_int(100)
         text_color = (255, 255, 0)  # Yellow for debug info
         
         # Configuration info
@@ -870,11 +1005,12 @@ class VirtualControllerApp:
             f"Left Sensitivity: {self.config.get('joysticks.left.sensitivity', 1.0):.3f}",
             f"Right Sensitivity: {self.config.get('joysticks.right.sensitivity', 1.0):.3f}",
             f"Failsafe: {'Enabled' if self.config.get('safety.enable_failsafe', True) else 'Disabled'}",
+            f"UI Scale: {self.config.get('ui.scale_factor', 1.0) * 100:.0f}%",
         ]
         
         for i, line in enumerate(debug_lines):
             debug_surface = self.font.render(line, True, text_color)
-            self.screen.blit(debug_surface, (self.width - 300, debug_y + i * 20))
+            self.screen.blit(debug_surface, (self.width - self.config.get_scaled_int(300), debug_y + i * self.config.get_scaled_int(20)))
     
     def run(self) -> None:
         """Main application loop."""

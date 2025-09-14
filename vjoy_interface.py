@@ -137,11 +137,11 @@ class VJoyInterface:
                 
                 if hasattr(pyvjoy, 'HID_USAGE_X'):
                     self.device.set_axis(pyvjoy.HID_USAGE_X, axis_value)
-                    print("✓ X axis test successful")
+                    print("[OK] X axis test successful")
                 else:
                     # Try alternative axis constants
                     self.device.set_axis(1, axis_value)  # X axis ID
-                    print("✓ X axis test successful (using axis ID)")
+                    print("[OK] X axis test successful (using axis ID)")
                 
                 # Test additional axes
                 axes_to_test = ['HID_USAGE_Y', 'HID_USAGE_Z', 'HID_USAGE_RX', 'HID_USAGE_RY', 'HID_USAGE_RZ']
@@ -153,9 +153,9 @@ class VJoyInterface:
                             self.device.set_axis(getattr(pyvjoy, axis_name), axis_value)
                         else:
                             self.device.set_axis(axis_ids[i], axis_value)
-                        print(f"✓ {axis_name} test successful")
+                        print(f"[OK] {axis_name} test successful")
                     except Exception as e:
-                        print(f"⚠ {axis_name} test failed: {e}")
+                        print(f"[WARN] {axis_name} test failed: {e}")
                 
             except Exception as e:
                 raise RuntimeError(f"VJoy device test failed: {e}")
@@ -164,11 +164,11 @@ class VJoyInterface:
             self._reset_axes()
             
             self.is_connected = True
-            print(f"✓ VJoy device {self.device_id} initialized successfully")
+            print(f"[OK] VJoy device {self.device_id} initialized successfully")
             print("VJoy is now receiving input from Project Nimbus")
             
         except Exception as e:
-            print(f"✗ Failed to initialize VJoy device {self.device_id}: {e}")
+            print(f"[ERROR] Failed to initialize VJoy device {self.device_id}: {e}")
             print("\nTroubleshooting steps:")
             print("1. Install VJoy driver from: http://vjoystick.sourceforge.net/")
             print("2. Run VJoy configuration tool and enable device #1")

@@ -57,16 +57,17 @@ class ControllerConfig:
                 }
             },
             "ui": {
-                "window_width": 1024,
-                "window_height": 600,
-                "joystick_size": 300,
+                "window_width": 720,
+                "window_height": 405,
+                "joystick_size": 180,
                 "background_color": (20, 20, 20),
                 "joystick_bg_color": (80, 20, 20),
                 "joystick_fg_color": (255, 50, 50),
                 "button_color": (60, 15, 15),
                 "button_hover_color": (100, 25, 25),
                 "text_color": (255, 255, 255),
-                "font_size": 16
+                "font_size": 16,
+                "scale_factor": 1.0
             },
             "vjoy": {
                 "device_id": 1,
@@ -229,6 +230,56 @@ class ControllerConfig:
         axis_range = self.get("vjoy.axis_range", 32767)
         return int((normalized_value + 1.0) * axis_range / 2.0)
     
+    def get_scaled_value(self, base_value: float) -> float:
+        """
+        Get scaled value based on current UI scale factor.
+        
+        Args:
+            base_value: Base value to scale
+            
+        Returns:
+            Scaled value
+        """
+        scale_factor = self.get("ui.scale_factor", 1.0)
+        return base_value * scale_factor
+    
+    def get_scaled_int(self, base_value: int) -> int:
+        """
+        Get scaled integer value based on current UI scale factor.
+        
+        Args:
+            base_value: Base integer value to scale
+            
+        Returns:
+            Scaled integer value
+        """
+        return int(self.get_scaled_value(float(base_value)))
+    
+    def set_scale_factor(self, scale_factor: float) -> None:
+        """
+        Set UI scale factor and update related UI values.
+        
+        Args:
+            scale_factor: New scale factor (0.5 to 2.0)
+        """
+        # Clamp scale factor to reasonable range
+        scale_factor = max(0.5, min(2.0, scale_factor))
+        self.set("ui.scale_factor", scale_factor)
+        
+        # Update scaled window dimensions
+        base_width = 720
+        base_height = 405
+        self.set("ui.window_width", int(base_width * scale_factor))
+        self.set("ui.window_height", int(base_height * scale_factor))
+        
+        # Update scaled joystick size
+        base_joystick_size = 180
+        self.set("ui.joystick_size", int(base_joystick_size * scale_factor))
+        
+        # Update scaled font size
+        base_font_size = 16
+        self.set("ui.font_size", int(base_font_size * scale_factor))
+
     def validate_config(self) -> Tuple[bool, str]:
         """
         Validate current configuration.
@@ -262,6 +313,11 @@ class ControllerConfig:
             device_id = self.get("vjoy.device_id", 1)
             if not 1 <= device_id <= 16:
                 return False, f"Invalid VJoy device ID: {device_id}"
+            
+            # Validate scale factor
+            scale_factor = self.get("ui.scale_factor", 1.0)
+            if not 0.5 <= scale_factor <= 2.0:
+                return False, f"Invalid scale factor: {scale_factor}"
             
             return True, "Configuration is valid"
             
