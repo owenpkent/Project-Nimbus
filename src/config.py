@@ -57,9 +57,9 @@ class ControllerConfig:
                 }
             },
             "ui": {
-                "window_width": 720,
-                "window_height": 405,
-                "joystick_size": 180,
+                "window_width": 1024,
+                "window_height": 850,
+                "joystick_size": 300,
                 "background_color": (20, 20, 20),
                 "joystick_bg_color": (80, 20, 20),
                 "joystick_fg_color": (255, 50, 50),
@@ -267,13 +267,13 @@ class ControllerConfig:
         self.set("ui.scale_factor", scale_factor)
         
         # Update scaled window dimensions
-        base_width = 720
-        base_height = 405
+        base_width = 1024
+        base_height = 850
         self.set("ui.window_width", int(base_width * scale_factor))
         self.set("ui.window_height", int(base_height * scale_factor))
         
         # Update scaled joystick size
-        base_joystick_size = 180
+        base_joystick_size = 300
         self.set("ui.joystick_size", int(base_joystick_size * scale_factor))
         
         # Update scaled font size

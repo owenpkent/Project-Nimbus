@@ -12,6 +12,8 @@ from .virtual_joystick import VirtualJoystick
 from .vjoy_interface import VJoyInterface
 from .axis_config_dialog import AxisConfigDialog
 from .joystick_settings_dialog import JoystickSettingsDialog
+from .button_settings_dialog import ButtonSettingsDialog
+from .rudder_settings_dialog import RudderSettingsDialog
 
 
 class Button:
@@ -26,6 +28,7 @@ class Button:
         self.button_id = button_id
         self.is_pressed = False
         self.is_hovered = False
+        self.is_toggled = False  # For toggle mode state
     
     def handle_event(self, event: pygame.event.Event) -> bool:
         """Handle mouse events for the button."""
@@ -46,12 +49,12 @@ class Button:
     def draw(self, surface: pygame.Surface) -> None:
         """Draw the button."""
         # Choose color based on state
-        if self.is_pressed:
-            color = (25, 50, 100)
+        if self.is_pressed or self.is_toggled:
+            color = (0, 150, 0)  # Bright green when pressed/activated or toggled
         elif self.is_hovered:
-            color = (25, 50, 100)
+            color = (25, 50, 100)  # Medium blue when hovered
         else:
-            color = (15, 30, 60)
+            color = (15, 30, 60)  # Normal blue state
         
         # Draw button background
         pygame.draw.rect(surface, color, self.rect)
@@ -252,6 +255,8 @@ class VirtualControllerApp:
         # Set up dialogs
         self.axis_config_dialog = AxisConfigDialog(self.config, self.screen)
         self.joystick_settings_dialog = JoystickSettingsDialog(self.config, self.screen)
+        self.button_settings_dialog = ButtonSettingsDialog(self.config, self.screen)
+        self.rudder_settings_dialog = RudderSettingsDialog(self.config, self.screen)
         
         # Application state
         self.running = True
@@ -285,7 +290,9 @@ class VirtualControllerApp:
         return {
             "File": ["Configure Axes", "Exit"],
             "View": ["Size"],
-            "Joystick Settings": []
+            "Joystick Settings": [],
+            "Button Settings": [],
+            "Rudder Settings": []
         }
     
     def _setup_buttons(self) -> None:
@@ -366,30 +373,30 @@ class VirtualControllerApp:
             )
             self.right_buttons.append(btn)
         
-        # Throttle slider (vertical, positioned to avoid overlap) - no auto-center
+        # Throttle slider (vertical, positioned lower) - no auto-center
         center_x = self.width // 2
         self.throttle_slider = Slider(
             center_x - self.config.get_scaled_int(20), 
-            self.config.get_scaled_int(80), 
+            self.config.get_scaled_int(130), 
             self.config.get_scaled_int(40), 
-            self.config.get_scaled_int(200), 
+            self.config.get_scaled_int(250), 
             "vertical", self.config, "Throttle", auto_center=False
         )
         # Set throttle to zero (bottom position)
         self.throttle_slider.value = -1.0
         
-        # Rudder slider (horizontal, positioned closer to throttle) - auto-centers when not dragging
+        # Rudder slider (horizontal, positioned lower) - auto-centers when not dragging
         center_x = self.width // 2
         self.rudder_slider = Slider(
             center_x - self.config.get_scaled_int(120), 
-            self.config.get_scaled_int(350), 
+            self.config.get_scaled_int(490), 
             self.config.get_scaled_int(240), 
             self.config.get_scaled_int(30), 
             "horizontal", self.config, "Rudder", auto_center=True
         )
         
-        # ARM and RTH buttons (positioned above rudder, moved up)
-        button_y = self.config.get_scaled_int(290)
+        # ARM and RTH buttons (positioned above rudder)
+        button_y = self.config.get_scaled_int(420)
         self.emergency_btn = Button(
             center_x - self.config.get_scaled_int(110), button_y, 
             self.config.get_scaled_int(100), self.config.get_scaled_int(30),
@@ -408,12 +415,12 @@ class VirtualControllerApp:
             self.emergency_btn, self.center_all_btn
         ] + self.left_buttons + self.right_buttons
     
-    def _apply_sensitivity_curve(self, input_value: float) -> float:
+    def _apply_joystick_sensitivity_curve(self, input_value: float) -> float:
         """
-        Apply sensitivity curve to joystick input value.
+        Apply sensitivity curve to joystick input.
         
         Args:
-            input_value: Raw joystick input from -1.0 to 1.0
+            input_value: Raw input value from -1.0 to 1.0
             
         Returns:
             Processed value with sensitivity curve applied
@@ -425,11 +432,28 @@ class VirtualControllerApp:
             # Fallback to raw input if dialog not available
             return input_value
     
+    def _apply_rudder_sensitivity_curve(self, input_value: float) -> float:
+        """
+        Apply sensitivity curve to rudder input.
+        
+        Args:
+            input_value: Raw input value from -1.0 to 1.0
+            
+        Returns:
+            Processed value with sensitivity curve applied
+        """
+        # Get sensitivity settings from rudder settings dialog
+        if hasattr(self, 'rudder_settings_dialog'):
+            return self.rudder_settings_dialog.calculate_curve_output(input_value)
+        else:
+            # Fallback to raw input if dialog not available
+            return input_value
+    
     def _on_left_joystick_changed(self, x: float, y: float) -> None:
         """Handle left joystick value changes."""
         # Apply sensitivity curve to input values
-        processed_x = self._apply_sensitivity_curve(x)
-        processed_y = self._apply_sensitivity_curve(y)
+        processed_x = self._apply_joystick_sensitivity_curve(x)
+        processed_y = self._apply_joystick_sensitivity_curve(y)
         
         # Get axis mappings from configuration
         left_x_axis = self.config.get("axis_mapping.left_x", "x")
@@ -445,8 +469,8 @@ class VirtualControllerApp:
     def _on_right_joystick_changed(self, x: float, y: float) -> None:
         """Handle right joystick value changes."""
         # Apply sensitivity curve to input values
-        processed_x = self._apply_sensitivity_curve(x)
-        processed_y = self._apply_sensitivity_curve(y)
+        processed_x = self._apply_joystick_sensitivity_curve(x)
+        processed_y = self._apply_joystick_sensitivity_curve(y)
         
         # Get axis mappings from configuration
         right_x_axis = self.config.get("axis_mapping.right_x", "rx")
@@ -468,10 +492,13 @@ class VirtualControllerApp:
     
     def _on_rudder_changed(self, value: float) -> None:
         """Handle rudder slider value changes."""
+        # Apply sensitivity curve from rudder settings
+        processed_value = self._apply_rudder_sensitivity_curve(value)
+        
         # Map rudder to RZ axis (or configured axis)
         rudder_axis = self.config.get("axis_mapping.rudder", "rz")
         if self.vjoy.is_connected and rudder_axis != "none":
-            self.vjoy.update_axis(rudder_axis, value)
+            self.vjoy.update_axis(rudder_axis, processed_value)
     
     def _show_axis_config(self) -> None:
         """Show the axis configuration dialog."""
@@ -480,6 +507,14 @@ class VirtualControllerApp:
     def _show_joystick_settings(self) -> None:
         """Show the joystick settings dialog."""
         self.joystick_settings_dialog.show()
+    
+    def _show_button_settings(self) -> None:
+        """Show the button settings dialog."""
+        self.button_settings_dialog.show()
+    
+    def _show_rudder_settings(self) -> None:
+        """Show the rudder settings dialog."""
+        self.rudder_settings_dialog.show()
     
     def _exit_application(self) -> None:
         """Exit the application."""
@@ -535,6 +570,8 @@ class VirtualControllerApp:
         # Reinitialize dialogs with new scaling
         self.axis_config_dialog = AxisConfigDialog(self.config, self.screen)
         self.joystick_settings_dialog = JoystickSettingsDialog(self.config, self.screen)
+        self.button_settings_dialog = ButtonSettingsDialog(self.config, self.screen)
+        self.rudder_settings_dialog = RudderSettingsDialog(self.config, self.screen)
     
     def handle_events(self) -> None:
         """Handle pygame events."""
@@ -549,6 +586,10 @@ class VirtualControllerApp:
                 continue
             if self.joystick_settings_dialog.handle_event(event):
                 continue
+            if self.button_settings_dialog.handle_event(event):
+                continue
+            if self.rudder_settings_dialog.handle_event(event):
+                continue
             
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -557,6 +598,10 @@ class VirtualControllerApp:
                         self.axis_config_dialog.hide()
                     elif self.joystick_settings_dialog.is_visible:
                         self.joystick_settings_dialog.hide()
+                    elif self.button_settings_dialog.is_visible:
+                        self.button_settings_dialog.hide()
+                    elif self.rudder_settings_dialog.is_visible:
+                        self.rudder_settings_dialog.hide()
                     elif self.active_menu:
                         self.active_menu = None
                     else:
@@ -609,8 +654,12 @@ class VirtualControllerApp:
                     for button in self.left_buttons + self.right_buttons + [self.emergency_btn, self.center_all_btn]:
                         if button.rect.collidepoint(event.pos) and button.is_pressed:
                             if self.vjoy.is_connected and hasattr(button, 'button_id'):
-                                self.vjoy.set_button(button.button_id, False)
-                                print(f"Button {button.button_id} released")
+                                # Only release if not in toggle mode
+                                vjoy_id = button.button_id if hasattr(button, 'button_id') else (9 if button == self.emergency_btn else 10)
+                                is_toggle_mode = self.button_settings_dialog.get_button_mode(vjoy_id)
+                                if not is_toggle_mode:
+                                    self.vjoy.set_button(vjoy_id, False)
+                                    print(f"Button {vjoy_id} released (momentary)")
                     
                     # Handle button events
                     for button in self.all_buttons:
@@ -657,6 +706,14 @@ class VirtualControllerApp:
                 # Handle direct menu actions (no submenu)
                 if menu_name == "Joystick Settings":
                     self._show_joystick_settings()
+                    self.active_menu = None
+                    return True
+                elif menu_name == "Button Settings":
+                    self._show_button_settings()
+                    self.active_menu = None
+                    return True
+                elif menu_name == "Rudder Settings":
+                    self._show_rudder_settings()
                     self.active_menu = None
                     return True
                 elif self.active_menu == menu_name:
@@ -758,23 +815,36 @@ class VirtualControllerApp:
             button.text = "Unlock Y" if self.right_joystick.y_locked else "Lock Y"
         
         elif button == self.emergency_btn:
-            # ARM button - send to vJoy button 9
-            if self.vjoy.is_connected:
-                self.vjoy.set_button(9, True)
-                print("ARM button pressed (vJoy button 9)")
+            # ARM button - handle toggle mode
+            self._handle_vjoy_button_click(button, 9)
         
         elif button == self.center_all_btn:
-            # RTH button - send to vJoy button 10
-            if self.vjoy.is_connected:
-                self.vjoy.set_button(10, True)
-                print("RTH button pressed (vJoy button 10)")
+            # RTH button - handle toggle mode
+            self._handle_vjoy_button_click(button, 10)
         
         # Handle joystick buttons (1-8)
         elif button in self.left_buttons or button in self.right_buttons:
-            # Send button press to VJoy (don't toggle, just send press state)
-            if self.vjoy.is_connected:
-                self.vjoy.set_button(button.button_id, True)
-                print(f"Button {button.button_id} pressed")
+            # Handle toggle mode for joystick buttons
+            self._handle_vjoy_button_click(button, button.button_id)
+    
+    def _handle_vjoy_button_click(self, button: Button, vjoy_button_id: int) -> None:
+        """Handle VJoy button click with toggle/momentary mode support."""
+        if not self.vjoy.is_connected:
+            return
+        
+        # Check if this button is in toggle mode
+        is_toggle_mode = self.button_settings_dialog.get_button_mode(vjoy_button_id)
+        
+        if is_toggle_mode:
+            # Toggle mode: flip the toggle state
+            button.is_toggled = not button.is_toggled
+            self.vjoy.set_button(vjoy_button_id, button.is_toggled)
+            state_text = "ON" if button.is_toggled else "OFF"
+            print(f"Button {vjoy_button_id} toggled {state_text}")
+        else:
+            # Momentary mode: just send press (release will be handled in mouse up)
+            self.vjoy.set_button(vjoy_button_id, True)
+            print(f"Button {vjoy_button_id} pressed (momentary)")
     
     def update(self) -> None:
         """Update application state."""
@@ -844,6 +914,8 @@ class VirtualControllerApp:
         # Draw dialogs
         self.axis_config_dialog.draw(self.screen)
         self.joystick_settings_dialog.draw(self.screen)
+        self.button_settings_dialog.draw(self.screen)
+        self.rudder_settings_dialog.draw(self.screen)
         
         # Draw menus on top of everything else
         self._draw_menu_items()

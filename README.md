@@ -10,19 +10,43 @@ It is designed with accessibility in mind, offering a practical solution for ind
 
 At the same time, Project Nimbus is versatile enough for anyone interested in alternative control schemes. Whether for adaptive gaming or connecting to Mission Planner for UAV and rover control, Nimbus makes joystick input more flexible and inclusive.
 
+## Screenshots
+
+<div align="center">
+  <img src="screenshots/main-interface.png" alt="Main Interface" width="800"/>
+  <p><em>Main interface showing dual joysticks, throttle, rudder, and configurable buttons with menu bar</em></p>
+</div>
+
+<div align="center">
+  <img src="screenshots/joystick-settings.png" alt="Joystick Settings" width="600"/>
+  <p><em>Joystick Settings dialog with real-time sensitivity curve visualization, deadzone, and extremity deadzone controls</em></p>
+</div>
+
+<div align="center">
+  <img src="screenshots/button-settings.png" alt="Button Settings" width="600"/>
+  <p><em>Button Settings dialog showing toggle/momentary mode configuration with color-coded visual feedback</em></p>
+</div>
+
+> **Note**: To add the screenshots to your repository, save the three images you provided as:
+> - `screenshots/main-interface.png` (the main application interface)
+> - `screenshots/joystick-settings.png` (the joystick settings dialog)  
+> - `screenshots/button-settings.png` (the button settings dialog)
+
 ## Features
 
 ### Core Functionality
 - **Dual Virtual Joysticks**: Left and right joystick controls with independent axis mapping
 - **Throttle & Rudder Controls**: Dedicated vertical throttle slider and horizontal rudder slider
-- **8-Button Support**: Configurable joystick buttons (4 per stick) with VJoy integration
+- **10-Button Support**: Configurable joystick buttons (8 numbered buttons + ARM/RTH) with VJoy integration
 - **Real-time Control**: Low-latency input processing with 60 FPS update rate
-- **Emergency Systems**: Emergency stop button and center-all functionality
+- **Emergency Systems**: ARM and RTH (Return to Home) buttons with configurable behavior
 - **VJoy Integration**: Direct communication with vJoy driver for seamless compatibility
 
 ### Advanced Configuration
 - **Axis Mapping Dialog**: Configure which VJoy axes each control maps to
-- **Sensitivity Curves**: Adjustable response curves with visual feedback
+- **Joystick Sensitivity Settings**: Adjustable response curves with visual feedback and real-time graph display
+- **Rudder Sensitivity Settings**: Dedicated sensitivity curves for rudder control with deadzone configuration
+- **Button Mode Configuration**: Toggle between momentary and toggle modes for each button individually
 - **Individual Axis Locking**: Lock X or Y axes independently on each joystick
 - **Auto-centering**: Configurable auto-center behavior for rudder control
 - **JSON Configuration**: Persistent settings stored in `controller_config.json`
@@ -95,14 +119,15 @@ This makes it especially valuable for:
 - **Throttle Slider**: Vertical slider for throttle control (does not auto-center)
 - **Rudder Slider**: Horizontal slider for rudder control (auto-centers when released)
 - **Lock Buttons**: Click "Lock X" or "Lock Y" to lock individual axes on each joystick
-- **Reset Buttons**: Click "RESET" to center individual joysticks
-- **Joystick Buttons**: 8 configurable buttons (4 per joystick) that send to VJoy
-- **Center All**: Centers both joysticks and resets throttle/rudder
-- **Emergency Stop**: Immediately centers all controls and activates failsafe
+- **Joystick Buttons**: 8 configurable buttons (1-4 on left, 5-8 on right) with toggle/momentary modes
+- **ARM Button**: Configurable ARM button (button 9) with toggle/momentary mode
+- **RTH Button**: Configurable Return to Home button (button 10) with toggle/momentary mode
 
 ### Menu System
 - **File > Configure Axes**: Open axis mapping dialog to assign VJoy axes
-- **Joystick Settings**: Configure sensitivity curves and response settings
+- **Joystick Settings**: Configure sensitivity curves, deadzone, and extremity deadzone for joysticks
+- **Button Settings**: Configure toggle/momentary modes for all 10 buttons (1-8, ARM, RTH)
+- **Rudder Settings**: Configure sensitivity curves, deadzone, and extremity deadzone for rudder control
 
 ### Keyboard Shortcuts
 - **ESC**: Exit application (or close open dialogs)
@@ -151,31 +176,65 @@ The application uses a JSON-based configuration system stored in `controller_con
 }
 ```
 
+### Settings Dialogs
+
+#### Joystick Settings
+The Joystick Settings dialog provides comprehensive control over joystick response:
+- **Sensitivity (0-100%)**: Controls the steepness of the response curve
+  - 50% = Linear response
+  - <50% = Flatter curve (less sensitive, more precise)
+  - >50% = Steeper curve (more sensitive, faster response)
+- **Deadzone (0-100%)**: Creates a dead area around center where small movements are ignored
+- **Extremity Deadzone (0-100%)**: Prevents reaching absolute maximum values at the edges
+- **Real-time Graph**: Visual representation of the sensitivity curve with deadzone indicators
+
+#### Rudder Settings
+Identical functionality to Joystick Settings but specifically for rudder control:
+- Independent sensitivity curve configuration
+- Separate deadzone and extremity deadzone settings
+- Real-time visual feedback of the response curve
+- Settings are applied immediately to rudder input
+
+#### Button Settings
+Configure the behavior of all 10 buttons:
+- **Toggle Mode**: Button stays "pressed" until clicked again (green indicator)
+- **Momentary Mode**: Button is only active while being held down (red indicator)
+- **Visual Feedback**: Color-coded switches show current mode at a glance
+- **Individual Configuration**: Each button (1-8, ARM, RTH) can be set independently
+
 ### Sensitivity Curves
-- **Linear**: Direct 1:1 response
-- **Exponential**: More precise control near center, faster at edges
-- **Logarithmic**: Faster response near center, more precise at edges
+The sensitivity curve system provides precise control over input response:
+- **Linear (50%)**: Direct 1:1 response
+- **Flatter Curves (<50%)**: More precise control near center, exponential scaling
+- **Steeper Curves (>50%)**: Faster response near center, logarithmic scaling
+- **Deadzone Integration**: Curves work seamlessly with deadzone settings
+- **Real-time Preview**: See exactly how your settings affect the response curve
 
 ## Architecture
 
 ### Project Structure
 ```
 Project-Nimbus/
-├── main.py                    # Main application entry point
+├── src/
+│   ├── main.py                    # Main application entry point
+│   ├── config.py                  # Configuration management system
+│   ├── virtual_joystick.py        # Virtual joystick implementation
+│   ├── vjoy_interface.py          # VJoy driver interface wrapper
+│   ├── axis_config_dialog.py      # Axis mapping configuration dialog
+│   ├── joystick_settings_dialog.py # Joystick sensitivity and curve settings
+│   ├── button_settings_dialog.py  # Button toggle/momentary configuration
+│   └── rudder_settings_dialog.py  # Rudder sensitivity and curve settings
+├── screenshots/               # Application screenshots
+│   ├── main-interface.png     # Main interface screenshot
+│   ├── joystick-settings.png  # Joystick settings dialog
+│   └── button-settings.png    # Button settings dialog
+├── tests/                     # Test files
 ├── run.py                     # Launcher script with auto-setup
-├── config.py                  # Configuration management system
-├── virtual_joystick.py        # Virtual joystick implementation
-├── vjoy_interface.py          # VJoy driver interface wrapper
-├── axis_config_dialog.py      # Axis mapping configuration dialog
-├── joystick_settings_dialog.py # Sensitivity and curve settings dialog
-├── sensitivity_dialog.py      # Sensitivity configuration utilities
-├── test_dialog.py            # Testing and validation utilities
-├── simple_vjoy_test.py       # Simple VJoy connection test
-├── test_vjoy.py              # Comprehensive VJoy testing
-├── requirements.txt          # Python dependencies
-├── run.bat                   # Windows batch launcher
-├── logo.png                  # Project logo
-└── README.md                # This documentation
+├── requirements.txt           # Python dependencies
+├── run.bat                    # Windows batch launcher
+├── logo.png                   # Project logo
+├── controller_config.json     # Configuration file (auto-generated)
+└── README.md                  # This documentation
 ```
 
 ### Key Classes
