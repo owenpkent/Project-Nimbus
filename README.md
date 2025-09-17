@@ -27,11 +27,6 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
   <p><em>Button Settings dialog showing toggle/momentary mode configuration with color-coded visual feedback</em></p>
 </div>
 
-> **Note**: To add the screenshots to your repository, save the three images you provided as:
-> - `screenshots/main-interface.png` (the main application interface)
-> - `screenshots/joystick-settings.png` (the joystick settings dialog)  
-> - `screenshots/button-settings.png` (the button settings dialog)
-
 ## Features
 
 ### Core Functionality
