@@ -48,7 +48,7 @@ def check_dependencies():
         print("ERROR: Virtual environment Python not found")
         return False
     
-    required_packages = ['pygame', 'pyvjoy', 'numpy']
+    required_packages = ['pygame', 'pyvjoy', 'numpy', 'PySide6']
     
     # Check if packages are installed
     try:
@@ -75,13 +75,17 @@ def check_dependencies():
         print(f"ERROR: Unexpected error during dependency check: {e}")
         return False
 
-def run_in_venv():
-    """Run the application in the virtual environment."""
+def run_in_venv(target_module: str):
+    """Run the application in the virtual environment.
+
+    Args:
+        target_module: Python module to run with -m (e.g., 'src.main' or 'src.qt_main')
+    """
     venv_python = get_venv_python()
-    
+
     try:
-        # Run main.py using the virtual environment Python
-        result = subprocess.run([str(venv_python), "-m", "src.main"], cwd=Path.cwd())
+        # Run selected module using the virtual environment Python
+        result = subprocess.run([str(venv_python), "-m", target_module], cwd=Path.cwd())
         return result.returncode
     except Exception as e:
         print(f"ERROR: Failed to run application: {e}")
@@ -113,15 +117,24 @@ def main():
         input("Press Enter to exit...")
         return 1
     
+    # Decide which UI to run: default to Qt shell (src.qt_main). Use --pygame or NIMBUS_UI=pygame to opt into Pygame.
+    use_pygame = ("--pygame" in sys.argv) or (os.environ.get("NIMBUS_UI", "").lower() == "pygame")
+    target_module = "src.main" if use_pygame else "src.qt_main"
+
     print("Starting application in virtual environment...")
-    print("Controls:")
-    print("  - ESC: Exit application")
-    print("  - F1: Toggle debug info")
-    print("  - SPACE: Center both joysticks")
+    if use_pygame:
+        print("Launching Pygame UI: src.main")
+        print("Controls:")
+        print("  - ESC: Exit application")
+        print("  - F1: Toggle debug info")
+        print("  - SPACE: Center both joysticks")
+    else:
+        print("Launching Qt shell (PySide6): src.qt_main")
+        print("Tip: Use View > Size to adjust scale; settings persist.")
     print()
-    
+
     try:
-        return run_in_venv()
+        return run_in_venv(target_module)
     except KeyboardInterrupt:
         print("\nApplication interrupted by user")
         return 0
