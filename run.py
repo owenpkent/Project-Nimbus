@@ -48,7 +48,7 @@ def check_dependencies():
         print("ERROR: Virtual environment Python not found")
         return False
     
-    required_packages = ['pygame', 'pyvjoy', 'numpy', 'PySide6']
+    required_packages = ['pyvjoy', 'numpy', 'PySide6']
     
     # Check if packages are installed
     try:
@@ -79,7 +79,7 @@ def run_in_venv(target_module: str):
     """Run the application in the virtual environment.
 
     Args:
-        target_module: Python module to run with -m (e.g., 'src.main' or 'src.qt_main')
+        target_module: Python module to run with -m (e.g., 'src.qt_qml_app')
     """
     venv_python = get_venv_python()
 
@@ -117,20 +117,12 @@ def main():
         input("Press Enter to exit...")
         return 1
     
-    # Decide which UI to run: default to Qt shell (src.qt_main). Use --pygame or NIMBUS_UI=pygame to opt into Pygame.
-    use_pygame = ("--pygame" in sys.argv) or (os.environ.get("NIMBUS_UI", "").lower() == "pygame")
-    target_module = "src.main" if use_pygame else "src.qt_main"
+    # Launch the Qt Quick (QML) UI by default
+    target_module = "src.qt_qml_app"
 
     print("Starting application in virtual environment...")
-    if use_pygame:
-        print("Launching Pygame UI: src.main")
-        print("Controls:")
-        print("  - ESC: Exit application")
-        print("  - F1: Toggle debug info")
-        print("  - SPACE: Center both joysticks")
-    else:
-        print("Launching Qt shell (PySide6): src.qt_main")
-        print("Tip: Use View > Size to adjust scale; settings persist.")
+    print("Launching Qt Quick (PySide6 QML): src.qt_qml_app")
+    print("Tip: Use View > Size to adjust scale; settings persist.")
     print()
 
     try:
