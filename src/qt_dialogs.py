@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QCheckBox,
     QDialogButtonBox,
+    QComboBox,
 )
 from PySide6.QtGui import QPainter, QPen, QBrush, QColor
 
@@ -213,6 +214,70 @@ class JoystickSettingsQt(QDialog):
         self.config.set("joystick_settings.sensitivity", float(self.sens_slider.value()))
         self.config.set("joystick_settings.deadzone", float(self.dead_slider.value()))
         self.config.set("joystick_settings.extremity_deadzone", float(self.ext_slider.value()))
+        self.config.save_config()
+        self.accept()
+
+
+# --- New: Axis mapping dialog for Qt ---
+class AxisMappingQt(QDialog):
+    """Qt dialog to map UI joystick axes to VJoy axes (replaces pygame axis_config_dialog for Qt shell)."""
+    def __init__(self, config: ControllerConfig, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Configure Axes")
+        self.config = config
+
+        # Axis lists
+        # Only offer axes supported by VJoyInterface.update_axis
+        self.vjoy_axes = [
+            "none", "x", "y", "z", "rx", "ry", "rz"
+        ]
+        self.ui_axes = [
+            ("left_x", "Left Joystick X"),
+            ("left_y", "Left Joystick Y"),
+            ("right_x", "Right Joystick X"),
+            ("right_y", "Right Joystick Y"),
+            ("throttle", "Throttle"),
+            ("rudder", "Rudder"),
+        ]
+
+        # Layout
+        layout = QVBoxLayout(self)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(8)
+
+        header1 = QLabel("UI Axis")
+        header2 = QLabel("VJoy Axis")
+        header1.setStyleSheet("font-weight: 600;")
+        header2.setStyleSheet("font-weight: 600;")
+        grid.addWidget(header1, 0, 0)
+        grid.addWidget(header2, 0, 1)
+
+        # Build rows
+        self.combos: dict[str, QComboBox] = {}
+        for row, (key, label) in enumerate(self.ui_axes, start=1):
+            grid.addWidget(QLabel(label), row, 0)
+            cb = QComboBox(self)
+            cb.addItems(self.vjoy_axes)
+            current = str(self.config.get(f"axis_mapping.{key}", "none"))
+            try:
+                cb.setCurrentIndex(self.vjoy_axes.index(current))
+            except ValueError:
+                cb.setCurrentIndex(0)
+            self.combos[key] = cb
+            grid.addWidget(cb, row, 1)
+
+        layout.addLayout(grid)
+
+        # Buttons (Save/Close)
+        btns = QDialogButtonBox(QDialogButtonBox.Close | QDialogButtonBox.Save, parent=self)
+        btns.rejected.connect(self.reject)
+        btns.accepted.connect(self._save)
+        layout.addWidget(btns)
+
+    def _save(self) -> None:
+        for key, cb in self.combos.items():
+            self.config.set(f"axis_mapping.{key}", cb.currentText())
         self.config.save_config()
         self.accept()
 

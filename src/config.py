@@ -59,7 +59,7 @@ class ControllerConfig:
             "ui": {
                 "window_width": 614,
                 "window_height": 311,
-                "joystick_size": 280,
+                "joystick_size": 336,
                 "background_color": (20, 20, 20),
                 "joystick_bg_color": (80, 20, 20),
                 "joystick_fg_color": (255, 50, 50),
@@ -67,7 +67,8 @@ class ControllerConfig:
                 "button_hover_color": (100, 25, 25),
                 "text_color": (255, 255, 255),
                 "font_size": 14,
-                "scale_factor": 1.0
+                "scale_factor": 1.0,
+                "debug_borders": False
             },
             "vjoy": {
                 "device_id": 1,
@@ -274,8 +275,8 @@ class ControllerConfig:
         self.set("ui.window_width", width)
         self.set("ui.window_height", height)
         
-        # Update scaled joystick size
-        base_joystick_size = 280
+        # Update scaled joystick size (20% larger base)
+        base_joystick_size = 336
         self.set("ui.joystick_size", int(base_joystick_size * scale_factor))
         
         # Update scaled font size
