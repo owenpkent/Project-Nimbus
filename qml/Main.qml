@@ -9,6 +9,8 @@ ApplicationWindow {
     visible: true
     width: 1024
     height: 600
+    minimumWidth: 256
+    minimumHeight: 150
     title: "Project Nimbus - QML UI"
     background: Rectangle { color: "black" }
 
@@ -85,9 +87,9 @@ ApplicationWindow {
                 color: "transparent"
                 border.color: "#d24"; border.width: (controller && controller.debugBorders) ? 1 : 0
                 Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: leftPad.implicitWidth
-                // Give the layout a concrete height based on the inner pad's implicitHeight
-                Layout.preferredHeight: leftPad.implicitHeight
+                // Use stable, scaled constants to avoid layout feedback
+                Layout.preferredWidth: controller ? controller.scaled(200) : 200
+                Layout.preferredHeight: controller ? controller.scaled(140) : 140
                 Comp.NumberPad {
                     id: leftPad
                     anchors.fill: parent
@@ -102,14 +104,19 @@ ApplicationWindow {
         // Center column (Throttle + Rudder + ARM/RTH)
         ColumnLayout {
             Layout.fillHeight: true
+            // Allow center column to grow/shrink with window width
+            Layout.fillWidth: true
             Layout.preferredWidth: controller ? controller.scaled(200) : 200
             spacing: controller ? controller.scaled(8) : 8
 
             Rectangle {
                 id: throttleWrap
                 Layout.alignment: Qt.AlignHCenter
-                Layout.preferredHeight: controller ? controller.scaled(280) : 280
-                // Respect throttle's implicit width (now wider)
+                // Allow this item to take vertical space in the column
+                Layout.fillHeight: true
+                // Let layout allocate remaining height; set only minimum to ensure visibility
+                Layout.minimumHeight: controller ? controller.scaled(200) : 200
+                // Keep throttle width constant (no horizontal resizing)
                 Layout.preferredWidth: throttle.implicitWidth
                 color: "transparent"
                 border.color: "#ec0"; border.width: (controller && controller.debugBorders) ? 1 : 0
@@ -141,6 +148,7 @@ ApplicationWindow {
             }
 
             RowLayout {
+                id: actionRow
                 Layout.fillWidth: true
                 spacing: controller ? controller.scaled(12) : 12
                 Basic.Button {
@@ -209,8 +217,9 @@ ApplicationWindow {
                 color: "transparent"
                 border.color: "#48c"; border.width: (controller && controller.debugBorders) ? 1 : 0
                 Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: rightPad.implicitWidth
-                Layout.preferredHeight: rightPad.implicitHeight
+                // Use stable, scaled constants to avoid layout feedback
+                Layout.preferredWidth: controller ? controller.scaled(200) : 200
+                Layout.preferredHeight: controller ? controller.scaled(140) : 140
                 Comp.NumberPad {
                     id: rightPad
                     anchors.fill: parent

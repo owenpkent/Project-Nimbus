@@ -18,8 +18,9 @@ Item {
     Rectangle {
         id: track
         anchors.centerIn: parent
-        // Thicker track to match increased width visually
-        width: (typeof controller !== 'undefined' && controller) ? controller.scaled(24) : 24
+        // Track width scales with overall control width (responsive)
+        width: Math.max(((typeof controller !== 'undefined' && controller) ? controller.scaled(16) : 16),
+                        parent.width * 0.22)
         height: parent.height
         radius: width / 2
         color: "#1e1e1e"

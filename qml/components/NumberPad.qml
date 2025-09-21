@@ -11,15 +11,26 @@ Item {
     // How many buttons to render
     property int buttonCount: 4
 
-    implicitWidth: (typeof controller !== 'undefined' && controller) ? controller.scaled(160) : 160
-    implicitHeight: (typeof controller !== 'undefined' && controller) ? controller.scaled(120) : 120
+    // Base metrics
+    readonly property real baseWidth: (typeof controller !== 'undefined' && controller) ? controller.scaled(160) : 160
+    readonly property real baseHeight: (typeof controller !== 'undefined' && controller) ? controller.scaled(120) : 120
+    readonly property real baseBtnW: (typeof controller !== 'undefined' && controller) ? controller.scaled(68) : 68
+    readonly property real baseBtnH: (typeof controller !== 'undefined' && controller) ? controller.scaled(42) : 42
+    readonly property real baseRowSpace: (typeof controller !== 'undefined' && controller) ? controller.scaled(12) : 12
+    readonly property real baseColSpace: (typeof controller !== 'undefined' && controller) ? controller.scaled(16) : 16
+    // Compute scale from width only to avoid feedback cycles with height
+    readonly property real scale: Math.max(0.5, Math.min(2.0, width / baseWidth))
+
+    // Provide sensible implicit size but do not drive layout from content to avoid cycles
+    implicitWidth: baseWidth
+    implicitHeight: baseHeight
 
     GridLayout {
         id: grid
-        anchors.centerIn: parent
+        anchors.fill: parent
         columns: 2
-        rowSpacing: (typeof controller !== 'undefined' && controller) ? controller.scaled(12) : 12
-        columnSpacing: (typeof controller !== 'undefined' && controller) ? controller.scaled(16) : 16
+        rowSpacing: root.baseRowSpace * root.scale
+        columnSpacing: root.baseColSpace * root.scale
 
         Repeater {
             id: rep
@@ -28,8 +39,8 @@ Item {
             delegate: Basic.Button {
                 readonly property int bid: startId + index
                 text: bid.toString()
-                Layout.preferredWidth: (typeof controller !== 'undefined' && controller) ? controller.scaled(68) : 68
-                Layout.preferredHeight: (typeof controller !== 'undefined' && controller) ? controller.scaled(42) : 42
+                Layout.preferredWidth: root.baseBtnW * root.scale
+                Layout.preferredHeight: root.baseBtnH * root.scale
                 // Toggle vs momentary behavior from config via bridge
                 checkable: controller ? controller.isButtonToggle(bid) : false
                 onToggled: if (checkable && controller) controller.setButton(bid, checked)

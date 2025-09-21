@@ -47,11 +47,11 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 - **JSON Configuration**: Persistent settings stored in `controller_config.json`
 
 ### User Interface
-- **Pygame-based GUI**: Responsive interface with real-time visual feedback
-- **Menu System**: File menu with configuration dialogs and settings
+- **Qt Quick (PySide6 QML) UI**: Dark-themed, resizable interface with smooth animations
+- **Menu System**: File menu for configuration dialogs; View menu with Size presets and Debug Borders
+- **Proportional Scaling**: All UI elements scale via `controller.scaled()` and View > Size presets; preference persists
 - **Status Display**: VJoy connection status and real-time value monitoring
-- **Debug Mode**: Comprehensive system information (F1 to toggle)
-- **Keyboard Shortcuts**: ESC to exit, SPACE to center, F1 for debug info
+- **Keyboard Shortcuts**: ESC to exit, SPACE to center
 
 ## Accessibility
 
@@ -95,17 +95,15 @@ This makes it especially valuable for:
    - Configure VJoy device #1 with at least 6 axes (X, Y, Z, RX, RY, RZ)
    - Ensure VJoy device is enabled and available
 
-4. **Run the application**:
+4. **Run the application (Qt Quick UI)**:
    ```bash
    python run.py
    ```
    
-   Or alternatively:
-   ```bash
-   python main.py
-   ```
-   
-   **Note**: `run.py` is recommended as it handles virtual environment setup and dependency management automatically.
+   Notes:
+   - The Qt Quick (QML) UI is the default.
+   - Use View > Size to quickly set scaling (50%–200%).
+   - Settings (including scale) persist via `controller_config.json`.
 
 ## Usage
 
@@ -210,27 +208,38 @@ The sensitivity curve system provides precise control over input response:
 ### Project Structure
 ```
 Project-Nimbus/
+├── qml/                           # QML UI (Qt Quick)
+│   ├── Main.qml                   # Main window, menus, and layout
+│   └── components/                # Reusable QML controls
+│       ├── Joystick.qml
+│       ├── SliderVertical.qml     # Throttle (vertical)
+│       └── SliderHorizontal.qml   # Rudder (horizontal)
 ├── src/
-│   ├── main.py                    # Main application entry point
-│   ├── config.py                  # Configuration management system
-│   ├── virtual_joystick.py        # Virtual joystick implementation
-│   ├── vjoy_interface.py          # VJoy driver interface wrapper
-│   ├── axis_config_dialog.py      # Axis mapping configuration dialog
-│   ├── joystick_settings_dialog.py # Joystick sensitivity and curve settings
-│   ├── button_settings_dialog.py  # Button toggle/momentary configuration
-│   └── rudder_settings_dialog.py  # Rudder sensitivity and curve settings
-├── screenshots/               # Application screenshots
-│   ├── main-interface.png     # Main interface screenshot
-│   ├── joystick-settings.png  # Joystick settings dialog
-│   └── button-settings.png    # Button settings dialog
-├── tests/                     # Test files
-├── run.py                     # Launcher script with auto-setup
-├── requirements.txt           # Python dependencies
-├── run.bat                    # Windows batch launcher
-├── logo.png                   # Project logo
-├── controller_config.json     # Configuration file (auto-generated)
-└── README.md                  # This documentation
+│   ├── qt_qml_app.py              # QML application entry (QQmlApplicationEngine)
+│   ├── bridge.py                  # Python↔QML bridge (ControllerBridge)
+│   ├── axis_config_dialog.py      # Axis mapping dialog (Qt Widgets)
+│   ├── joystick_settings_dialog.py
+│   ├── button_settings_dialog.py
+│   └── rudder_settings_dialog.py
+├── run.py                         # Launcher with dependency checks
+├── requirements.txt               # Python dependencies
+├── controller_config.json         # Persistent settings (auto-generated)
+├── logo.png
+├── screenshots/
+├── tests/
+└── README.md
 ```
+
+### Recent Changes (QML Migration)
+- Migrated UI to Qt Quick (PySide6 QML) with a dark theme.
+- Added View > Size menu (50%–200%) and persistent scaling via configuration.
+- Standardized sizes using `controller.scaled(...)` for consistent, DPI-aware scaling.
+- Joystick, throttle, rudder input behavior:
+  - No jump-to-click; dragging is relative.
+  - Joystick and rudder smoothly return to center on release; throttle does not auto-center.
+- Throttle widened; rudder taller; refined animations.
+- NumberPad and ARM/RTH buttons use dark styling with blue pressed/checked state.
+- Optional debug borders for layout tuning.
 
 ### Key Classes
 
