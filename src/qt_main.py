@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QMessageBox,
+    QSpacerItem,
+    QSizePolicy,
 )
 from PySide6.QtGui import QIcon, QAction, QActionGroup
 from PySide6.QtCore import Qt
@@ -32,6 +34,11 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Configuration Error", error)
             # Fall back to defaults but continue to show window
 
+        # Force UI scale to 100% at startup to avoid stale zoom effects
+        # Do this before building the menu so the correct item is checked.
+        self.config.set_scale_factor(1.0)
+        self.config.save_config()
+
         # Window geometry from config
         self._apply_window_geometry_from_config()
         self.setWindowTitle("Project Nimbus - Virtual Controller (Qt Shell)")
@@ -42,79 +49,105 @@ class MainWindow(QMainWindow):
         # Initialize VJoy
         self.vjoy = VJoyInterface(self.config)
 
-        # Central UI
+        # Central UI - Use a grid layout for better control
         central = QWidget(self)
-        root = QVBoxLayout(central)
-        root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(12)
-
-        # Top row: Left and Right joysticks with 1-4 / 5-8 buttons under each
-        sticks_row = QHBoxLayout()
-        sticks_row.setSpacing(12)
+        root = QGridLayout(central)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
 
         self.left_stick = JoystickWidget(self.config, which="left", parent=central)
         self.right_stick = JoystickWidget(self.config, which="right", parent=central)
 
-        # Helper to add title and child
-        def titled_column(title: str, child: QWidget, below: QWidget | None = None) -> QWidget:
-            c = QWidget(central)
-            v = QVBoxLayout(c)
-            v.setContentsMargins(0, 0, 0, 0)
-            v.setSpacing(6)
-            lbl = QLabel(title, c)
-            lbl.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-            v.addWidget(lbl)
-            v.addWidget(child)
-            if below is not None:
-                v.addWidget(below)
-            return c
+        # No more titled columns - just use joysticks directly
 
-        # Create number buttons 1-8 (2x2 under each stick)
+        # Create button panels
         left_buttons_panel = self._create_number_buttons_panel(ids=(1, 2, 3, 4), parent=central)
         right_buttons_panel = self._create_number_buttons_panel(ids=(5, 6, 7, 8), parent=central)
 
-        sticks_row.addWidget(titled_column("Left Stick", self.left_stick, left_buttons_panel), 1)
-        sticks_row.addWidget(titled_column("Right Stick", self.right_stick, right_buttons_panel), 1)
-        root.addLayout(sticks_row, 1)
+        # Throttle - 15% shorter to avoid rudder overlap
+        self.throttle = SliderWidget(self.config, Qt.Vertical, label="Throttle", auto_center=False, parent=central, gentle_return=False)
+        self.throttle.setMinimumWidth(self.config.get_scaled_int(54))
+        self.throttle.setMaximumWidth(self.config.get_scaled_int(72))
+        self.throttle.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        # Set maximum height to make it 15% shorter
+        max_throttle_height = int(self.config.get_scaled_int(280) * 0.85)  # 85% of joystick size
+        self.throttle.setMaximumHeight(max_throttle_height)
 
-        # Middle: throttle (vertical) centered
-        throttle_row = QHBoxLayout()
-        throttle_row.setSpacing(12)
-        throttle_row.addStretch(1)
-        self.throttle = SliderWidget(self.config, Qt.Vertical, label="Throttle", auto_center=False, parent=central)
-        throttle_row.addWidget(self.throttle)
-        throttle_row.addStretch(1)
-        root.addLayout(throttle_row)
-
-        # Bottom: ARM/RTH buttons above rudder slider
-        bottom = QVBoxLayout()
-        bottom.setSpacing(8)
-
-        btn_row = QHBoxLayout()
-        btn_row.addStretch(1)
+        # Grid layout: 
+        # Row 0: Left stick, Throttle, Right stick (no labels)
+        # Row 1: Left buttons, Rudder + ARM/RTH, Right buttons  
+        
+        root.addWidget(self.left_stick, 0, 0, Qt.AlignCenter)
+        root.addWidget(self.throttle, 0, 1, Qt.AlignCenter)
+        root.addWidget(self.right_stick, 0, 2, Qt.AlignCenter)
+        
+        root.addWidget(left_buttons_panel, 1, 0, Qt.AlignCenter)
+        root.addWidget(right_buttons_panel, 1, 2, Qt.AlignCenter)
+        
+        # Center column: Rudder above ARM/RTH buttons
+        center_widget = QWidget(central)
+        center_layout = QVBoxLayout(center_widget)
+        center_layout.setContentsMargins(0, 0, 0, 0)
+        center_layout.setSpacing(8)
+        
+        # Rudder
+        self.rudder = SliderWidget(self.config, Qt.Horizontal, label="Rudder", auto_center=True, parent=central)
+        self.rudder.setMinimumWidth(self.config.get_scaled_int(200))
+        self.rudder.setMaximumWidth(self.config.get_scaled_int(300))
+        self.rudder.setMinimumHeight(self.config.get_scaled_int(32))
+        self.rudder.setMaximumHeight(self.config.get_scaled_int(44))
+        center_layout.addWidget(self.rudder, 0, Qt.AlignCenter)
+        
+        # ARM/RTH buttons
+        arm_rth_widget = QWidget(central)
+        arm_rth_layout = QHBoxLayout(arm_rth_widget)
+        arm_rth_layout.setContentsMargins(0, 0, 0, 0)
+        arm_rth_layout.addStretch(1)
+        
         self.arm_btn = QPushButton("ARM", central)
         self.rth_btn = QPushButton("RTH", central)
-        self.arm_btn.setMinimumWidth(self.config.get_scaled_int(100))
-        self.rth_btn.setMinimumWidth(self.config.get_scaled_int(100))
-        btn_row.addWidget(self.arm_btn)
-        btn_row.addSpacing(12)
-        btn_row.addWidget(self.rth_btn)
-        btn_row.addStretch(1)
-        bottom.addLayout(btn_row)
-
-        self.rudder = SliderWidget(self.config, Qt.Horizontal, label="Rudder", auto_center=True, parent=central)
-        bottom.addWidget(self.rudder)
-        root.addLayout(bottom)
+        btn_blue_style = (
+            "QPushButton:pressed, QPushButton:checked {"
+            "  background-color: rgb(50,100,200);"
+            "  border: 1px solid rgb(100,150,255);"
+            "}"
+        )
+        self.arm_btn.setStyleSheet(btn_blue_style)
+        self.rth_btn.setStyleSheet(btn_blue_style)
+        self.arm_btn.setMinimumWidth(self.config.get_scaled_int(80))
+        self.rth_btn.setMinimumWidth(self.config.get_scaled_int(80))
+        
+        arm_rth_layout.addWidget(self.arm_btn)
+        arm_rth_layout.addSpacing(12)
+        arm_rth_layout.addWidget(self.rth_btn)
+        arm_rth_layout.addStretch(1)
+        
+        center_layout.addWidget(arm_rth_widget, 0, Qt.AlignCenter)
+        
+        # Add center widget to middle column
+        root.addWidget(center_widget, 1, 1, Qt.AlignCenter)
+        
+        # Add some spacing for the buttons row
+        root.setRowMinimumHeight(1, self.config.get_scaled_int(100))  # Give buttons row more height
+        
+        # Set row stretch factors - give joysticks much more space
+        root.setRowStretch(0, 5)  # Joysticks get much more space
+        root.setRowStretch(1, 1)  # All buttons/controls row
 
         self.setCentralWidget(central)
 
-        self.statusBar().showMessage("Ready")
+        # Remove status bar to eliminate "Ready" message and resize grip
+        self.setStatusBar(None)
+
+        # Apply initial scaling to all widgets now that they exist
+        self._apply_scaled_sizes()
 
         # Connections
         self.left_stick.valueChanged.connect(self._on_left_stick)
         self.right_stick.valueChanged.connect(self._on_right_stick)
         self.throttle.valueChanged.connect(self._on_throttle)
         self.rudder.valueChanged.connect(self._on_rudder)
+        # ARM/RTH back to standard IDs
         self.arm_btn.pressed.connect(lambda: self._set_button(9, True))
         self.arm_btn.released.connect(lambda: self._set_button(9, False))
         self.rth_btn.pressed.connect(lambda: self._set_button(10, True))
@@ -201,8 +234,9 @@ class MainWindow(QMainWindow):
         self.config.set_scale_factor(factor)
         self.config.save_config()
 
-        # Apply new size immediately to the Qt window (so it feels responsive)
+        # Apply new size immediately to the Qt window and widgets (so it feels responsive)
         self._apply_window_geometry_from_config()
+        self._apply_scaled_sizes()
         self.statusBar().showMessage(f"UI scale set to {int(factor * 100)}%", 2000)
 
         # Note: Pygame canvas and widgets will be resized when we embed them.
@@ -268,8 +302,17 @@ class MainWindow(QMainWindow):
     def _apply_window_geometry_from_config(self) -> None:
         w = int(self.config.get("ui.window_width", 1024))
         h = int(self.config.get("ui.window_height", 850))
-        # Use resize so the OS window manager handles scaling appropriately
-        self.resize(w, h)
+        # Enforce a strict 16:9 aspect ratio and disable manual resizing.
+        # Prefer width from config/scale and derive height to maintain 16:9.
+        h_16_9 = max(1, int(round(w * 9 / 16)))
+        w_16_9 = max(1, int(round(h * 16 / 9)))
+
+        # If height from config doesn't match 16:9, override it using width as source of truth.
+        # This ensures zoom (which sets width) drives the size deterministically.
+        h = h_16_9
+
+        # Apply fixed size so users cannot manually resize the window.
+        self.setFixedSize(w, h)
 
     def closeEvent(self, event) -> None:
         try:
@@ -282,6 +325,7 @@ class MainWindow(QMainWindow):
     def _create_number_buttons_panel(self, ids: tuple[int, int, int, int], parent: QWidget) -> QWidget:
         panel = QWidget(parent)
         grid = QGridLayout(panel)
+        # No margins needed - grid layout handles spacing
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
@@ -297,22 +341,43 @@ class MainWindow(QMainWindow):
             btn = QPushButton(str(bid), panel)
             btn.setMinimumSize(size, size)
             self.number_buttons[bid] = btn
+            # Apply blue pressed/checked style to number buttons only
+            btn.setStyleSheet(
+                "QPushButton:pressed, QPushButton:checked {"
+                "  background-color: rgb(50,100,200);"
+                "  border: 1px solid rgb(100,150,255);"
+                "}"
+            )
             grid.addWidget(btn, r, c)
 
         # Connect press/release now; toggle behavior will be configured in _apply_button_modes()
         for bid in ids:
             btn = self.number_buttons[bid]
-            # Disconnect any previous to avoid duplicates
-            try:
-                btn.pressed.disconnect()
-                btn.released.disconnect()
-                btn.toggled.disconnect()
-            except Exception:
-                pass
+            # Disconnect any previous specific callbacks to avoid duplicates
+            if hasattr(btn, "_nimbus_press_cb") and btn._nimbus_press_cb is not None:
+                try:
+                    btn.pressed.disconnect(btn._nimbus_press_cb)
+                except Exception:
+                    pass
+            if hasattr(btn, "_nimbus_release_cb") and btn._nimbus_release_cb is not None:
+                try:
+                    btn.released.disconnect(btn._nimbus_release_cb)
+                except Exception:
+                    pass
+            if hasattr(btn, "_nimbus_toggle_cb") and btn._nimbus_toggle_cb is not None:
+                try:
+                    btn.toggled.disconnect(btn._nimbus_toggle_cb)
+                except Exception:
+                    pass
             # Default to momentary wiring; will adjust in _apply_button_modes
             btn.setCheckable(False)
-            btn.pressed.connect(lambda b=bid: self._set_button(b, True))
-            btn.released.connect(lambda b=bid: self._set_button(b, False))
+            press_cb = (lambda b=bid: self._set_button(b, True))
+            release_cb = (lambda b=bid: self._set_button(b, False))
+            btn._nimbus_press_cb = press_cb
+            btn._nimbus_release_cb = release_cb
+            btn._nimbus_toggle_cb = None
+            btn.pressed.connect(press_cb)
+            btn.released.connect(release_cb)
 
         return panel
 
@@ -321,22 +386,78 @@ class MainWindow(QMainWindow):
             return
         for bid, btn in self.number_buttons.items():
             toggle_mode = bool(self.config.get(f"buttons.button_{bid}.toggle_mode", False))
-            # Disconnect signals to reconfigure cleanly
-            try:
-                btn.pressed.disconnect()
-                btn.released.disconnect()
-                btn.toggled.disconnect()
-            except Exception:
-                pass
+            # Disconnect specific previously stored callbacks to reconfigure cleanly
+            if hasattr(btn, "_nimbus_press_cb") and btn._nimbus_press_cb is not None:
+                try:
+                    btn.pressed.disconnect(btn._nimbus_press_cb)
+                except Exception:
+                    pass
+                btn._nimbus_press_cb = None
+            if hasattr(btn, "_nimbus_release_cb") and btn._nimbus_release_cb is not None:
+                try:
+                    btn.released.disconnect(btn._nimbus_release_cb)
+                except Exception:
+                    pass
+                btn._nimbus_release_cb = None
+            if hasattr(btn, "_nimbus_toggle_cb") and btn._nimbus_toggle_cb is not None:
+                try:
+                    btn.toggled.disconnect(btn._nimbus_toggle_cb)
+                except Exception:
+                    pass
+                btn._nimbus_toggle_cb = None
             if toggle_mode:
                 btn.setCheckable(True)
                 # Initialize checked state from config? default False
                 btn.setChecked(False)
-                btn.toggled.connect(lambda state, b=bid: self._set_button(b, bool(state)))
+                toggle_cb = (lambda state, b=bid: self._set_button(b, bool(state)))
+                btn._nimbus_toggle_cb = toggle_cb
+                btn.toggled.connect(toggle_cb)
             else:
                 btn.setCheckable(False)
-                btn.pressed.connect(lambda b=bid: self._set_button(b, True))
-                btn.released.connect(lambda b=bid: self._set_button(b, False))
+                press_cb = (lambda b=bid: self._set_button(b, True))
+                release_cb = (lambda b=bid: self._set_button(b, False))
+                btn._nimbus_press_cb = press_cb
+                btn._nimbus_release_cb = release_cb
+                btn.pressed.connect(press_cb)
+                btn.released.connect(release_cb)
+
+    def _apply_scaled_sizes(self) -> None:
+        """Reapply scaled minimum sizes to all widgets after a zoom change."""
+        try:
+            # Sticks
+            if hasattr(self, 'left_stick'):
+                self.left_stick.apply_scale()
+            if hasattr(self, 'right_stick'):
+                self.right_stick.apply_scale()
+            # Sliders
+            if hasattr(self, 'throttle'):
+                self.throttle.apply_scale()
+                # Keep throttle custom width constraints
+                self.throttle.setMinimumWidth(self.config.get_scaled_int(54))
+                self.throttle.setMaximumWidth(self.config.get_scaled_int(72))
+                # Keep throttle 15% shorter than joysticks
+                max_throttle_height = int(self.config.get_scaled_int(280) * 0.85)
+                self.throttle.setMaximumHeight(max_throttle_height)
+                self.throttle.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+            if hasattr(self, 'rudder'):
+                self.rudder.apply_scale()
+                # Fixed sizing for grid layout
+                self.rudder.setMinimumWidth(self.config.get_scaled_int(200))
+                self.rudder.setMaximumWidth(self.config.get_scaled_int(300))
+                self.rudder.setMinimumHeight(self.config.get_scaled_int(32))
+                self.rudder.setMaximumHeight(self.config.get_scaled_int(44))
+            # Number buttons
+            if hasattr(self, 'number_buttons'):
+                size = self.config.get_scaled_int(26)  # Slightly smaller
+                for btn in self.number_buttons.values():
+                    btn.setMinimumSize(size, size)
+            # ARM/RTH widths (smaller)
+            if hasattr(self, 'arm_btn'):
+                self.arm_btn.setMinimumWidth(self.config.get_scaled_int(80))
+            if hasattr(self, 'rth_btn'):
+                self.rth_btn.setMinimumWidth(self.config.get_scaled_int(80))
+        except Exception:
+            pass
 
 
 def main() -> int:

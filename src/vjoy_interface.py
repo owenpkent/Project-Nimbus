@@ -64,8 +64,8 @@ class VJoyInterface:
             'rz': 0.5
         }
         
-        # Failsafe system
-        self.failsafe_enabled = config.get("safety.enable_failsafe", True)
+        # Failsafe system (disabled per user preference)
+        self.failsafe_enabled = False
         self.failsafe_timeout = config.get("safety.failsafe_timeout", 5.0)
         self.last_command_time = time.time()
         self.failsafe_active = False
@@ -77,9 +77,7 @@ class VJoyInterface:
         # Initialize VJoy connection
         self._initialize_vjoy()
         
-        # Start failsafe monitor
-        if self.failsafe_enabled:
-            self._start_failsafe_monitor()
+        # Failsafe monitoring disabled
     
     def _initialize_vjoy(self) -> None:
         """Initialize VJoy device connection."""
@@ -272,9 +270,7 @@ class VJoyInterface:
         # Update command timestamp for failsafe
         self.last_command_time = current_time
         
-        # Skip update if failsafe is active
-        if self.failsafe_active:
-            return False
+        # Ignore failsafe gating
         
         try:
             # Convert normalized value to VJoy range

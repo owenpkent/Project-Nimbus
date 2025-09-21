@@ -57,9 +57,9 @@ class ControllerConfig:
                 }
             },
             "ui": {
-                "window_width": 1024,
-                "window_height": 850,
-                "joystick_size": 300,
+                "window_width": 614,
+                "window_height": 311,
+                "joystick_size": 280,
                 "background_color": (20, 20, 20),
                 "joystick_bg_color": (80, 20, 20),
                 "joystick_fg_color": (255, 50, 50),
@@ -266,14 +266,16 @@ class ControllerConfig:
         scale_factor = max(0.5, min(2.0, scale_factor))
         self.set("ui.scale_factor", scale_factor)
         
-        # Update scaled window dimensions
-        base_width = 1024
-        base_height = 850
-        self.set("ui.window_width", int(base_width * scale_factor))
-        self.set("ui.window_height", int(base_height * scale_factor))
+        # Update scaled window dimensions using a custom compact resolution.
+        base_width = 614
+        base_height = 311
+        width = int(base_width * scale_factor)
+        height = int(base_height * scale_factor)
+        self.set("ui.window_width", width)
+        self.set("ui.window_height", height)
         
         # Update scaled joystick size
-        base_joystick_size = 300
+        base_joystick_size = 280
         self.set("ui.joystick_size", int(base_joystick_size * scale_factor))
         
         # Update scaled font size
