@@ -10,6 +10,8 @@ Item {
     property int startId: 1
     // How many buttons to render
     property int buttonCount: 4
+    // Track version so bindings re-evaluate when dialog saves
+    property int buttonsVersion: (typeof controller !== 'undefined' && controller) ? controller.buttonsVersion : 0
 
     // Base metrics
     readonly property real baseWidth: (typeof controller !== 'undefined' && controller) ? controller.scaled(160) : 160
@@ -38,11 +40,20 @@ Item {
             model: root.buttonCount
             delegate: Basic.Button {
                 readonly property int bid: startId + index
+                // Make sure binding depends on controller.buttonsVersion
+                readonly property int _dep: (typeof controller !== 'undefined' && controller) ? controller.buttonsVersion : 0
                 text: bid.toString()
                 Layout.preferredWidth: root.baseBtnW * root.scale
                 Layout.preferredHeight: root.baseBtnH * root.scale
                 // Toggle vs momentary behavior from config via bridge
-                checkable: controller ? controller.isButtonToggle(bid) : false
+                checkable: controller ? (root.buttonsVersion, controller.isButtonToggle(bid)) : false
+                onCheckableChanged: {
+                    // If switching to momentary while currently latched, clear it and release vJoy
+                    if (!checkable && checked) {
+                        checked = false
+                        if (controller) controller.setButton(bid, false)
+                    }
+                }
                 onToggled: if (checkable && controller) controller.setButton(bid, checked)
                 onPressed: if (!checkable && controller) controller.setButton(bid, true)
                 onReleased: if (!checkable && controller) controller.setButton(bid, false)

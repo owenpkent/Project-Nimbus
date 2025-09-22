@@ -17,38 +17,44 @@ ApplicationWindow {
     // Scale factor bound to Python bridge; default 1.0
     property real scaleFactor: controller ? controller.scaleFactor : 1.0
 
+    // Menus (safe dark mode for top bar only)
     menuBar: MenuBar {
+        background: Rectangle { color: "#2a2a2a" }
+        delegate: MenuBarItem {
+            id: control
+            implicitHeight: 30
+            contentItem: Label {
+                text: control.text
+                color: "white"
+                verticalAlignment: Text.AlignVCenter
+                horizontalAlignment: Text.AlignHCenter
+                leftPadding: 10
+                rightPadding: 10
+            }
+            background: Rectangle {
+                color: control.hovered ? "#3a3a3a" : "#2a2a2a"
+            }
+        }
+
         Menu {
+            id: fileMenu
             title: qsTr("File")
-            MenuItem { text: qsTr("Configure Axes"); onTriggered: controller && controller.openAxisMapping() }
-            MenuItem { text: qsTr("Joystick Settings..."); onTriggered: controller && controller.openJoystickSettings() }
-            MenuItem { text: qsTr("Button Settings..."); onTriggered: controller && controller.openButtonSettings() }
-            MenuItem { text: qsTr("Rudder Settings..."); onTriggered: controller && controller.openRudderSettings() }
+            MenuItem { text: qsTr("Configure Axes"); onTriggered: { fileMenu.close(); Qt.callLater(function(){ if (controller) controller.openAxisMapping(); }); } }
+            MenuItem { text: qsTr("Joystick Settings..."); onTriggered: { fileMenu.close(); Qt.callLater(function(){ if (controller) controller.openJoystickSettings(); }); } }
+            MenuItem { text: qsTr("Button Settings..."); onTriggered: { fileMenu.close(); Qt.callLater(function(){ if (controller) controller.openButtonSettings(); }); } }
+            MenuItem { text: qsTr("Rudder Settings..."); onTriggered: { fileMenu.close(); Qt.callLater(function(){ if (controller) controller.openRudderSettings(); }); } }
             MenuSeparator {}
             MenuItem { text: qsTr("Exit"); onTriggered: Qt.quit() }
         }
         Menu {
+            id: viewMenu
             title: qsTr("View")
-            Menu {
-                title: qsTr("Size")
-                Repeater {
-                    model: [0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0]
-                    delegate: MenuItem {
-                        readonly property real factor: modelData
-                        checkable: true
-                        checked: Math.abs(root.scaleFactor - factor) < 1e-6
-                        text: Math.round(factor * 100) + "%"
-                        onTriggered: controller && controller.setScaleFactor(factor)
-                    }
-                }
-            }
-            MenuSeparator {}
             MenuItem {
                 id: debugBordersItem
                 text: qsTr("Debug Borders")
                 checkable: true
                 checked: controller ? controller.debugBorders : false
-                onTriggered: if (controller) controller.debugBorders = checked
+                onTriggered: { viewMenu.close(); Qt.callLater(function(){ if (controller) controller.debugBorders = checked; }); }
             }
         }
     }
@@ -155,8 +161,17 @@ ApplicationWindow {
                     text: qsTr("ARM")
                     Layout.fillWidth: true
                     Layout.preferredWidth: controller ? controller.scaled(80) : 80
-                    onPressed: if (controller) controller.setButton(9, true)
-                    onReleased: if (controller) controller.setButton(9, false)
+                    // Toggle vs momentary behavior from config
+                    checkable: controller ? (controller.buttonsVersion, controller.isButtonToggle(9)) : false
+                    onCheckableChanged: {
+                        if (!checkable && checked) {
+                            checked = false
+                            if (controller) controller.setButton(9, false)
+                        }
+                    }
+                    onToggled: if (checkable && controller) controller.setButton(9, checked)
+                    onPressed: if (!checkable && controller) controller.setButton(9, true)
+                    onReleased: if (!checkable && controller) controller.setButton(9, false)
                     contentItem: Label {
                         text: parent.text
                         horizontalAlignment: Text.AlignHCenter
@@ -174,8 +189,17 @@ ApplicationWindow {
                     text: qsTr("RTH")
                     Layout.fillWidth: true
                     Layout.preferredWidth: controller ? controller.scaled(80) : 80
-                    onPressed: if (controller) controller.setButton(10, true)
-                    onReleased: if (controller) controller.setButton(10, false)
+                    // Toggle vs momentary behavior from config
+                    checkable: controller ? (controller.buttonsVersion, controller.isButtonToggle(10)) : false
+                    onCheckableChanged: {
+                        if (!checkable && checked) {
+                            checked = false
+                            if (controller) controller.setButton(10, false)
+                        }
+                    }
+                    onToggled: if (checkable && controller) controller.setButton(10, checked)
+                    onPressed: if (!checkable && controller) controller.setButton(10, true)
+                    onReleased: if (!checkable && controller) controller.setButton(10, false)
                     contentItem: Label {
                         text: parent.text
                         horizontalAlignment: Text.AlignHCenter

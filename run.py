@@ -122,7 +122,6 @@ def main():
 
     print("Starting application in virtual environment...")
     print("Launching Qt Quick (PySide6 QML): src.qt_qml_app")
-    print("Tip: Use View > Size to adjust scale; settings persist.")
     print()
 
     try:

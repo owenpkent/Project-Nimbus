@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import QObject, Slot, Signal, Property
+from PySide6.QtCore import QObject, Slot, Signal, Property, QTimer
 
 from .config import ControllerConfig
 from .vjoy_interface import VJoyInterface
@@ -18,6 +18,7 @@ class ControllerBridge(QObject):
     scaleFactorChanged = Signal(float)
     vjoyConnectionChanged = Signal(bool)
     debugBordersChanged = Signal(bool)
+    buttonsVersionChanged = Signal(int)
 
     def __init__(self, config: ControllerConfig, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -25,6 +26,19 @@ class ControllerBridge(QObject):
         self._vjoy = VJoyInterface(self._config)
         self._scale = float(self._config.get("ui.scale_factor", 1.0))
         self._debug_borders = bool(self._config.get("ui.debug_borders", False))
+        self._buttons_version = 0
+        # Axis smoothing state: per-axis current and target in [-1,1]
+        self._axis_state: dict[str, dict[str, float]] = {}
+        # Timer to apply smoothing at vJoy update rate
+        self._smooth_timer = QTimer(self)
+        try:
+            hz = int(self._config.get("vjoy.update_rate", 60))
+            hz = max(10, min(240, hz))
+            self._smooth_timer.setInterval(max(1, int(1000 / hz)))
+        except Exception:
+            self._smooth_timer.setInterval(16)
+        self._smooth_timer.timeout.connect(self._smoothing_tick)
+        self._smooth_timer.start()
         # Emit initial status
         self.vjoyConnectionChanged.emit(bool(self._vjoy.is_connected))
 
@@ -59,6 +73,12 @@ class ControllerBridge(QObject):
         self.debugBordersChanged.emit(self._debug_borders)
 
     debugBorders = Property(bool, _get_debug, _set_debug, notify=debugBordersChanged)
+
+    # ----- Buttons version property (to refresh QML toggle states) -----
+    def _get_buttons_version(self) -> int:
+        return int(self._buttons_version)
+
+    buttonsVersion = Property(int, _get_buttons_version, notify=buttonsVersionChanged)
 
     # ----- Slots callable from QML -----
     @Slot(str, float)
@@ -100,9 +120,9 @@ class ControllerBridge(QObject):
                 ax = str(self._config.get("axis_mapping.left_x", "x"))
                 ay = str(self._config.get("axis_mapping.left_y", "y"))
                 if ax != "none":
-                    self._vjoy.update_axis(ax, px)
+                    self._set_axis_target(ax, px)
                 if ay != "none":
-                    self._vjoy.update_axis(ay, py)
+                    self._set_axis_target(ay, py)
         except Exception:
             pass
 
@@ -115,9 +135,9 @@ class ControllerBridge(QObject):
                 ax = str(self._config.get("axis_mapping.right_x", "rx"))
                 ay = str(self._config.get("axis_mapping.right_y", "ry"))
                 if ax != "none":
-                    self._vjoy.update_axis(ax, px)
+                    self._set_axis_target(ax, px)
                 if ay != "none":
-                    self._vjoy.update_axis(ay, py)
+                    self._set_axis_target(ay, py)
         except Exception:
             pass
 
@@ -139,9 +159,50 @@ class ControllerBridge(QObject):
         try:
             axis = str(self._config.get("axis_mapping.rudder", "rz"))
             if self._vjoy.is_connected and axis != "none":
-                # Apply same sensitivity approach as joysticks on X
-                v = self._config.apply_sensitivity_curve(float(value), 'right', 'x')
-                self._vjoy.update_axis(axis, v)
+                # Apply Rudder Settings dialog curve
+                v = self._config.apply_rudder_sensitivity_curve(float(value))
+                self._set_axis_target(axis, v)
+        except Exception:
+            pass
+
+    # ----- Internal smoothing helpers -----
+    def _set_axis_target(self, axis: str, target: float) -> None:
+        try:
+            a = axis.lower()
+            t = max(-1.0, min(1.0, float(target)))
+            st = self._axis_state.get(a)
+            if st is None:
+                st = {"current": 0.0, "target": t}
+                self._axis_state[a] = st
+            else:
+                st["target"] = t
+            # If smoothing disabled, snap immediately
+            if not bool(self._config.get("safety.enable_smoothing", True)):
+                st["current"] = t
+                if self._vjoy.is_connected:
+                    self._vjoy.update_axis(a, t)
+        except Exception:
+            pass
+
+    def _smoothing_tick(self) -> None:
+        try:
+            if not self._vjoy.is_connected:
+                return
+            alpha = float(self._config.get("safety.smoothing_factor", 0.1))
+            alpha = max(0.01, min(1.0, alpha))
+            enabled = bool(self._config.get("safety.enable_smoothing", True))
+            for a, st in list(self._axis_state.items()):
+                cur = float(st.get("current", 0.0))
+                tgt = float(st.get("target", 0.0))
+                if enabled:
+                    nxt = cur + (tgt - cur) * alpha
+                    # snap if close to avoid lingering
+                    if abs(nxt - tgt) < 1e-3:
+                        nxt = tgt
+                else:
+                    nxt = tgt
+                st["current"] = nxt
+                self._vjoy.update_axis(a, nxt)
         except Exception:
             pass
 
@@ -167,8 +228,9 @@ class ControllerBridge(QObject):
         try:
             dlg = ButtonSettingsQt(self._config, None)
             if dlg.exec():
-                # Could emit a signal if QML needs to refresh button modes
-                pass
+                # Bump version so QML re-evaluates bindings that depend on button modes
+                self._buttons_version += 1
+                self.buttonsVersionChanged.emit(self._buttons_version)
         except Exception:
             pass
 
