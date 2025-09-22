@@ -101,9 +101,8 @@ This makes it especially valuable for:
    ```
    
    Notes:
-   - The Qt Quick (QML) UI is the default.
-   - Use View > Size to quickly set scaling (50%–200%).
-   - Settings (including scale) persist via `controller_config.json`.
+   - The Qt Quick (QML) UI is the default and primary UI.
+   - Settings persist via `controller_config.json`.
 
 ## Usage
 
@@ -217,10 +216,8 @@ Project-Nimbus/
 ├── src/
 │   ├── qt_qml_app.py              # QML application entry (QQmlApplicationEngine)
 │   ├── bridge.py                  # Python↔QML bridge (ControllerBridge)
-│   ├── axis_config_dialog.py      # Axis mapping dialog (Qt Widgets)
-│   ├── joystick_settings_dialog.py
-│   ├── button_settings_dialog.py
-│   └── rudder_settings_dialog.py
+│   ├── qt_dialogs.py              # Qt Widgets dialogs used by QML (Axis/Joystick/Rudder/Buttons)
+│   └── legacy/                    # Legacy pygame-based UI/dialogs retained for reference only
 ├── run.py                         # Launcher with dependency checks
 ├── requirements.txt               # Python dependencies
 ├── controller_config.json         # Persistent settings (auto-generated)
@@ -231,8 +228,7 @@ Project-Nimbus/
 ```
 
 ### Recent Changes (QML Migration)
-- Migrated UI to Qt Quick (PySide6 QML) with a dark theme.
-- Added View > Size menu (50%–200%) and persistent scaling via configuration.
+- Migrated UI to Qt Quick (PySide6 QML) with a dark top menu bar.
 - Standardized sizes using `controller.scaled(...)` for consistent, DPI-aware scaling.
 - Joystick, throttle, rudder input behavior:
   - No jump-to-click; dragging is relative.
@@ -241,17 +237,7 @@ Project-Nimbus/
 - NumberPad and ARM/RTH buttons use dark styling with blue pressed/checked state.
 - Optional debug borders for layout tuning.
 
-### Key Classes
-
-#### `VirtualControllerApp`
-Main application class handling the GUI, event processing, and coordination between components.
-
-#### `VirtualJoystick`
-Handles individual joystick logic including:
-- Mouse input processing
-- Position calculations
-- Visual rendering
-- Lock/unlock functionality
+### Key Components
 
 #### `VJoyInterface`
 Manages communication with the VJoy driver including:
@@ -329,6 +315,9 @@ Press F1 to enable debug mode, which displays:
 - **Custom Sensitivity Curves**: Easy to add new curve types
 - **Additional Input Methods**: Framework supports multiple input types
 - **Plugin Architecture**: Modular design allows for easy extensions
+
+## Legacy
+Legacy pygame-based UI and dialogs are kept under `src/legacy/` for reference only and are not used by the QML app launched via `run.py`.
 
 ## License
 
