@@ -316,8 +316,25 @@ Press F1 to enable debug mode, which displays:
 - **Additional Input Methods**: Framework supports multiple input types
 - **Plugin Architecture**: Modular design allows for easy extensions
 
+## Alternative Shell
+
+An optional Qt Widgets-based shell is available for experimentation:
+
+- `src/qt_main.py`: Alternative interface implemented with Qt Widgets. It is not used by the default launcher and is not maintained at feature parity with the QML UI. The primary UI remains the Qt Quick (QML) app launched via `run.py`.
+
 ## Legacy
 Legacy pygame-based UI and dialogs are kept under `src/legacy/` for reference only and are not used by the QML app launched via `run.py`.
+
+## Changelog (recent)
+
+- Menus: Safe dark top menu bar; native popups for reliability; menus close immediately on selection.
+- View menu: Removed legacy Size submenu and launcher tip; scaling persists via config utilities where applicable.
+- Axis mapping: Added defaults for Throttle=Z and Rudder=RZ so Configure Axes shows correct mappings by default.
+- Buttons: QML now reacts to Button Settings changes (new `controller.buttonsVersion`); buttons unlatch automatically when switching from toggle to momentary.
+- Curves: Runtime uses the same math as the Joystick/Rudder Settings dialogs (sensitivity, deadzone, extremity deadzone) for consistent feel with the previews.
+- Smoothing: Added QTimer-based interpolation of vJoy axes towards targets so sticks/rudder glide smoothly back to center on release.
+- Joystick UI: Thumb constrained to the circle using an effective radius; base circle layout fixed; Y-axis inverted per preference.
+- Cleanup: Moved pygame-based modules to `src/legacy/` and added deprecation headers.
 
 ## License
 
