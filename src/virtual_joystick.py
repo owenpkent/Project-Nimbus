@@ -116,8 +116,11 @@ class VirtualJoystick:
             delta_y = mouse_y - self.drag_start_y
             
             # Apply movement to initial position (with proper direction)
-            new_x = self.initial_x_pos + (delta_x / self.radius)
-            new_y = self.initial_y_pos + (delta_y / self.radius)  # Normal Y direction
+            # Use effective radius so the knob edge cannot cross the boundary circle
+            knob_radius = self.config.get_scaled_int(10)
+            effective_radius = max(1, self.radius - knob_radius)
+            new_x = self.initial_x_pos + (delta_x / effective_radius)
+            new_y = self.initial_y_pos + (delta_y / effective_radius)  # Normal Y direction
             
             # Clamp to joystick bounds
             distance = math.sqrt(new_x ** 2 + new_y ** 2)
@@ -235,8 +238,11 @@ class VirtualJoystick:
         Returns:
             Tuple of (x, y) pixel coordinates for drawing
         """
-        display_x = self.center_x + int(self.raw_x * self.radius)
-        display_y = self.center_y - int(self.raw_y * self.radius)  # Invert Y for display
+        # Place the knob center using the effective radius so its edge stays within the boundary
+        knob_radius = self.config.get_scaled_int(10)
+        effective_radius = max(0, self.radius - knob_radius)
+        display_x = self.center_x + int(self.raw_x * effective_radius)
+        display_y = self.center_y - int(self.raw_y * effective_radius)  # Invert Y for display
         return display_x, display_y
     
     def update(self) -> None:
@@ -269,8 +275,10 @@ class VirtualJoystick:
         
         # Draw center lines that move with the knob (clipped to circle)
         center_color = (50, 100, 200)
-        knob_x = self.center_x + int(self.x_pos * self.radius)
-        knob_y = self.center_y + int(self.y_pos * self.radius)
+        knob_radius = self.config.get_scaled_int(10)
+        effective_radius = max(0, self.radius - knob_radius)
+        knob_x = self.center_x + int(self.x_pos * effective_radius)
+        knob_y = self.center_y + int(self.y_pos * effective_radius)
         
         # Calculate intersection points with circle for horizontal line
         import math
@@ -296,11 +304,10 @@ class VirtualJoystick:
                             (knob_x, int(v_end_y)), 1)
         
         # Calculate knob position
-        knob_x = self.center_x + int(self.x_pos * self.radius)
-        knob_y = self.center_y + int(self.y_pos * self.radius)
+        knob_x = self.center_x + int(self.x_pos * effective_radius)
+        knob_y = self.center_y + int(self.y_pos * effective_radius)
         
         # Draw knob (circle)
-        knob_radius = 10
         knob_color = (100, 150, 255)
         pygame.draw.circle(surface, knob_color, (knob_x, knob_y), knob_radius)
         pygame.draw.circle(surface, (150, 200, 255), (knob_x, knob_y), knob_radius, 2)

@@ -78,7 +78,7 @@ ApplicationWindow {
                     // Force square size so base border stays a circle
                     width: Math.min(parent.width, parent.height)
                     height: width
-                    onMoved: function(x, y) { if (controller) controller.setLeftStick(x, y) }
+                    onMoved: function(x, y) { if (controller) controller.setLeftStick(x, -y) }
                 }
             }
 
@@ -208,7 +208,7 @@ ApplicationWindow {
                     anchors.margins: (controller && controller.debugBorders) ? controller.scaled(2) : 0
                     width: Math.min(parent.width, parent.height)
                     height: width
-                    onMoved: function(x, y) { if (controller) controller.setRightStick(x, y) }
+                    onMoved: function(x, y) { if (controller) controller.setRightStick(x, -y) }
                 }
             }
 

@@ -93,10 +93,15 @@ class JoystickWidget(QWidget):
 
     def mouseMoveEvent(self, event) -> None:
         if self._dragging and (event.buttons() & Qt.LeftButton):
-            # Compute delta from press and convert to normalized change relative to radius
-            r = max(1.0, min(self.width(), self.height()) / 2.0)
-            dx = (event.position().x() - self._drag_start_pos.x()) / r
-            dy = (event.position().y() - self._drag_start_pos.y()) / r
+            # Compute delta from press and convert to normalized change
+            # Use the same effective radius as painting so the handle cannot cross the boundary
+            pen_w = 2
+            handle_r = self.config.get_scaled_int(10)
+            pad = self.config.get_scaled_int(6) + pen_w + handle_r
+            base_r = max(1.0, min(self.width(), self.height()) / 2.0 - pad)
+            effective_r = max(1.0, base_r - handle_r)
+            dx = (event.position().x() - self._drag_start_pos.x()) / effective_r
+            dy = (event.position().y() - self._drag_start_pos.y()) / effective_r
             # Invert Y to keep up as +
             delta = QPointF(dx, -dy)
             new = QPointF(self._start_value.x() + delta.x(), self._start_value.y() + delta.y())
@@ -165,8 +170,9 @@ class JoystickWidget(QWidget):
         p.drawEllipse(QPointF(cx, cy), r, r)
 
         # Current handle position
-        hx = cx + self._value.x() * r
-        hy = cy - self._value.y() * r
+        effective_r = max(0.0, r - handle_r)
+        hx = cx + self._value.x() * effective_r
+        hy = cy - self._value.y() * effective_r
 
         # Crosshair centered at the handle position and clamped to the circle boundary
         p.setPen(QPen(QColor(50, 100, 200), 2))

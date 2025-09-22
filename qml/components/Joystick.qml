@@ -12,7 +12,11 @@ Item {
     implicitWidth: (typeof controller !== 'undefined' && controller) ? controller.scaled(220) : 220
     implicitHeight: implicitWidth
 
-    readonly property real radius: Math.min(width, height) * 0.45
+    readonly property real borderWidth: 2
+    // Maximize radius to the visible circle edge (centered circle)
+    readonly property real radius: Math.max(1, Math.min(width, height) / 2 - borderWidth / 2)
+    readonly property real thumbRadius: Math.min(width, height) * 0.18 * 0.5
+    readonly property real effectiveRadius: Math.max(1, radius - thumbRadius)
     readonly property real centerX: width / 2
     readonly property real centerY: height / 2
 
@@ -22,12 +26,16 @@ Item {
     property real _startXValue: 0
     property real _startYValue: 0
 
+    // Visible base circle (centered)
     Rectangle {
         id: base
-        anchors.fill: parent
-        radius: Math.min(width, height) / 2
+        width: root.radius * 2
+        height: width
+        anchors.centerIn: parent
+        radius: width / 2
         color: "#1e1e1e"
         border.color: "#3d3d3d"
+        border.width: root.borderWidth
     }
 
     // Thumb
@@ -38,8 +46,8 @@ Item {
         radius: width / 2
         color: "#2e6bd1"
         border.color: "#6aa3ff"
-        x: root.centerX + root.xValue * root.radius - width/2
-        y: root.centerY + root.yValue * root.radius - height/2
+        x: root.centerX + root.xValue * root.effectiveRadius - width/2
+        y: root.centerY + root.yValue * root.effectiveRadius - height/2
 
         // Smooth return-to-center animation (no inertia)
         Behavior on x { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
@@ -61,11 +69,15 @@ Item {
             var dx = mouse.x - root._pressX
             var dy = mouse.y - root._pressY
             // Convert pixel delta to normalized change
-            var nx = root._startXValue + (dx / root.radius)
-            var ny = root._startYValue + (dy / root.radius)
-            // Clamp to -1..1
-            nx = Math.max(-1, Math.min(1, nx))
-            ny = Math.max(-1, Math.min(1, ny))
+            var nx = root._startXValue + (dx / root.effectiveRadius)
+            var ny = root._startYValue + (dy / root.effectiveRadius)
+            // Clamp to unit circle (normalize if outside)
+            var mag2 = nx*nx + ny*ny
+            if (mag2 > 1.0) {
+                var mag = Math.sqrt(mag2)
+                nx /= mag
+                ny /= mag
+            }
             root.xValue = nx
             root.yValue = ny
             root.moved(root.xValue, root.yValue)
