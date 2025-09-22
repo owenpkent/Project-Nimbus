@@ -57,9 +57,9 @@ class ControllerConfig:
                 }
             },
             "ui": {
-                "window_width": 1024,
-                "window_height": 850,
-                "joystick_size": 300,
+                "window_width": 614,
+                "window_height": 311,
+                "joystick_size": 336,
                 "background_color": (20, 20, 20),
                 "joystick_bg_color": (80, 20, 20),
                 "joystick_fg_color": (255, 50, 50),
@@ -67,7 +67,8 @@ class ControllerConfig:
                 "button_hover_color": (100, 25, 25),
                 "text_color": (255, 255, 255),
                 "font_size": 14,
-                "scale_factor": 1.0
+                "scale_factor": 1.0,
+                "debug_borders": False
             },
             "vjoy": {
                 "device_id": 1,
@@ -78,7 +79,9 @@ class ControllerConfig:
                 "left_x": "x",      # Left joystick X -> VJoy X axis
                 "left_y": "y",      # Left joystick Y -> VJoy Y axis
                 "right_x": "rx",    # Right joystick X -> VJoy RX axis
-                "right_y": "ry"     # Right joystick Y -> VJoy RY axis
+                "right_y": "ry",    # Right joystick Y -> VJoy RY axis
+                "throttle": "z",    # Throttle -> VJoy Z axis (default)
+                "rudder": "rz"      # Rudder -> VJoy RZ axis (default)
             },
             "safety": {
                 "enable_failsafe": True,
@@ -177,6 +180,13 @@ class ControllerConfig:
         Returns:
             Processed value with sensitivity curve applied
         """
+        # If the new dialog-based settings exist, prefer them for QML path so
+        # runtime behavior matches the Joystick Settings preview exactly.
+        try:
+            if self.get("joystick_settings.sensitivity", None) is not None:
+                return self.apply_joystick_dialog_curve(value)
+        except Exception:
+            pass
         if abs(value) < self.get(f"joysticks.{joystick}.dead_zone", 0.1):
             return 0.0
         
@@ -216,6 +226,90 @@ class ControllerConfig:
         processed_value = min(processed_value, max_range)
         
         return sign * processed_value
+
+    def apply_joystick_dialog_curve(self, value: float) -> float:
+        """
+        Apply curve using percent-based settings from the Joystick Settings dialog.
+
+        Matches the math in qt_dialogs._CurvePreview._calc_output so the live
+        preview and runtime feel identical.
+        """
+        try:
+            sensitivity_pct = float(self.get("joystick_settings.sensitivity", 50.0))
+            deadzone_pct = float(self.get("joystick_settings.deadzone", 10.0))
+            extremity_pct = float(self.get("joystick_settings.extremity_deadzone", 5.0))
+
+            # Convert percentages to the preview's internal units
+            deadzone = (deadzone_pct / 100.0) * 0.25
+            extremity_deadzone = extremity_pct / 100.0
+            sensitivity = sensitivity_pct / 100.0
+
+            v = float(value)
+            if abs(v) < deadzone:
+                return 0.0
+
+            sign = 1.0 if v >= 0 else -1.0
+            abs_input = abs(v)
+            available_range = 1.0 - deadzone
+            normalized_input = (abs_input - deadzone) / max(1e-6, available_range)
+
+            if abs(sensitivity - 0.5) < 1e-9:
+                output = normalized_input
+            elif sensitivity < 0.5:
+                power = 1.0 + (0.5 - sensitivity) * 6.0
+                output = float(np.power(normalized_input, power))
+            else:
+                power = 1.0 - (sensitivity - 0.5) * 1.8
+                output = float(np.power(normalized_input, max(0.1, power)))
+
+            if extremity_deadzone > 0:
+                max_output = 1.0 - extremity_deadzone
+                output *= max_output
+
+            return output * sign
+        except Exception:
+            # Fallback to identity on any error
+            return float(value)
+
+    def apply_rudder_sensitivity_curve(self, value: float) -> float:
+        """
+        Apply curve using percent-based settings from the Rudder Settings dialog.
+        Mirrors apply_joystick_dialog_curve but reads rudder_settings.* keys.
+        """
+        try:
+            sensitivity_pct = float(self.get("rudder_settings.sensitivity", 50.0))
+            deadzone_pct = float(self.get("rudder_settings.deadzone", 10.0))
+            extremity_pct = float(self.get("rudder_settings.extremity_deadzone", 5.0))
+
+            deadzone = (deadzone_pct / 100.0) * 0.25
+            extremity_deadzone = extremity_pct / 100.0
+            sensitivity = sensitivity_pct / 100.0
+
+            v = float(value)
+            if abs(v) < deadzone:
+                return 0.0
+
+            sign = 1.0 if v >= 0 else -1.0
+            abs_input = abs(v)
+            available_range = 1.0 - deadzone
+            normalized_input = (abs_input - deadzone) / max(1e-6, available_range)
+
+            if abs(sensitivity - 0.5) < 1e-9:
+                output = normalized_input
+            elif sensitivity < 0.5:
+                power = 1.0 + (0.5 - sensitivity) * 6.0
+                output = float(np.power(normalized_input, power))
+            else:
+                power = 1.0 - (sensitivity - 0.5) * 1.8
+                output = float(np.power(normalized_input, max(0.1, power)))
+
+            if extremity_deadzone > 0:
+                max_output = 1.0 - extremity_deadzone
+                output *= max_output
+
+            return output * sign
+        except Exception:
+            return float(value)
     
     def get_vjoy_value(self, normalized_value: float) -> int:
         """
@@ -266,14 +360,16 @@ class ControllerConfig:
         scale_factor = max(0.5, min(2.0, scale_factor))
         self.set("ui.scale_factor", scale_factor)
         
-        # Update scaled window dimensions
-        base_width = 1024
-        base_height = 850
-        self.set("ui.window_width", int(base_width * scale_factor))
-        self.set("ui.window_height", int(base_height * scale_factor))
+        # Update scaled window dimensions using a custom compact resolution.
+        base_width = 614
+        base_height = 311
+        width = int(base_width * scale_factor)
+        height = int(base_height * scale_factor)
+        self.set("ui.window_width", width)
+        self.set("ui.window_height", height)
         
-        # Update scaled joystick size
-        base_joystick_size = 300
+        # Update scaled joystick size (20% larger base)
+        base_joystick_size = 336
         self.set("ui.joystick_size", int(base_joystick_size * scale_factor))
         
         # Update scaled font size

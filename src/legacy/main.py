@@ -3,6 +3,11 @@ Main application for the virtual controller interface.
 Provides a dual joystick layout with lock/unlock and reset functionality.
 """
 
+# DEPRECATED: Legacy pygame-based UI retained for reference only.
+# This module is not used by the current Qt Quick (QML) application launched via
+# `run.py` -> `src.qt_qml_app`. Dialogs have Qt equivalents in `src/qt_dialogs.py`.
+# This file may be removed in a future release.
+
 import pygame
 import sys
 import time

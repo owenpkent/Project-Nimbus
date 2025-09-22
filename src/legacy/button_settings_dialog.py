@@ -3,6 +3,10 @@ Button Settings Dialog for Project Nimbus.
 Allows users to configure button modes (momentary vs toggle) for each button.
 """
 
+# DEPRECATED: Legacy pygame dialog retained for reference only.
+# Not used by the Qt Quick (QML) UI. The active dialog implementations live in
+# `src/qt_dialogs.py` and are opened from QML via `ControllerBridge`.
+
 import pygame
 from typing import Dict, Optional, List, Tuple
 from .config import ControllerConfig

@@ -47,11 +47,11 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 - **JSON Configuration**: Persistent settings stored in `controller_config.json`
 
 ### User Interface
-- **Pygame-based GUI**: Responsive interface with real-time visual feedback
-- **Menu System**: File menu with configuration dialogs and settings
+- **Qt Quick (PySide6 QML) UI**: Dark-themed, resizable interface with smooth animations
+- **Menu System**: File menu for configuration dialogs; View menu with Size presets and Debug Borders
+- **Proportional Scaling**: All UI elements scale via `controller.scaled()` and View > Size presets; preference persists
 - **Status Display**: VJoy connection status and real-time value monitoring
-- **Debug Mode**: Comprehensive system information (F1 to toggle)
-- **Keyboard Shortcuts**: ESC to exit, SPACE to center, F1 for debug info
+- **Keyboard Shortcuts**: ESC to exit, SPACE to center
 
 ## Accessibility
 
@@ -95,17 +95,14 @@ This makes it especially valuable for:
    - Configure VJoy device #1 with at least 6 axes (X, Y, Z, RX, RY, RZ)
    - Ensure VJoy device is enabled and available
 
-4. **Run the application**:
+4. **Run the application (Qt Quick UI)**:
    ```bash
    python run.py
    ```
    
-   Or alternatively:
-   ```bash
-   python main.py
-   ```
-   
-   **Note**: `run.py` is recommended as it handles virtual environment setup and dependency management automatically.
+   Notes:
+   - The Qt Quick (QML) UI is the default and primary UI.
+   - Settings persist via `controller_config.json`.
 
 ## Usage
 
@@ -210,39 +207,37 @@ The sensitivity curve system provides precise control over input response:
 ### Project Structure
 ```
 Project-Nimbus/
+├── qml/                           # QML UI (Qt Quick)
+│   ├── Main.qml                   # Main window, menus, and layout
+│   └── components/                # Reusable QML controls
+│       ├── Joystick.qml
+│       ├── SliderVertical.qml     # Throttle (vertical)
+│       └── SliderHorizontal.qml   # Rudder (horizontal)
 ├── src/
-│   ├── main.py                    # Main application entry point
-│   ├── config.py                  # Configuration management system
-│   ├── virtual_joystick.py        # Virtual joystick implementation
-│   ├── vjoy_interface.py          # VJoy driver interface wrapper
-│   ├── axis_config_dialog.py      # Axis mapping configuration dialog
-│   ├── joystick_settings_dialog.py # Joystick sensitivity and curve settings
-│   ├── button_settings_dialog.py  # Button toggle/momentary configuration
-│   └── rudder_settings_dialog.py  # Rudder sensitivity and curve settings
-├── screenshots/               # Application screenshots
-│   ├── main-interface.png     # Main interface screenshot
-│   ├── joystick-settings.png  # Joystick settings dialog
-│   └── button-settings.png    # Button settings dialog
-├── tests/                     # Test files
-├── run.py                     # Launcher script with auto-setup
-├── requirements.txt           # Python dependencies
-├── run.bat                    # Windows batch launcher
-├── logo.png                   # Project logo
-├── controller_config.json     # Configuration file (auto-generated)
-└── README.md                  # This documentation
+│   ├── qt_qml_app.py              # QML application entry (QQmlApplicationEngine)
+│   ├── bridge.py                  # Python↔QML bridge (ControllerBridge)
+│   ├── qt_dialogs.py              # Qt Widgets dialogs used by QML (Axis/Joystick/Rudder/Buttons)
+│   └── legacy/                    # Legacy pygame-based UI/dialogs retained for reference only
+├── run.py                         # Launcher with dependency checks
+├── requirements.txt               # Python dependencies
+├── controller_config.json         # Persistent settings (auto-generated)
+├── logo.png
+├── screenshots/
+├── tests/
+└── README.md
 ```
 
-### Key Classes
+### Recent Changes (QML Migration)
+- Migrated UI to Qt Quick (PySide6 QML) with a dark top menu bar.
+- Standardized sizes using `controller.scaled(...)` for consistent, DPI-aware scaling.
+- Joystick, throttle, rudder input behavior:
+  - No jump-to-click; dragging is relative.
+  - Joystick and rudder smoothly return to center on release; throttle does not auto-center.
+- Throttle widened; rudder taller; refined animations.
+- NumberPad and ARM/RTH buttons use dark styling with blue pressed/checked state.
+- Optional debug borders for layout tuning.
 
-#### `VirtualControllerApp`
-Main application class handling the GUI, event processing, and coordination between components.
-
-#### `VirtualJoystick`
-Handles individual joystick logic including:
-- Mouse input processing
-- Position calculations
-- Visual rendering
-- Lock/unlock functionality
+### Key Components
 
 #### `VJoyInterface`
 Manages communication with the VJoy driver including:
@@ -320,6 +315,26 @@ Press F1 to enable debug mode, which displays:
 - **Custom Sensitivity Curves**: Easy to add new curve types
 - **Additional Input Methods**: Framework supports multiple input types
 - **Plugin Architecture**: Modular design allows for easy extensions
+
+## Alternative Shell
+
+An optional Qt Widgets-based shell is available for experimentation:
+
+- `src/qt_main.py`: Alternative interface implemented with Qt Widgets. It is not used by the default launcher and is not maintained at feature parity with the QML UI. The primary UI remains the Qt Quick (QML) app launched via `run.py`.
+
+## Legacy
+Legacy pygame-based UI and dialogs are kept under `src/legacy/` for reference only and are not used by the QML app launched via `run.py`.
+
+## Changelog (recent)
+
+- Menus: Safe dark top menu bar; native popups for reliability; menus close immediately on selection.
+- View menu: Removed legacy Size submenu and launcher tip; scaling persists via config utilities where applicable.
+- Axis mapping: Added defaults for Throttle=Z and Rudder=RZ so Configure Axes shows correct mappings by default.
+- Buttons: QML now reacts to Button Settings changes (new `controller.buttonsVersion`); buttons unlatch automatically when switching from toggle to momentary.
+- Curves: Runtime uses the same math as the Joystick/Rudder Settings dialogs (sensitivity, deadzone, extremity deadzone) for consistent feel with the previews.
+- Smoothing: Added QTimer-based interpolation of vJoy axes towards targets so sticks/rudder glide smoothly back to center on release.
+- Joystick UI: Thumb constrained to the circle using an effective radius; base circle layout fixed; Y-axis inverted per preference.
+- Cleanup: Moved pygame-based modules to `src/legacy/` and added deprecation headers.
 
 ## License
 

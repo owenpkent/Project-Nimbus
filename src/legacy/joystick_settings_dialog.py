@@ -3,6 +3,10 @@ Joystick Settings Dialog for Project Nimbus.
 Allows users to configure sensitivity, deadzone, and extremity deadzone with XY graph visualization.
 """
 
+# DEPRECATED: Legacy pygame dialog retained for reference only.
+# Not used by the Qt Quick (QML) application. The active settings dialogs live
+# in `src/qt_dialogs.py` and are opened from QML via `ControllerBridge`.
+
 import pygame
 import math
 from typing import Dict, Optional, List, Tuple
