@@ -1,2 +1,17 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Python files should use LF
+*.py text eol=lf
+
+# Batch files must use CRLF
+*.bat text eol=crlf
+
+# Markdown files use LF
+*.md text eol=lf
+
+# Spec files use LF
+*.spec text eol=lf
+
+# QML files use LF
+*.qml text eol=lf
