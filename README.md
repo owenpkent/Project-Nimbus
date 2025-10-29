@@ -72,16 +72,33 @@ This makes it especially valuable for:
 
 ## Installation
 
-### Prerequisites
+### Option 1: Standalone Executable (Recommended for End Users)
+
+1. **Download the latest release**:
+   - Go to [Releases](https://github.com/owenpkent/Project-Nimbus/releases)
+   - Download `Project-Nimbus.exe` from the latest release
+
+2. **Install VJoy Driver**:
+   - Download and install from [VJoy Official Site](http://vjoystick.sourceforge.net/)
+   - Configure VJoy device #1 with at least 6 axes (X, Y, Z, RX, RY, RZ)
+   - Ensure VJoy device is enabled and available
+
+3. **Run the application**:
+   - Double-click `Project-Nimbus.exe`
+   - No Python installation required!
+
+### Option 2: Run from Source (For Developers)
+
+#### Prerequisites
 1. **Python 3.8+** - Required for the application
 2. **VJoy Driver** - Download and install from [VJoy Official Site](http://vjoystick.sourceforge.net/)
 3. **Git** (optional) - For cloning the repository
 
-### Setup Instructions
+#### Setup Instructions
 
 1. **Clone or download the project**:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/owenpkent/Project-Nimbus.git
    cd Project-Nimbus
    ```
 
@@ -103,6 +120,10 @@ This makes it especially valuable for:
    Notes:
    - The Qt Quick (QML) UI is the default and primary UI.
    - Settings persist via `controller_config.json`.
+
+### Building Your Own Executable
+
+See [build_tools/BUILD_EXECUTABLE.md](build_tools/BUILD_EXECUTABLE.md) for detailed instructions on creating a standalone Windows executable using PyInstaller.
 
 ## Usage
 
@@ -217,7 +238,15 @@ Project-Nimbus/
 │   ├── qt_qml_app.py              # QML application entry (QQmlApplicationEngine)
 │   ├── bridge.py                  # Python↔QML bridge (ControllerBridge)
 │   ├── qt_dialogs.py              # Qt Widgets dialogs used by QML (Axis/Joystick/Rudder/Buttons)
+│   ├── vjoy_interface.py          # VJoy driver interface
+│   ├── config.py                  # Configuration management
 │   └── legacy/                    # Legacy pygame-based UI/dialogs retained for reference only
+├── build_tools/                   # Executable build system
+│   ├── build_exe.bat              # Automated build script
+│   ├── Project-Nimbus.spec        # PyInstaller configuration
+│   ├── launcher.py                # GUI-friendly entry point for executable
+│   ├── BUILD_EXECUTABLE.md        # Build documentation
+│   └── README.md                  # Build tools documentation
 ├── run.py                         # Launcher with dependency checks
 ├── requirements.txt               # Python dependencies
 ├── controller_config.json         # Persistent settings (auto-generated)
