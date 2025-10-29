@@ -10,7 +10,7 @@ from pathlib import Path
 block_cipher = None
 
 # Define the main script (use launcher.py for executable, not run.py)
-main_script = 'launcher.py'
+main_script = 'build_tools/launcher.py'
 
 # Collect all QML files and resources
 qml_datas = []

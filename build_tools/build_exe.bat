@@ -7,8 +7,8 @@ echo Project Nimbus - Executable Builder
 echo ================================================
 echo.
 
-REM Change to script directory
-cd /d "%~dp0"
+REM Change to project root directory (parent of build_tools)
+cd /d "%~dp0\.."
 
 REM Check if virtual environment exists
 if not exist "venv\Scripts\python.exe" (
@@ -49,7 +49,7 @@ echo.
 echo Building executable with PyInstaller...
 echo This may take a few minutes...
 echo.
-pyinstaller --clean --noconfirm Project-Nimbus.spec
+pyinstaller --clean --noconfirm build_tools\Project-Nimbus.spec
 
 if errorlevel 1 (
     echo.

@@ -72,3 +72,11 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec~
+
+# Pip output files
+*.0.0
