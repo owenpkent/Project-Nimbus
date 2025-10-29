@@ -1,10 +1,10 @@
-# Auto detect text files and perform LF normalization
+# Set default behavior to automatically normalize line endings
 * text=auto
 
 # Python files should use LF
 *.py text eol=lf
 
-# Batch files must use CRLF
+# Batch files must use CRLF (Windows requirement)
 *.bat text eol=crlf
 
 # Markdown files use LF
@@ -15,3 +15,10 @@
 
 # QML files use LF
 *.qml text eol=lf
+
+# JSON files use LF
+*.json text eol=lf
+
+# Gitignore and gitattributes use LF
+.gitignore text eol=lf
+.gitattributes text eol=lf
