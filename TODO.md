@@ -5,6 +5,10 @@
   - [ ] Reduce button size for numbered buttons (1-9, etc.)
   - [ ] Add clear labels to each button
 
+- [ ] **Rudder control improvements**
+  - [ ] Make rudder control wider for better usability
+  - [ ] Add option to disable center return (sticky mode)
+
 - [ ] **Profile system**
   - [ ] Implement profile switching (e.g., Microsoft Flight Simulator 24, General Gaming/Xbox, Driving Games)
   - [ ] Allow users to create, save, and load custom profiles
