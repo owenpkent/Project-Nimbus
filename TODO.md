@@ -29,6 +29,15 @@
   - [ ] Add uninstall support and cleanup of config/log files as appropriate
   - [ ] Test installer on clean Windows VM
 
+- [ ] **vJoy Detection & Installation**
+  - [ ] Add vJoy detection on application startup
+  - [ ] Display warning/error if vJoy is not installed
+  - [ ] Bundle vJoy installer with Project Nimbus installer
+  - [ ] Implement automatic vJoy installation during setup (with user consent)
+  - [ ] Verify vJoy device configuration after installation
+  - [ ] Provide clear instructions if manual vJoy setup is required
+
 - [ ] **Portable build (no installer)**
   - [ ] Produce a zipped portable build for advanced users
   - [ ] Document how to launch (Qt vs legacy Pygame, command-line flags)
+  - [ ] Include vJoy detection and installation instructions for portable users

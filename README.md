@@ -69,23 +69,22 @@ This makes it especially valuable for:
 - **Adaptive Gaming**: Play joystick-only games using a mouse-first input scheme with customizable sensitivity
 - **Research and Prototyping**: Explore new input models for robotics, simulation, or accessibility tools with comprehensive configuration options
 - **Assistive Technology**: Provide joystick functionality for users who cannot operate traditional controllers
-- **Borderless Gaming**: Use Project Nimbus in borderless mode for seamless full-screen gaming with simultaneous mouse and joystick control
+- **Borderless Gaming**: Use Project Nimbus alongside borderless gaming for seamless full-screen gaming with simultaneous mouse and joystick control
 
-## Borderless Gaming
+## Borderless Gaming Integration
 
-Project Nimbus supports **borderless gaming mode**, which removes window decorations and allows the application to run fullscreen while maintaining access to your desktop. This is ideal for gaming scenarios where you need:
+Project Nimbus works seamlessly in conjunction with **borderless gaming mode**. When your game runs in borderless fullscreen, you can position Project Nimbus alongside it to achieve:
 
 - **Simultaneous Mouse & Joystick Control**: Use your mouse for in-game interactions (menus, cursor control) while your joysticks handle flight/movement controls
-- **Seamless Multitasking**: Alt-Tab between your game and other applications without losing focus or input control
+- **Seamless Multitasking**: Alt-Tab between your game and Project Nimbus without losing input control
 - **Flight Simulator Integration**: Perfect for Microsoft Flight Simulator 24 and similar titles where you need mouse control for cockpit interactions and joysticks for flight control
 - **Driving Game Support**: Control steering with joysticks while using the mouse for menus, map navigation, or other UI elements
-- **Full Screen Real Estate**: Maximize your gaming experience without window borders or title bars
 
 **How to Use**:
-- Enable borderless mode through the View menu (feature coming soon)
-- The application will stretch to fill your screen while remaining on top
-- All controls remain fully functional with full mouse freedom
-- Switch between applications using Alt+Tab without interrupting input
+- Launch your game in borderless fullscreen mode
+- Run Project Nimbus as a separate window
+- Position the windows side-by-side or use Alt+Tab to switch between them
+- All controls remain fully functional with full mouse freedom across both windows
 
 ## Installation
 
