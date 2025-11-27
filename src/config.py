@@ -5,8 +5,14 @@ Handles sensitivity curves, dead zones, and other controller parameters.
 
 import json
 import os
-from typing import Dict, Any, Tuple
+import shutil
+import sys
+from pathlib import Path
+from typing import Dict, Any, Tuple, List, Optional
 import numpy as np
+
+# App name for user data directory
+APP_NAME = "ProjectNimbus"
 
 
 class ControllerConfig:
@@ -27,6 +33,67 @@ class ControllerConfig:
         self.config_file = config_file
         self.config = self._load_default_config()
         self.load_config()
+        
+        # Profile system - set up directories
+        self._bundled_profiles_dir = self._get_bundled_profiles_dir()
+        self._user_data_dir = self._get_user_data_dir()
+        self._user_profiles_dir = self._user_data_dir / "profiles"
+        
+        # Ensure user profiles directory exists and has default profiles
+        self._ensure_user_profiles()
+        
+        self._current_profile: Optional[str] = self.config.get("current_profile", "flight_simulator")
+    
+    @staticmethod
+    def _get_user_data_dir() -> Path:
+        """
+        Get the user data directory for storing profiles and settings.
+        
+        Returns:
+            Path to user data directory (e.g., %APPDATA%/ProjectNimbus on Windows)
+        """
+        if sys.platform == "win32":
+            base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+        elif sys.platform == "darwin":
+            base = Path.home() / "Library" / "Application Support"
+        else:
+            base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+        
+        return base / APP_NAME
+    
+    def _get_bundled_profiles_dir(self) -> Path:
+        """
+        Get the directory containing bundled default profiles.
+        
+        Handles both development mode and PyInstaller frozen mode.
+        
+        Returns:
+            Path to bundled profiles directory
+        """
+        if getattr(sys, 'frozen', False):
+            # Running as PyInstaller bundle
+            base_path = Path(sys._MEIPASS)
+        else:
+            # Running in development
+            base_path = Path(__file__).resolve().parent.parent
+        
+        return base_path / "profiles"
+    
+    def _ensure_user_profiles(self) -> None:
+        """
+        Ensure user profiles directory exists and contains default profiles.
+        
+        Copies bundled profiles to user directory if they don't exist.
+        """
+        # Create user profiles directory
+        self._user_profiles_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Copy bundled profiles if they don't exist in user directory
+        if self._bundled_profiles_dir.exists():
+            for profile_file in self._bundled_profiles_dir.glob("*.json"):
+                user_profile_path = self._user_profiles_dir / profile_file.name
+                if not user_profile_path.exists():
+                    shutil.copy2(profile_file, user_profile_path)
     
     def _load_default_config(self) -> Dict[str, Any]:
         """
@@ -419,3 +486,381 @@ class ControllerConfig:
             
         except Exception as e:
             return False, f"Configuration validation error: {str(e)}"
+
+    # -------------------------------------------------------------------------
+    # Profile System
+    # -------------------------------------------------------------------------
+
+    def get_available_profiles(self) -> List[Dict[str, str]]:
+        """
+        Get list of available profiles from the user profiles directory.
+        
+        Returns:
+            List of dicts with 'id', 'name', 'description', 'layout_type', 'is_builtin' keys
+        """
+        profiles = []
+        if not self._user_profiles_dir.exists():
+            return profiles
+        
+        # Get list of built-in profile IDs
+        builtin_ids = set()
+        if self._bundled_profiles_dir.exists():
+            builtin_ids = {f.stem for f in self._bundled_profiles_dir.glob("*.json")}
+        
+        for profile_file in self._user_profiles_dir.glob("*.json"):
+            try:
+                with open(profile_file, 'r') as f:
+                    data = json.load(f)
+                    profiles.append({
+                        "id": profile_file.stem,
+                        "name": data.get("name", profile_file.stem),
+                        "description": data.get("description", ""),
+                        "layout_type": data.get("layout_type", "flight_sim"),
+                        "is_builtin": profile_file.stem in builtin_ids
+                    })
+            except (json.JSONDecodeError, IOError):
+                continue
+        
+        return profiles
+
+    def get_current_profile(self) -> str:
+        """Get the current profile ID."""
+        return self._current_profile or "flight_simulator"
+
+    def get_current_profile_data(self) -> Optional[Dict[str, Any]]:
+        """Load and return the current profile's full data."""
+        return self.load_profile(self.get_current_profile())
+
+    def load_profile(self, profile_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load a profile by ID from user profiles directory.
+        
+        Args:
+            profile_id: Profile identifier (filename without .json)
+            
+        Returns:
+            Profile data dict or None if not found
+        """
+        profile_path = self._user_profiles_dir / f"{profile_id}.json"
+        if not profile_path.exists():
+            return None
+        
+        try:
+            with open(profile_path, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    def switch_profile(self, profile_id: str) -> bool:
+        """
+        Switch to a different profile.
+        
+        Args:
+            profile_id: Profile identifier to switch to
+            
+        Returns:
+            True if switch was successful, False otherwise
+        """
+        profile_data = self.load_profile(profile_id)
+        if profile_data is None:
+            return False
+        
+        # Update current profile
+        self._current_profile = profile_id
+        self.set("current_profile", profile_id)
+        
+        # Apply profile settings to config
+        self._apply_profile_settings(profile_data)
+        
+        # Save config
+        self.save_config()
+        return True
+
+    def _apply_profile_settings(self, profile_data: Dict[str, Any]) -> None:
+        """
+        Apply profile settings to the current configuration.
+        
+        Args:
+            profile_data: Profile data dictionary
+        """
+        # Apply axis mapping
+        if "axis_mapping" in profile_data:
+            for key, value in profile_data["axis_mapping"].items():
+                self.set(f"axis_mapping.{key}", value)
+        
+        # Apply button settings (preserve toggle_mode from profile)
+        if "buttons" in profile_data:
+            for btn_key, btn_data in profile_data["buttons"].items():
+                if isinstance(btn_data, dict):
+                    for setting_key, setting_value in btn_data.items():
+                        self.set(f"buttons.{btn_key}.{setting_key}", setting_value)
+        
+        # Apply joystick settings
+        if "joystick_settings" in profile_data:
+            for key, value in profile_data["joystick_settings"].items():
+                self.set(f"joystick_settings.{key}", value)
+        
+        # Apply rudder settings
+        if "rudder_settings" in profile_data:
+            for key, value in profile_data["rudder_settings"].items():
+                self.set(f"rudder_settings.{key}", value)
+
+    def get_button_label(self, button_id: int) -> str:
+        """
+        Get the label for a button based on current profile.
+        
+        Args:
+            button_id: Button number (1-based)
+            
+        Returns:
+            Button label string
+        """
+        profile_data = self.get_current_profile_data()
+        if profile_data and "buttons" in profile_data:
+            btn_key = f"button_{button_id}"
+            btn_data = profile_data["buttons"].get(btn_key, {})
+            if isinstance(btn_data, dict):
+                return btn_data.get("label", str(button_id))
+        return str(button_id)
+
+    def get_layout_type(self) -> str:
+        """Get the layout type of the current profile."""
+        profile_data = self.get_current_profile_data()
+        if profile_data:
+            return profile_data.get("layout_type", "flight_sim")
+        return "flight_sim"
+
+    def save_current_profile(self) -> bool:
+        """
+        Save current settings to the active profile.
+        
+        Updates the user's profile file with current joystick/rudder settings,
+        button configurations, and axis mappings.
+        
+        Returns:
+            True if save was successful, False otherwise
+        """
+        profile_id = self.get_current_profile()
+        profile_path = self._user_profiles_dir / f"{profile_id}.json"
+        
+        # Load existing profile data to preserve structure
+        profile_data = self.load_profile(profile_id)
+        if profile_data is None:
+            return False
+        
+        # Update with current settings
+        profile_data["joystick_settings"] = {
+            "sensitivity": self.get("joystick_settings.sensitivity", 35.0),
+            "deadzone": self.get("joystick_settings.deadzone", 0.0),
+            "extremity_deadzone": self.get("joystick_settings.extremity_deadzone", 38.0),
+        }
+        
+        profile_data["rudder_settings"] = {
+            "sensitivity": self.get("rudder_settings.sensitivity", 50.0),
+            "deadzone": self.get("rudder_settings.deadzone", 10.0),
+            "extremity_deadzone": self.get("rudder_settings.extremity_deadzone", 5.0),
+        }
+        
+        # Update button toggle modes
+        if "buttons" in profile_data:
+            for btn_key in profile_data["buttons"]:
+                toggle_mode = self.get(f"buttons.{btn_key}.toggle_mode", False)
+                if isinstance(profile_data["buttons"][btn_key], dict):
+                    profile_data["buttons"][btn_key]["toggle_mode"] = toggle_mode
+        
+        # Update axis mapping
+        if "axis_mapping" in profile_data:
+            for axis_key in profile_data["axis_mapping"]:
+                value = self.get(f"axis_mapping.{axis_key}")
+                if value is not None:
+                    profile_data["axis_mapping"][axis_key] = value
+        
+        # Save to file
+        try:
+            with open(profile_path, 'w') as f:
+                json.dump(profile_data, f, indent=4)
+            return True
+        except IOError:
+            return False
+
+    def reset_profile(self, profile_id: str) -> bool:
+        """
+        Reset a profile to its default (bundled) settings.
+        
+        Only works for built-in profiles that have a bundled version.
+        
+        Args:
+            profile_id: Profile identifier to reset
+            
+        Returns:
+            True if reset was successful, False otherwise
+        """
+        bundled_path = self._bundled_profiles_dir / f"{profile_id}.json"
+        user_path = self._user_profiles_dir / f"{profile_id}.json"
+        
+        if not bundled_path.exists():
+            return False  # Can't reset non-built-in profiles
+        
+        try:
+            shutil.copy2(bundled_path, user_path)
+            
+            # If this is the current profile, reload settings
+            if profile_id == self._current_profile:
+                profile_data = self.load_profile(profile_id)
+                if profile_data:
+                    self._apply_profile_settings(profile_data)
+                    self.save_config()
+            
+            return True
+        except IOError:
+            return False
+
+    def duplicate_profile(self, source_id: str, new_name: str) -> Optional[str]:
+        """
+        Create a copy of an existing profile with a new name.
+        
+        Args:
+            source_id: Profile ID to copy from
+            new_name: Display name for the new profile
+            
+        Returns:
+            New profile ID if successful, None otherwise
+        """
+        source_data = self.load_profile(source_id)
+        if source_data is None:
+            return None
+        
+        # Generate new ID from name
+        new_id = new_name.lower().replace(" ", "_")
+        new_id = "".join(c for c in new_id if c.isalnum() or c == "_")
+        
+        # Ensure unique ID
+        base_id = new_id
+        counter = 1
+        while (self._user_profiles_dir / f"{new_id}.json").exists():
+            new_id = f"{base_id}_{counter}"
+            counter += 1
+        
+        # Create new profile
+        new_data = source_data.copy()
+        new_data["name"] = new_name
+        new_data["description"] = f"Custom profile based on {source_data.get('name', source_id)}"
+        
+        new_path = self._user_profiles_dir / f"{new_id}.json"
+        try:
+            with open(new_path, 'w') as f:
+                json.dump(new_data, f, indent=4)
+            return new_id
+        except IOError:
+            return None
+
+    def create_profile_as(self, name: str, description: str = "") -> Optional[str]:
+        """
+        Create a new profile from current settings with a custom name and description.
+        
+        Args:
+            name: Display name for the new profile
+            description: Optional description for the profile
+            
+        Returns:
+            New profile ID if successful, None otherwise
+        """
+        # Start from current profile as template
+        current_data = self.get_current_profile_data()
+        if current_data is None:
+            current_data = {}
+        
+        # Generate new ID from name
+        new_id = name.lower().replace(" ", "_")
+        new_id = "".join(c for c in new_id if c.isalnum() or c == "_")
+        
+        if not new_id:
+            new_id = "custom_profile"
+        
+        # Ensure unique ID
+        base_id = new_id
+        counter = 1
+        while (self._user_profiles_dir / f"{new_id}.json").exists():
+            new_id = f"{base_id}_{counter}"
+            counter += 1
+        
+        # Build new profile data with current settings
+        new_data = {
+            "name": name,
+            "description": description if description else f"Custom profile created from {current_data.get('name', 'settings')}",
+            "layout_type": current_data.get("layout_type", "flight_sim"),
+            "axis_mapping": {},
+            "buttons": current_data.get("buttons", {}),
+            "joystick_settings": {
+                "sensitivity": self.get("joystick_settings.sensitivity", 35.0),
+                "deadzone": self.get("joystick_settings.deadzone", 0.0),
+                "extremity_deadzone": self.get("joystick_settings.extremity_deadzone", 38.0),
+            },
+            "rudder_settings": {
+                "sensitivity": self.get("rudder_settings.sensitivity", 50.0),
+                "deadzone": self.get("rudder_settings.deadzone", 10.0),
+                "extremity_deadzone": self.get("rudder_settings.extremity_deadzone", 5.0),
+            }
+        }
+        
+        # Copy axis mapping from config
+        for axis in ["left_x", "left_y", "right_x", "right_y", "throttle", "rudder"]:
+            value = self.get(f"axis_mapping.{axis}")
+            if value:
+                new_data["axis_mapping"][axis] = value
+        
+        # Update button toggle modes from current settings
+        if "buttons" in new_data:
+            for btn_key in new_data["buttons"]:
+                if isinstance(new_data["buttons"][btn_key], dict):
+                    toggle_mode = self.get(f"buttons.{btn_key}.toggle_mode", False)
+                    new_data["buttons"][btn_key]["toggle_mode"] = toggle_mode
+        
+        new_path = self._user_profiles_dir / f"{new_id}.json"
+        try:
+            with open(new_path, 'w') as f:
+                json.dump(new_data, f, indent=4)
+            return new_id
+        except IOError:
+            return None
+
+    def delete_profile(self, profile_id: str) -> bool:
+        """
+        Delete a user-created profile.
+        
+        Cannot delete built-in profiles.
+        
+        Args:
+            profile_id: Profile ID to delete
+            
+        Returns:
+            True if deleted, False if not allowed or failed
+        """
+        # Check if it's a built-in profile
+        bundled_path = self._bundled_profiles_dir / f"{profile_id}.json"
+        if bundled_path.exists():
+            return False  # Can't delete built-in profiles
+        
+        user_path = self._user_profiles_dir / f"{profile_id}.json"
+        if not user_path.exists():
+            return False
+        
+        try:
+            user_path.unlink()
+            
+            # If we deleted the current profile, switch to default
+            if profile_id == self._current_profile:
+                self.switch_profile("flight_simulator")
+            
+            return True
+        except IOError:
+            return False
+
+    def is_builtin_profile(self, profile_id: str) -> bool:
+        """Check if a profile is a built-in (bundled) profile."""
+        bundled_path = self._bundled_profiles_dir / f"{profile_id}.json"
+        return bundled_path.exists()
+
+    def get_user_profiles_path(self) -> str:
+        """Get the path to the user profiles directory."""
+        return str(self._user_profiles_dir)

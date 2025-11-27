@@ -46,6 +46,13 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 - **Auto-centering**: Configurable auto-center behavior for rudder control
 - **JSON Configuration**: Persistent settings stored in `controller_config.json`
 
+### Profile System
+- **Multiple Profiles**: Switch between different controller layouts (Flight Simulator, Xbox Controller, custom)
+- **Save Profile**: Save current sensitivity curves, deadzones, and button settings to active profile
+- **Save Profile As**: Create new profiles with custom names and descriptions
+- **Reset to Defaults**: Restore built-in profiles to original settings
+- **Portable Profiles**: JSON-based profiles stored in user data directory for easy backup
+
 ### User Interface
 - **Qt Quick (PySide6 QML) UI**: Dark-themed, resizable interface with smooth animations
 - **Menu System**: File menu for configuration dialogs; View menu with Size presets and Debug Borders
@@ -168,6 +175,48 @@ See [build_tools/BUILD_EXECUTABLE.md](build_tools/BUILD_EXECUTABLE.md) for detai
 - **VJoy Connection**: Shows VJoy driver connection status in real-time
 - **Real-time Values**: Current joystick positions and processed values
 - **Lock Status**: Visual indicators showing which axes are locked
+
+## Profiles
+
+Project Nimbus uses a profile system to save and manage different controller configurations. Each profile stores its own sensitivity curves, deadzones, button settings, and layout type.
+
+### Profile Storage Location
+
+Profiles are stored in your user data directory for easy access and backup:
+
+| Platform | Location |
+|----------|----------|
+| **Windows** | `%APPDATA%\ProjectNimbus\profiles\` |
+| **macOS** | `~/Library/Application Support/ProjectNimbus/profiles/` |
+| **Linux** | `~/.local/share/ProjectNimbus/profiles/` |
+
+**Quick Access**: Use **File > Open Profiles Folder...** to open the profiles directory in your file explorer.
+
+### Profile Files
+
+Each profile is a JSON file containing:
+- **name**: Display name shown in the menu
+- **description**: Optional description of the profile
+- **layout_type**: UI layout (`flight_sim` or `xbox`)
+- **joystick_settings**: Sensitivity, deadzone, extremity deadzone
+- **rudder_settings**: Rudder-specific sensitivity settings
+- **buttons**: Button labels and toggle modes
+- **axis_mapping**: VJoy axis assignments
+
+### Backing Up Profiles
+
+To back up your profiles:
+1. Open **File > Open Profiles Folder...**
+2. Copy the `.json` files to your backup location
+3. To restore, copy them back to the profiles folder
+
+### Built-in Profiles
+
+Two profiles are included by default:
+- **Flight Simulator**: Optimized for flight sims with throttle/rudder layout
+- **Xbox Controller**: Standard Xbox gamepad layout with ABXY buttons and triggers
+
+Built-in profiles can be customized and saved, then reset to defaults at any time using **File > Reset Profile to Defaults**.
 
 ## Configuration
 

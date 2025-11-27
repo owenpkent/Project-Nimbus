@@ -1,0 +1,35 @@
+{
+    "name": "Flight Simulator",
+    "description": "Layout optimized for Microsoft Flight Simulator with throttle, rudder, and flight controls",
+    "layout_type": "flight_sim",
+    "axis_mapping": {
+        "left_x": "x",
+        "left_y": "y",
+        "right_x": "rx",
+        "right_y": "ry",
+        "throttle": "z",
+        "rudder": "rz"
+    },
+    "buttons": {
+        "button_1": {"label": "1", "toggle_mode": false},
+        "button_2": {"label": "2", "toggle_mode": false},
+        "button_3": {"label": "3", "toggle_mode": false},
+        "button_4": {"label": "4", "toggle_mode": false},
+        "button_5": {"label": "5", "toggle_mode": false},
+        "button_6": {"label": "6", "toggle_mode": false},
+        "button_7": {"label": "7", "toggle_mode": false},
+        "button_8": {"label": "8", "toggle_mode": false},
+        "button_9": {"label": "ARM", "toggle_mode": false},
+        "button_10": {"label": "RTH", "toggle_mode": false}
+    },
+    "joystick_settings": {
+        "sensitivity": 35.0,
+        "deadzone": 0.0,
+        "extremity_deadzone": 38.0
+    },
+    "rudder_settings": {
+        "sensitivity": 50.0,
+        "deadzone": 10.0,
+        "extremity_deadzone": 5.0
+    }
+}

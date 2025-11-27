@@ -19,6 +19,10 @@ class ControllerBridge(QObject):
     vjoyConnectionChanged = Signal(bool)
     debugBordersChanged = Signal(bool)
     buttonsVersionChanged = Signal(int)
+    profileChanged = Signal(str)  # Emits new profile ID
+    layoutTypeChanged = Signal(str)  # Emits new layout type
+    profilesListChanged = Signal()  # Emits when profile list changes (add/delete)
+    profileSaved = Signal(bool)  # Emits save result
 
     def __init__(self, config: ControllerConfig, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -254,3 +258,100 @@ class ControllerBridge(QObject):
     @Slot(result=bool)
     def isVJoyConnected(self) -> bool:  # noqa: N802
         return bool(self._vjoy.is_connected)
+
+    # ----- Profile system -----
+    @Slot(result=str)
+    def getCurrentProfile(self) -> str:  # noqa: N802
+        """Get the current profile ID."""
+        return self._config.get_current_profile()
+
+    @Slot(result=str)
+    def getLayoutType(self) -> str:  # noqa: N802
+        """Get the layout type of the current profile."""
+        return self._config.get_layout_type()
+
+    @Slot(result="QVariantList")
+    def getAvailableProfiles(self) -> list:  # noqa: N802
+        """Get list of available profiles for QML menu."""
+        return self._config.get_available_profiles()
+
+    @Slot(str, result=bool)
+    def switchProfile(self, profile_id: str) -> bool:  # noqa: N802
+        """Switch to a different profile."""
+        success = self._config.switch_profile(profile_id)
+        if success:
+            self.profileChanged.emit(profile_id)
+            self.layoutTypeChanged.emit(self._config.get_layout_type())
+            # Bump buttons version so QML refreshes button labels/modes
+            self._buttons_version += 1
+            self.buttonsVersionChanged.emit(self._buttons_version)
+        return success
+
+    @Slot(int, result=str)
+    def getButtonLabel(self, button_id: int) -> str:  # noqa: N802
+        """Get the label for a button based on current profile."""
+        return self._config.get_button_label(button_id)
+
+    @Slot(result=bool)
+    def saveCurrentProfile(self) -> bool:  # noqa: N802
+        """Save current settings to the active profile."""
+        success = self._config.save_current_profile()
+        self.profileSaved.emit(success)
+        return success
+
+    @Slot(str, result=bool)
+    def resetProfile(self, profile_id: str) -> bool:  # noqa: N802
+        """Reset a profile to its default settings."""
+        success = self._config.reset_profile(profile_id)
+        if success and profile_id == self._config.get_current_profile():
+            # Refresh UI if we reset the current profile
+            self._buttons_version += 1
+            self.buttonsVersionChanged.emit(self._buttons_version)
+        return success
+
+    @Slot(str, str, result=str)
+    def duplicateProfile(self, source_id: str, new_name: str) -> str:  # noqa: N802
+        """Duplicate a profile with a new name. Returns new profile ID or empty string."""
+        new_id = self._config.duplicate_profile(source_id, new_name)
+        if new_id:
+            self.profilesListChanged.emit()
+        return new_id if new_id else ""
+
+    @Slot(str, str, result=str)
+    def createProfileAs(self, name: str, description: str) -> str:  # noqa: N802
+        """Create a new profile from current settings with given name and description."""
+        new_id = self._config.create_profile_as(name, description)
+        if new_id:
+            self.profilesListChanged.emit()
+        return new_id if new_id else ""
+
+    @Slot(str, result=bool)
+    def deleteProfile(self, profile_id: str) -> bool:  # noqa: N802
+        """Delete a user-created profile."""
+        success = self._config.delete_profile(profile_id)
+        if success:
+            self.profilesListChanged.emit()
+        return success
+
+    @Slot(str, result=bool)
+    def isBuiltinProfile(self, profile_id: str) -> bool:  # noqa: N802
+        """Check if a profile is a built-in profile."""
+        return self._config.is_builtin_profile(profile_id)
+
+    @Slot(result=str)
+    def getUserProfilesPath(self) -> str:  # noqa: N802
+        """Get the path to the user profiles directory."""
+        return self._config.get_user_profiles_path()
+
+    @Slot()
+    def openProfilesFolder(self) -> None:  # noqa: N802
+        """Open the user profiles folder in the system file explorer."""
+        import subprocess
+        import sys
+        path = self._config.get_user_profiles_path()
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", path])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])

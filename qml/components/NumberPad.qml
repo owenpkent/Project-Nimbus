@@ -42,7 +42,8 @@ Item {
                 readonly property int bid: startId + index
                 // Make sure binding depends on controller.buttonsVersion
                 readonly property int _dep: (typeof controller !== 'undefined' && controller) ? controller.buttonsVersion : 0
-                text: bid.toString()
+                // Use profile-based label if available
+                text: (typeof controller !== 'undefined' && controller) ? controller.getButtonLabel(bid) : bid.toString()
                 Layout.preferredWidth: root.baseBtnW * root.scale
                 Layout.preferredHeight: root.baseBtnH * root.scale
                 // Toggle vs momentary behavior from config via bridge
