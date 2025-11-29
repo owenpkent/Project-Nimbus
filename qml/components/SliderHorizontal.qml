@@ -6,6 +6,8 @@ Item {
     property real scaleFactor: 1.0
     // -1..1 output (left=-1, right=1)
     property real value: 0
+    // When true, slider does not return to center on release
+    property bool lockCenter: false
 
     implicitWidth: (typeof controller !== 'undefined' && controller) ? controller.scaled(200) : 200
     // Twice as tall
@@ -56,8 +58,10 @@ Item {
             root.value = Math.max(-1, Math.min(1, v))
         }
         onReleased: {
-            // Smooth return to center when released
-            root.value = 0
+            // Smooth return to center when released (unless locked)
+            if (!root.lockCenter) {
+                root.value = 0
+            }
         }
     }
 }

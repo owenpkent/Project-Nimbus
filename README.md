@@ -444,6 +444,7 @@ Legacy pygame-based UI and dialogs are kept under `src/legacy/` for reference on
 - **Curves**: Runtime uses the same math as the Joystick/Rudder Settings dialogs for consistent feel with previews
 - **Smoothing**: QTimer-based interpolation of vJoy axes towards targets so sticks/rudder glide smoothly back to center on release
 - **Joystick UI**: Thumb constrained to the circle using an effective radius; base circle layout fixed; Y-axis inverted per preference
+- **Flight Sim Improvements**: Responsive button sizing that scales with window height; wider rudder slider with optional center-lock toggle button
 
 ## License
 

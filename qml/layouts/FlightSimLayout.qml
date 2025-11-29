@@ -87,7 +87,7 @@ Item {
             Rectangle {
                 id: rudderWrap
                 Layout.fillWidth: true
-                Layout.preferredHeight: rudder.implicitHeight
+                Layout.preferredHeight: controller ? controller.scaled(60) : 60
                 color: "transparent"
                 border.color: "#ec0"; border.width: (controller && controller.debugBorders) ? 1 : 0
                 Comp.SliderHorizontal {
@@ -96,7 +96,39 @@ Item {
                     anchors.margins: (controller && controller.debugBorders) ? controller.scaled(2) : 0
                     scaleFactor: root.scaleFactor
                     value: 0
+                    lockCenter: rudderLockBtn.checked
                     onValueChanged: if (controller) controller.setRudder(value)
+                }
+            }
+            
+            // Rudder Lock button
+            Basic.Button {
+                id: rudderLockBtn
+                text: checked ? "🔒 Rudder Locked" : "🔓 Rudder Lock"
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.maxButtonHeight * 0.28
+                Layout.maximumHeight: controller ? controller.scaled(36) : 36
+                checkable: true
+                checked: false
+                onCheckedChanged: {
+                    // If unlocking, return rudder to center
+                    if (!checked && rudder.value !== 0) {
+                        rudder.value = 0
+                        if (controller) controller.setRudder(0)
+                    }
+                }
+                contentItem: Label {
+                    text: parent.text
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    font.pixelSize: controller ? controller.scaled(11) : 11
+                    color: parent.checked ? "white" : "#ccc"
+                }
+                background: Rectangle {
+                    radius: controller ? controller.scaled(4) : 4
+                    color: parent.checked ? "#c44" : "#2a2a2a"
+                    border.color: parent.checked ? "#f66" : "#444"
+                    border.width: 1
                 }
             }
 
