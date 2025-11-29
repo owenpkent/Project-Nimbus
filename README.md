@@ -4,11 +4,18 @@
 
 # Project Nimbus
 
-Project Nimbus is a Python-based virtual controller interface that transforms mouse input into virtual joystick commands via the vJoy driver. It provides a comprehensive dual-joystick layout with throttle, rudder controls, and configurable button mapping.
+Project Nimbus is a Python-based virtual controller interface that transforms mouse input into virtual joystick commands via the vJoy driver. It provides multiple controller layouts including a comprehensive dual-joystick Flight Simulator layout, Xbox-style gamepad layout, and an accessibility-focused Adaptive Platform layout.
 
 It is designed with accessibility in mind, offering a practical solution for individuals with mobility limitations who may not be able to use traditional physical controllers. By providing a mouse-first input model, it enables users to interact with systems that expect joystick input.
 
-At the same time, Project Nimbus is versatile enough for anyone interested in alternative control schemes. Whether for adaptive gaming or connecting to Mission Planner for UAV and rover control, Nimbus makes joystick input more flexible and inclusive.
+At the same time, Project Nimbus is versatile enough for anyone interested in alternative control schemes. Whether for adaptive gaming, connecting to Mission Planner for UAV and rover control, or playing games via Steam Input, Nimbus makes joystick input more flexible and inclusive.
+
+## Adaptive Platform Profile
+
+<div align="center">
+  <img src="screenshots/adaptive-platform-layout.png" alt="Adaptive Platform Layout" width="800"/>
+  <p><em>Adaptive Platform 1 profile with accessibility-focused design: larger buttons, Greek symbols (α, Ω, β), and prominent L3/R3 stick click buttons</em></p>
+</div>
 
 ## Screenshots
 
@@ -30,12 +37,13 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 ## Features
 
 ### Core Functionality
+- **Multiple Controller Layouts**: Flight Simulator (dual joysticks + throttle/rudder), Xbox (gamepad), and Adaptive Platform (accessibility-focused)
 - **Dual Virtual Joysticks**: Left and right joystick controls with independent axis mapping
 - **Throttle & Rudder Controls**: Dedicated vertical throttle slider and horizontal rudder slider
-- **10-Button Support**: Configurable joystick buttons (8 numbered buttons + ARM/RTH) with VJoy integration
+- **Button Support**: Configurable buttons (A, B, X, Y, LB, RB, LT, RT, L3, R3, D-Pad, View, Menu, Guide) with VJoy integration
 - **Real-time Control**: Low-latency input processing with 60 FPS update rate
-- **Emergency Systems**: ARM and RTH (Return to Home) buttons with configurable behavior
 - **VJoy Integration**: Direct communication with vJoy driver for seamless compatibility
+- **Steam Input Support**: Works with Steam Input for XInput-compatible games
 
 ### Advanced Configuration
 - **Axis Mapping Dialog**: Configure which VJoy axes each control maps to
@@ -47,11 +55,12 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 - **JSON Configuration**: Persistent settings stored in `controller_config.json`
 
 ### Profile System
-- **Multiple Profiles**: Switch between different controller layouts (Flight Simulator, Xbox Controller, custom)
+- **Multiple Profiles**: Switch between different controller layouts (Flight Simulator, Xbox Controller, Adaptive Platform, custom)
 - **Save Profile**: Save current sensitivity curves, deadzones, and button settings to active profile
 - **Save Profile As**: Create new profiles with custom names and descriptions
 - **Reset to Defaults**: Restore built-in profiles to original settings
 - **Portable Profiles**: JSON-based profiles stored in user data directory for easy backup
+- **Layout Types**: Each profile specifies its layout type (flight_sim, xbox, or adaptive)
 
 ### User Interface
 - **Qt Quick (PySide6 QML) UI**: Dark-themed, resizable interface with smooth animations
@@ -197,7 +206,7 @@ Profiles are stored in your user data directory for easy access and backup:
 Each profile is a JSON file containing:
 - **name**: Display name shown in the menu
 - **description**: Optional description of the profile
-- **layout_type**: UI layout (`flight_sim` or `xbox`)
+- **layout_type**: UI layout (`flight_sim`, `xbox`, or `adaptive`)
 - **joystick_settings**: Sensitivity, deadzone, extremity deadzone
 - **rudder_settings**: Rudder-specific sensitivity settings
 - **buttons**: Button labels and toggle modes
@@ -212,9 +221,10 @@ To back up your profiles:
 
 ### Built-in Profiles
 
-Two profiles are included by default:
+Three profiles are included by default:
 - **Flight Simulator**: Optimized for flight sims with throttle/rudder layout
 - **Xbox Controller**: Standard Xbox gamepad layout with ABXY buttons and triggers
+- **Adaptive Platform 1**: Accessibility-focused layout with larger buttons, Greek symbols (α, Ω, β), and prominent L3/R3 stick click buttons
 
 Built-in profiles can be customized and saved, then reset to defaults at any time using **File > Reset Profile to Defaults**.
 
@@ -421,14 +431,19 @@ Legacy pygame-based UI and dialogs are kept under `src/legacy/` for reference on
 
 ## Changelog (recent)
 
-- Menus: Safe dark top menu bar; native popups for reliability; menus close immediately on selection.
-- View menu: Removed legacy Size submenu and launcher tip; scaling persists via config utilities where applicable.
-- Axis mapping: Added defaults for Throttle=Z and Rudder=RZ so Configure Axes shows correct mappings by default.
-- Buttons: QML now reacts to Button Settings changes (new `controller.buttonsVersion`); buttons unlatch automatically when switching from toggle to momentary.
-- Curves: Runtime uses the same math as the Joystick/Rudder Settings dialogs (sensitivity, deadzone, extremity deadzone) for consistent feel with the previews.
-- Smoothing: Added QTimer-based interpolation of vJoy axes towards targets so sticks/rudder glide smoothly back to center on release.
-- Joystick UI: Thumb constrained to the circle using an effective radius; base circle layout fixed; Y-axis inverted per preference.
-- Cleanup: Moved pygame-based modules to `src/legacy/` and added deprecation headers.
+### v2.0 - Adaptive Platform & Steam Input Support
+- **New Adaptive Platform Profile**: Accessibility-focused layout with larger buttons, Greek symbols (α, Ω, β), and prominent L3/R3 stick click buttons
+- **Steam Input Integration**: vJoy now works with Steam Input for XInput-compatible games like No Man's Sky
+- **Dynamic Layout Switching**: Profiles now support multiple layout types (flight_sim, xbox, adaptive) that dynamically load the appropriate QML layout
+- **Improved Profile System**: Profiles stored in user data directory with automatic copying from bundled defaults
+- **Button Enhancements**: Full Xbox controller button support (A, B, X, Y, LB, RB, LT, RT, L3, R3, D-Pad, View, Menu, Guide)
+- **Menus**: Safe dark top menu bar; native popups for reliability; menus close immediately on selection
+- **View menu**: Debug Borders toggle for UI layout tuning
+- **Axis mapping**: Defaults for Throttle=Z and Rudder=RZ so Configure Axes shows correct mappings
+- **Buttons**: QML now reacts to Button Settings changes (new `controller.buttonsVersion`); buttons unlatch automatically when switching from toggle to momentary
+- **Curves**: Runtime uses the same math as the Joystick/Rudder Settings dialogs for consistent feel with previews
+- **Smoothing**: QTimer-based interpolation of vJoy axes towards targets so sticks/rudder glide smoothly back to center on release
+- **Joystick UI**: Thumb constrained to the circle using an effective radius; base circle layout fixed; Y-axis inverted per preference
 
 ## License
 

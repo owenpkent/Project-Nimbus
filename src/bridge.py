@@ -8,6 +8,13 @@ from .config import ControllerConfig
 from .vjoy_interface import VJoyInterface
 from .qt_dialogs import AxisMappingQt, JoystickSettingsQt, ButtonSettingsQt, RudderSettingsQt
 
+# Try to import ViGEm for Xbox controller emulation (preferred for modern games)
+try:
+    from .vigem_interface import ViGEmInterface, VIGEM_AVAILABLE
+except ImportError:
+    VIGEM_AVAILABLE = False
+    ViGEmInterface = None
+
 
 class ControllerBridge(QObject):
     """
@@ -27,7 +34,16 @@ class ControllerBridge(QObject):
     def __init__(self, config: ControllerConfig, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self._config = config
-        self._vjoy = VJoyInterface(self._config)
+        
+        # Determine which controller interface to use based on profile layout type
+        # ViGEm (Xbox emulation) is preferred for xbox/adaptive profiles as it works with XInput games
+        # vJoy is used for flight_sim profiles or as fallback
+        self._use_vigem = False
+        self._vigem: Optional[ViGEmInterface] = None
+        self._vjoy: Optional[VJoyInterface] = None
+        
+        self._init_controller_interface()
+        
         self._scale = float(self._config.get("ui.scale_factor", 1.0))
         self._debug_borders = bool(self._config.get("ui.debug_borders", False))
         self._buttons_version = 0
@@ -44,7 +60,46 @@ class ControllerBridge(QObject):
         self._smooth_timer.timeout.connect(self._smoothing_tick)
         self._smooth_timer.start()
         # Emit initial status
-        self.vjoyConnectionChanged.emit(bool(self._vjoy.is_connected))
+        self.vjoyConnectionChanged.emit(self._is_controller_connected())
+    
+    def _init_controller_interface(self) -> None:
+        """Initialize the appropriate controller interface based on profile type."""
+        layout_type = self._config.get_layout_type()
+        use_vigem_config = self._config.get("controller.prefer_vigem", True)
+        
+        # Use ViGEm for Xbox/Adaptive profiles if available (works with XInput games like No Man's Sky)
+        if layout_type in ("xbox", "adaptive") and VIGEM_AVAILABLE and use_vigem_config:
+            print(f"Profile '{layout_type}' detected - using ViGEm Xbox controller emulation")
+            print("This provides XInput compatibility for games like No Man's Sky")
+            if self._vigem is None:
+                self._vigem = ViGEmInterface(self._config)
+            self._use_vigem = True
+            # Also init vJoy as fallback
+            if self._vjoy is None:
+                self._vjoy = VJoyInterface(self._config)
+        else:
+            # Use vJoy for flight sim profiles or if ViGEm unavailable
+            if layout_type in ("xbox", "adaptive") and not VIGEM_AVAILABLE:
+                print(f"Warning: ViGEm not available for {layout_type} profile")
+                print("Install with: pip install vgamepad")
+                print("Falling back to vJoy (may not work with XInput-only games)")
+            if self._vjoy is None:
+                self._vjoy = VJoyInterface(self._config)
+            self._use_vigem = False
+    
+    def _is_controller_connected(self) -> bool:
+        """Check if the active controller interface is connected."""
+        if self._use_vigem and self._vigem:
+            return self._vigem.is_connected
+        elif self._vjoy:
+            return self._vjoy.is_connected
+        return False
+    
+    def _get_active_interface(self):
+        """Get the currently active controller interface."""
+        if self._use_vigem and self._vigem:
+            return self._vigem
+        return self._vjoy
 
     # ----- Scale factor property -----
     def _get_scale(self) -> float:
@@ -91,14 +146,18 @@ class ControllerBridge(QObject):
         Set an axis value coming from QML (-1.0 .. 1.0 recommended).
         """
         try:
-            self._vjoy.update_axis(axis.lower(), float(value))
+            iface = self._get_active_interface()
+            if iface:
+                iface.update_axis(axis.lower(), float(value))
         except Exception:
             pass
 
     @Slot(int, bool)
     def setButton(self, button_id: int, pressed: bool) -> None:  # noqa: N802
         try:
-            self._vjoy.set_button(int(button_id), bool(pressed))
+            iface = self._get_active_interface()
+            if iface:
+                iface.set_button(int(button_id), bool(pressed))
         except Exception:
             pass
 
@@ -120,13 +179,17 @@ class ControllerBridge(QObject):
         try:
             px = self._config.apply_sensitivity_curve(float(x), 'left', 'x')
             py = self._config.apply_sensitivity_curve(float(y), 'left', 'y')
-            if self._vjoy.is_connected:
-                ax = str(self._config.get("axis_mapping.left_x", "x"))
-                ay = str(self._config.get("axis_mapping.left_y", "y"))
-                if ax != "none":
-                    self._set_axis_target(ax, px)
-                if ay != "none":
-                    self._set_axis_target(ay, py)
+            if self._is_controller_connected():
+                # For ViGEm, use direct stick control
+                if self._use_vigem and self._vigem:
+                    self._vigem.set_left_stick(px, py)
+                else:
+                    ax = str(self._config.get("axis_mapping.left_x", "x"))
+                    ay = str(self._config.get("axis_mapping.left_y", "y"))
+                    if ax != "none":
+                        self._set_axis_target(ax, px)
+                    if ay != "none":
+                        self._set_axis_target(ay, py)
         except Exception:
             pass
 
@@ -135,37 +198,51 @@ class ControllerBridge(QObject):
         try:
             px = self._config.apply_sensitivity_curve(float(x), 'right', 'x')
             py = self._config.apply_sensitivity_curve(float(y), 'right', 'y')
-            if self._vjoy.is_connected:
-                ax = str(self._config.get("axis_mapping.right_x", "rx"))
-                ay = str(self._config.get("axis_mapping.right_y", "ry"))
-                if ax != "none":
-                    self._set_axis_target(ax, px)
-                if ay != "none":
-                    self._set_axis_target(ay, py)
+            if self._is_controller_connected():
+                # For ViGEm, use direct stick control
+                if self._use_vigem and self._vigem:
+                    self._vigem.set_right_stick(px, py)
+                else:
+                    ax = str(self._config.get("axis_mapping.right_x", "rx"))
+                    ay = str(self._config.get("axis_mapping.right_y", "ry"))
+                    if ax != "none":
+                        self._set_axis_target(ax, px)
+                    if ay != "none":
+                        self._set_axis_target(ay, py)
         except Exception:
             pass
 
     @Slot(float)
     def setThrottle(self, value: float) -> None:  # noqa: N802
         try:
-            axis = str(self._config.get("axis_mapping.throttle", "z"))
-            if self._vjoy.is_connected and axis != "none":
-                # Expect QML to send 0..1; convert to -1..1
+            if self._is_controller_connected():
                 v = float(value)
                 v = max(0.0, min(1.0, v))
-                normalized = v * 2.0 - 1.0
-                self._vjoy.update_axis(axis, normalized)
+                # For ViGEm, use left trigger
+                if self._use_vigem and self._vigem:
+                    self._vigem.set_left_trigger(v)
+                else:
+                    axis = str(self._config.get("axis_mapping.throttle", "z"))
+                    if axis != "none":
+                        normalized = v * 2.0 - 1.0
+                        self._vjoy.update_axis(axis, normalized)
         except Exception:
             pass
 
     @Slot(float)
     def setRudder(self, value: float) -> None:  # noqa: N802
         try:
-            axis = str(self._config.get("axis_mapping.rudder", "rz"))
-            if self._vjoy.is_connected and axis != "none":
+            if self._is_controller_connected():
                 # Apply Rudder Settings dialog curve
                 v = self._config.apply_rudder_sensitivity_curve(float(value))
-                self._set_axis_target(axis, v)
+                # For ViGEm, use right trigger (convert from -1..1 to 0..1)
+                if self._use_vigem and self._vigem:
+                    trigger_val = (v + 1.0) / 2.0
+                    self._vigem.set_right_trigger(trigger_val)
+                else:
+                    axis = str(self._config.get("axis_mapping.rudder", "rz"))
+                    if axis != "none":
+                        self._set_axis_target(axis, v)
         except Exception:
             pass
 
@@ -190,7 +267,10 @@ class ControllerBridge(QObject):
 
     def _smoothing_tick(self) -> None:
         try:
-            if not self._vjoy.is_connected:
+            # Skip smoothing for ViGEm (it handles its own updates)
+            if self._use_vigem:
+                return
+            if not self._vjoy or not self._vjoy.is_connected:
                 return
             alpha = float(self._config.get("safety.smoothing_factor", 0.1))
             alpha = max(0.01, min(1.0, alpha))
@@ -257,7 +337,14 @@ class ControllerBridge(QObject):
     # ----- Expose some status -----
     @Slot(result=bool)
     def isVJoyConnected(self) -> bool:  # noqa: N802
-        return bool(self._vjoy.is_connected)
+        return self._is_controller_connected()
+    
+    @Slot(result=str)
+    def getControllerType(self) -> str:  # noqa: N802
+        """Get the type of controller interface being used."""
+        if self._use_vigem:
+            return "Xbox 360 (ViGEm)"
+        return "vJoy (DirectInput)"
 
     # ----- Profile system -----
     @Slot(result=str)

@@ -1,0 +1,211 @@
+{
+    "name": "Adaptive Platform 1",
+    "description": "Accessibility-first controller profile inspired by Xbox Adaptive Controller and Celtic Magic GCM. Supports dynamic joystick mode switching for users with limited mobility.",
+    "layout_type": "adaptive",
+    "accessibility_features": {
+        "mode_switching_enabled": true,
+        "shift_button": "button_5",
+        "mode_switch_method": "shift_plus_stick_direction",
+        "visual_mode_indicator": true,
+        "audio_feedback": true,
+        "hold_time_ms": 500
+    },
+    "joystick_modes": {
+        "north": {
+            "N1": {
+                "name": "Menu Buttons",
+                "description": "Back and Start buttons",
+                "mapping": {"up": "button_7", "down": "button_8", "left": "button_7", "right": "button_8"}
+            },
+            "N2": {
+                "name": "Empty",
+                "description": "Reserved for custom mapping",
+                "mapping": {}
+            },
+            "N3": {
+                "name": "Shoulder Buttons",
+                "description": "LB and RB buttons",
+                "mapping": {"up": "button_5", "down": "button_6", "left": "button_5", "right": "button_6"}
+            },
+            "N4": {
+                "name": "Menu RetroPie",
+                "description": "RetroPie menu navigation",
+                "mapping": {"up": "button_7", "down": "button_8", "left": "button_7", "right": "button_8"}
+            },
+            "N5": {
+                "name": "Empty",
+                "description": "Reserved for custom mapping",
+                "mapping": {}
+            },
+            "N6": {
+                "name": "Triggers",
+                "description": "Left and Right triggers with slot selection",
+                "mapping": {"axis": "triggers", "slot_select": true}
+            }
+        },
+        "east": {
+            "E1": {
+                "name": "Right Stick",
+                "description": "Standard right analog stick",
+                "mapping": {"axis_x": "rx", "axis_y": "ry"}
+            },
+            "E2": {
+                "name": "ABXY Buttons",
+                "description": "Face buttons mapped to stick directions",
+                "mapping": {"up": "button_4", "down": "button_1", "left": "button_3", "right": "button_2"}
+            },
+            "E3": {
+                "name": "LT/RT + Right Stick",
+                "description": "Triggers combined with right stick button",
+                "mapping": {"axis": "triggers", "button": "button_10"}
+            },
+            "E4": {
+                "name": "RETRO Auto-Fire",
+                "description": "A button with auto-fire capability",
+                "mapping": {"button": "button_1", "auto_fire": true, "auto_fire_rate_ms": 100}
+            },
+            "E5": {
+                "name": "MASH ABXY",
+                "description": "All face buttons with auto-fire (hold for rapid press)",
+                "mapping": {
+                    "up": "button_4", "down": "button_1", "left": "button_3", "right": "button_2",
+                    "auto_fire": true, "auto_fire_rate_ms": 50
+                }
+            },
+            "E6": {
+                "name": "B Stick",
+                "description": "B button on all directions",
+                "mapping": {"up": "button_2", "down": "button_2", "left": "button_2", "right": "button_2"}
+            }
+        },
+        "south": {
+            "S1": {
+                "name": "Explorer",
+                "description": "Explore 3D worlds - R-stick look, walk forward",
+                "mapping": {
+                    "left_right": "rx",
+                    "up": "axis_y_forward",
+                    "down": "axis_y_backward"
+                }
+            },
+            "S2": {
+                "name": "Driver",
+                "description": "Driving mode - left/right steering, LT/RT for gas/brake",
+                "mapping": {
+                    "left_right": "x",
+                    "up": "rz",
+                    "down": "z"
+                }
+            },
+            "S3": {
+                "name": "Empty",
+                "description": "Reserved for custom mapping",
+                "mapping": {}
+            },
+            "S4": {
+                "name": "Basic Explorer",
+                "description": "Simpler version of Explorer mode",
+                "mapping": {
+                    "left_right": "rx",
+                    "up": "axis_y_forward"
+                }
+            },
+            "S5": {
+                "name": "Drive Slow",
+                "description": "Easier to control driving mode with reduced sensitivity",
+                "mapping": {
+                    "left_right": "x",
+                    "up": "rz",
+                    "down": "z",
+                    "sensitivity_modifier": 0.5
+                }
+            },
+            "S6": {
+                "name": "Empty",
+                "description": "Reserved for custom mapping",
+                "mapping": {}
+            }
+        },
+        "west": {
+            "W1": {
+                "name": "Left Stick",
+                "description": "Standard left analog stick",
+                "mapping": {"axis_x": "x", "axis_y": "y"}
+            },
+            "W2": {
+                "name": "D-Pad",
+                "description": "Digital directional pad",
+                "mapping": {"up": "button_11", "down": "button_12", "left": "button_13", "right": "button_14"}
+            },
+            "W3": {
+                "name": "LB/RB + Left Stick Button",
+                "description": "Shoulder buttons with left stick click",
+                "mapping": {"left": "button_5", "right": "button_6", "button": "button_9"}
+            },
+            "W4": {
+                "name": "Left Stick L/R + A/B",
+                "description": "Horizontal movement with A and B buttons",
+                "mapping": {"left_right": "x", "up": "button_1", "down": "button_2"}
+            },
+            "W5": {
+                "name": "D-Pad L/R + A/B",
+                "description": "D-pad horizontal with A and B buttons",
+                "mapping": {"left": "button_13", "right": "button_14", "up": "button_1", "down": "button_2"}
+            },
+            "W6": {
+                "name": "A Stick",
+                "description": "A button on all directions",
+                "mapping": {"up": "button_1", "down": "button_1", "left": "button_1", "right": "button_1"}
+            }
+        }
+    },
+    "current_modes": {
+        "left_stick": "W1",
+        "right_stick": "E1"
+    },
+    "axis_mapping": {
+        "left_x": "x",
+        "left_y": "y",
+        "right_x": "rx",
+        "right_y": "ry",
+        "left_trigger": "z",
+        "right_trigger": "rz"
+    },
+    "buttons": {
+        "button_1": {"label": "A", "toggle_mode": false},
+        "button_2": {"label": "B", "toggle_mode": false},
+        "button_3": {"label": "X", "toggle_mode": false},
+        "button_4": {"label": "Y", "toggle_mode": false},
+        "button_5": {"label": "LB/SHIFT", "toggle_mode": false, "is_shift": true},
+        "button_6": {"label": "RB", "toggle_mode": false},
+        "button_7": {"label": "Back", "toggle_mode": false},
+        "button_8": {"label": "Start", "toggle_mode": false},
+        "button_9": {"label": "LS", "toggle_mode": false},
+        "button_10": {"label": "RS", "toggle_mode": false},
+        "button_11": {"label": "DPad Up", "toggle_mode": false},
+        "button_12": {"label": "DPad Down", "toggle_mode": false},
+        "button_13": {"label": "DPad Left", "toggle_mode": false},
+        "button_14": {"label": "DPad Right", "toggle_mode": false}
+    },
+    "joystick_settings": {
+        "sensitivity": 50.0,
+        "deadzone": 15.0,
+        "extremity_deadzone": 10.0
+    },
+    "rudder_settings": {
+        "sensitivity": 50.0,
+        "deadzone": 10.0,
+        "extremity_deadzone": 10.0
+    },
+    "accessibility_options": {
+        "larger_deadzones": true,
+        "sticky_buttons": false,
+        "one_switch_mode": false,
+        "scan_mode": false,
+        "dwell_click_enabled": false,
+        "dwell_time_ms": 1000,
+        "haptic_feedback": true,
+        "high_contrast_ui": false,
+        "large_text": false
+    }
+}

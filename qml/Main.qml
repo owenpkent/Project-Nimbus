@@ -10,8 +10,8 @@ ApplicationWindow {
     visible: true
     width: 1024
     height: 600
-    minimumWidth: 256
-    minimumHeight: 150
+    minimumWidth: 700
+    minimumHeight: 450
     title: "Project Nimbus - QML UI"
     background: Rectangle { color: "black" }
 
@@ -340,11 +340,15 @@ ApplicationWindow {
         }
     }
 
-    // Layout loader - switches between Flight Sim and Xbox layouts
+    // Layout loader - switches between Flight Sim, Xbox, and Adaptive layouts
     Loader {
         id: layoutLoader
         anchors.fill: parent
-        sourceComponent: root.layoutType === "xbox" ? xboxLayout : flightSimLayout
+        sourceComponent: {
+            if (root.layoutType === "adaptive") return adaptiveLayout
+            if (root.layoutType === "xbox") return xboxLayout
+            return flightSimLayout
+        }
     }
 
     // Flight Simulator layout component
@@ -359,6 +363,14 @@ ApplicationWindow {
     Component {
         id: xboxLayout
         Layouts.XboxLayout {
+            scaleFactor: root.scaleFactor
+        }
+    }
+
+    // Adaptive Controller layout component (accessibility-focused)
+    Component {
+        id: adaptiveLayout
+        Layouts.AdaptiveLayout {
             scaleFactor: root.scaleFactor
         }
     }

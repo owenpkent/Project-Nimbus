@@ -1,3 +1,4 @@
 module layouts
 FlightSimLayout 1.0 FlightSimLayout.qml
 XboxLayout 1.0 XboxLayout.qml
+AdaptiveLayout 1.0 AdaptiveLayout.qml
