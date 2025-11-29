@@ -7,6 +7,10 @@ import "../components" as Comp
 Item {
     id: root
     property real scaleFactor: 1.0
+    
+    // Dynamic sizing based on window height - buttons shrink proportionally
+    readonly property real buttonAreaRatio: 0.22  // Buttons take max 22% of height
+    readonly property real maxButtonHeight: Math.min(height * buttonAreaRatio, controller ? controller.scaled(140) : 140)
 
     RowLayout {
         id: mainRow
@@ -41,8 +45,9 @@ Item {
                 color: "transparent"
                 border.color: "#d24"; border.width: (controller && controller.debugBorders) ? 1 : 0
                 Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: controller ? controller.scaled(200) : 200
-                Layout.preferredHeight: controller ? controller.scaled(140) : 140
+                Layout.preferredWidth: root.maxButtonHeight * 1.43  // Maintain aspect ratio
+                Layout.preferredHeight: root.maxButtonHeight
+                Layout.maximumHeight: root.maxButtonHeight
                 Comp.NumberPad {
                     id: leftPad
                     anchors.fill: parent
@@ -98,11 +103,13 @@ Item {
             RowLayout {
                 id: actionRow
                 Layout.fillWidth: true
+                Layout.preferredHeight: root.maxButtonHeight * 0.35  // Scale with buttons
+                Layout.maximumHeight: controller ? controller.scaled(50) : 50
                 spacing: controller ? controller.scaled(12) : 12
                 Basic.Button {
                     text: controller ? (controller.buttonsVersion, controller.getButtonLabel(9)) : "9"
                     Layout.fillWidth: true
-                    Layout.preferredWidth: controller ? controller.scaled(80) : 80
+                    Layout.fillHeight: true
                     checkable: controller ? (controller.buttonsVersion, controller.isButtonToggle(9)) : false
                     onCheckableChanged: {
                         if (!checkable && checked) {
@@ -128,7 +135,7 @@ Item {
                 Basic.Button {
                     text: controller ? (controller.buttonsVersion, controller.getButtonLabel(10)) : "10"
                     Layout.fillWidth: true
-                    Layout.preferredWidth: controller ? controller.scaled(80) : 80
+                    Layout.fillHeight: true
                     checkable: controller ? (controller.buttonsVersion, controller.isButtonToggle(10)) : false
                     onCheckableChanged: {
                         if (!checkable && checked) {
@@ -180,8 +187,9 @@ Item {
                 color: "transparent"
                 border.color: "#48c"; border.width: (controller && controller.debugBorders) ? 1 : 0
                 Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: controller ? controller.scaled(200) : 200
-                Layout.preferredHeight: controller ? controller.scaled(140) : 140
+                Layout.preferredWidth: root.maxButtonHeight * 1.43  // Maintain aspect ratio
+                Layout.preferredHeight: root.maxButtonHeight
+                Layout.maximumHeight: root.maxButtonHeight
                 Comp.NumberPad {
                     id: rightPad
                     anchors.fill: parent
