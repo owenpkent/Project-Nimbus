@@ -95,16 +95,29 @@ Qt `QObject` exposed to QML as `controller`:
   - Axis methods: `setLeftStick`, `setRightStick`, `setThrottle`, `setRudder`
   - Button control: `setButton`
   - Scaling helpers: `setScaleFactor`, `scaled(base)`
-  - Settings dialogs: `openJoystickSettings`, `openRudderSettings`, `openButtonSettings`, `openAxisMapping`
+  - Settings dialogs: `openJoystickSettings`, `openAxisSettings`, `openButtonSettings`
+  - Game Focus Mode: `setWindow`, `onMousePressed`, `onMouseReleased`, `noFocusMode` property
 - Implements axis smoothing using a `QTimer` that interpolates toward target values before sending to vJoy.
+
+### `WindowUtils` (`src/window_utils.py`)
+
+Windows-specific utilities for Game Focus Mode:
+- **Focus Restoration**: Saves the foreground window before Project Nimbus takes focus, then restores it on mouse release.
+- Uses Windows API via ctypes:
+  - `GetForegroundWindow` / `SetForegroundWindow`
+  - `AttachThreadInput` trick to allow focus switching
+- Provides functions:
+  - `save_foreground_window()` – called on mouse press
+  - `on_window_activated()` – called on mouse release to restore focus
+  - `enable_game_focus_mode()` / `disable_game_focus_mode()`
+- Only available on Windows; gracefully disabled on other platforms.
 
 ## Settings & Dialogs (`src/qt_dialogs.py`)
 
 Qt Widgets-based dialogs used by the QML/bridge layer:
-- **Joystick Settings**: sensitivity, deadzone, extremity deadzone with live curve preview.
-- **Rudder Settings**: independent tuning for rudder axis.
-- **Button Settings**: per-button toggle vs momentary modes (1–8, ARM, RTH).
-- **Axis Mapping**: maps logical UI axes (left/right sticks, throttle, rudder) to vJoy axes.
+- **Axis Configuration**: Combined sensitivity and VJoy axis mapping for all controller axes.
+- **Slider/Trigger Settings**: independent tuning for throttle/rudder or trigger axes.
+- **Button Settings**: per-button toggle vs momentary modes (supports up to 16 buttons including D-pad, face buttons, and system buttons).
 
 These dialogs read/write values through `ControllerConfig`, ensuring that QML, Qt Widgets, and runtime behavior all share the same configuration.
 

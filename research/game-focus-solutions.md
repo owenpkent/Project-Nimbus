@@ -423,12 +423,64 @@ The focus restoration approach is a compromise that works reliably.
 
 ---
 
+## Open Problems
+
+### 🔴 Mouse Capture by Games
+
+**The Problem:**
+Some games capture/lock the mouse cursor, preventing the user from clicking on Project Nimbus at all. This is a significant accessibility barrier for users who cannot use a keyboard to Alt+Tab.
+
+**Current Workaround:**
+- Have a caregiver press Alt+Tab to switch focus
+- Once Project Nimbus has focus, it works normally
+- Game Focus Mode then restores focus to the game after each interaction
+
+**Potential Solutions to Research:**
+
+1. **Borderless Windowed Mode**
+   - Many games have a "Borderless Windowed" or "Windowed Fullscreen" option
+   - This typically doesn't capture the mouse
+   - User can move cursor to Project Nimbus on a second monitor or overlay
+
+2. **Multi-Monitor Setup**
+   - Game on primary monitor (even fullscreen)
+   - Project Nimbus on secondary monitor/tablet
+   - Some games release mouse at screen edges
+
+3. **Global Hotkey to Release Mouse**
+   - Implement a global hotkey (e.g., F12) that forces mouse release
+   - Would require low-level keyboard hook
+   - Could trigger Alt+Tab programmatically
+
+4. **Overlay Mode**
+   - Run Project Nimbus as a game overlay (like Steam Overlay)
+   - Would require significant architectural changes
+   - May conflict with anti-cheat systems
+
+5. **Touch Input Device**
+   - Use a separate touchscreen/tablet for Project Nimbus
+   - Touch input may not be captured by the game
+   - Could use Spacedesk or similar for wireless display
+
+6. **Steam Input / Big Picture**
+   - Steam's overlay can work even when games capture mouse
+   - Could potentially integrate with Steam Input API
+
+**Priority:** HIGH - This is a core accessibility issue that prevents independent use.
+
+---
+
+## Completed
+
+- ✅ **Game Focus Mode** - Implemented focus restoration approach (Dec 2025)
+- ✅ **Borderless Gaming Integration** - Documented in README
+
 ## Next Steps
 
-1. **Test Windows API approach** - Try `Qt.WindowDoesNotAcceptFocus` flag in QML
-2. **Research Moonlight** - Check if self-streaming or vJoy passthrough works
-3. **Document Borderless Gaming** - Confirm what it does/doesn't solve
-4. **Test Steam Big Picture** - See if focus behavior differs
+1. **Research overlay solutions** - Can we run as a game overlay?
+2. **Test multi-monitor behavior** - Do games release mouse at screen edges?
+3. **Investigate global hotkeys** - Can we implement Alt+Tab trigger?
+4. **Research Moonlight** - Check if self-streaming or vJoy passthrough works
 
 ## Notes
 
@@ -436,4 +488,5 @@ The focus restoration approach is a compromise that works reliably.
 - Touch input is treated the same as mouse clicks for focus purposes
 - Some games have "background input" options that help, but many don't
 - Controller input (XInput/DirectInput) typically requires window focus unless app specifically handles background input
+- **Mouse capture is a separate problem from focus** - even with Game Focus Mode, if the game captures the mouse, the user can't click on Project Nimbus at all
 

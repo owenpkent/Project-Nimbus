@@ -3,7 +3,7 @@
     "description": "Accessibility-first controller profile inspired by Xbox Adaptive Controller and Celtic Magic GCM. Supports dynamic joystick mode switching for users with limited mobility.",
     "layout_type": "adaptive",
     "accessibility_features": {
-        "mode_switching_enabled": true,
+        "mode_switching_enabled": false,
         "shift_button": "button_5",
         "mode_switch_method": "shift_plus_stick_direction",
         "visual_mode_indicator": true,
@@ -176,7 +176,7 @@
         "button_2": {"label": "B", "toggle_mode": false},
         "button_3": {"label": "X", "toggle_mode": false},
         "button_4": {"label": "Y", "toggle_mode": false},
-        "button_5": {"label": "LB/SHIFT", "toggle_mode": false, "is_shift": true},
+        "button_5": {"label": "LB", "toggle_mode": false, "is_shift": false},
         "button_6": {"label": "RB", "toggle_mode": false},
         "button_7": {"label": "Back", "toggle_mode": false},
         "button_8": {"label": "Start", "toggle_mode": false},

@@ -321,8 +321,8 @@ Item {
                 MouseArea {
                     id: dpadUpArea
                     anchors.fill: parent
-                    onPressed: if (controller) controller.setButton(11, true)
-                    onReleased: if (controller) controller.setButton(11, false)
+                    onPressed: if (controller) controller.setButton(6, true)
+                    onReleased: if (controller) controller.setButton(6, false)
                 }
             }
 
@@ -344,8 +344,8 @@ Item {
                 MouseArea {
                     id: dpadDownArea
                     anchors.fill: parent
-                    onPressed: if (controller) controller.setButton(12, true)
-                    onReleased: if (controller) controller.setButton(12, false)
+                    onPressed: if (controller) controller.setButton(7, true)
+                    onReleased: if (controller) controller.setButton(7, false)
                 }
             }
 
@@ -367,8 +367,8 @@ Item {
                 MouseArea {
                     id: dpadLeftArea
                     anchors.fill: parent
-                    onPressed: if (controller) controller.setButton(13, true)
-                    onReleased: if (controller) controller.setButton(13, false)
+                    onPressed: if (controller) controller.setButton(11, true)
+                    onReleased: if (controller) controller.setButton(11, false)
                 }
             }
 
@@ -390,25 +390,25 @@ Item {
                 MouseArea {
                     id: dpadRightArea
                     anchors.fill: parent
-                    onPressed: if (controller) controller.setButton(14, true)
-                    onReleased: if (controller) controller.setButton(14, false)
+                    onPressed: if (controller) controller.setButton(12, true)
+                    onReleased: if (controller) controller.setButton(12, false)
                 }
             }
         }
 
-        // =========== CENTER BUTTONS (Back, Guide, Start) - All matching gray with Greek symbols ===========
+        // =========== CENTER BUTTONS (View, Share, Guide, Menu) - All matching gray with Greek symbols ===========
         Row {
             id: centerButtons
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: scaled(90)
-            spacing: scaled(20)
+            spacing: scaled(15)
 
             // View (Back) button - Alpha
             Rectangle {
-                width: scaled(50)
-                height: scaled(50)
-                radius: scaled(25)
+                width: scaled(45)
+                height: scaled(45)
+                radius: scaled(22)
                 color: viewArea.pressed ? "#4a4a4a" : "#333"
                 border.color: viewArea.pressed ? "#888" : "#555"
                 border.width: 2
@@ -417,22 +417,46 @@ Item {
                     anchors.centerIn: parent
                     text: "α"
                     color: viewArea.pressed ? "#fff" : "#aaa"
-                    font.pixelSize: scaled(22)
+                    font.pixelSize: scaled(20)
                 }
 
                 MouseArea {
                     id: viewArea
                     anchors.fill: parent
-                    onPressed: if (controller) controller.setButton(7, true)
-                    onReleased: if (controller) controller.setButton(7, false)
+                    onPressed: if (controller) controller.setButton(13, true)
+                    onReleased: if (controller) controller.setButton(13, false)
+                }
+            }
+
+            // Share button - Square icon
+            Rectangle {
+                width: scaled(45)
+                height: scaled(45)
+                radius: scaled(22)
+                color: shareArea.pressed ? "#4a4a4a" : "#333"
+                border.color: shareArea.pressed ? "#888" : "#555"
+                border.width: 2
+
+                Label { 
+                    anchors.centerIn: parent
+                    text: "⬚"
+                    color: shareArea.pressed ? "#fff" : "#aaa"
+                    font.pixelSize: scaled(18)
+                }
+
+                MouseArea {
+                    id: shareArea
+                    anchors.fill: parent
+                    onPressed: if (controller) controller.setButton(14, true)
+                    onReleased: if (controller) controller.setButton(14, false)
                 }
             }
 
             // Guide/Home button - Omega (center)
             Rectangle {
-                width: scaled(50)
-                height: scaled(50)
-                radius: scaled(25)
+                width: scaled(45)
+                height: scaled(45)
+                radius: scaled(22)
                 color: guideArea.pressed ? "#4a4a4a" : "#333"
                 border.color: guideArea.pressed ? "#888" : "#555"
                 border.width: 2
@@ -441,7 +465,7 @@ Item {
                     anchors.centerIn: parent
                     text: "Ω"
                     color: guideArea.pressed ? "#fff" : "#aaa"
-                    font.pixelSize: scaled(22)
+                    font.pixelSize: scaled(20)
                 }
 
                 MouseArea {
@@ -454,9 +478,9 @@ Item {
 
             // Menu (Start) button - Beta
             Rectangle {
-                width: scaled(50)
-                height: scaled(50)
-                radius: scaled(25)
+                width: scaled(45)
+                height: scaled(45)
+                radius: scaled(22)
                 color: menuArea.pressed ? "#4a4a4a" : "#333"
                 border.color: menuArea.pressed ? "#888" : "#555"
                 border.width: 2
@@ -465,14 +489,14 @@ Item {
                     anchors.centerIn: parent
                     text: "β"
                     color: menuArea.pressed ? "#fff" : "#aaa"
-                    font.pixelSize: scaled(22)
+                    font.pixelSize: scaled(20)
                 }
 
                 MouseArea {
                     id: menuArea
                     anchors.fill: parent
-                    onPressed: if (controller) controller.setButton(8, true)
-                    onReleased: if (controller) controller.setButton(8, false)
+                    onPressed: if (controller) controller.setButton(16, true)
+                    onReleased: if (controller) controller.setButton(16, false)
                 }
             }
         }
