@@ -56,7 +56,8 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 
 ### Profile System
 - **Multiple Profiles**: Switch between different controller layouts (Flight Simulator, Xbox Controller, Adaptive Platform, custom)
-- **Save Profile**: Save current sensitivity curves, deadzones, and button settings to active profile
+- **Per-Profile Settings**: Each profile stores its own joystick sensitivity, rudder sensitivity, and button toggle modes
+- **Automatic Save**: Changes made in settings dialogs are automatically saved to the current profile
 - **Save Profile As**: Create new profiles with custom names and descriptions
 - **Reset to Defaults**: Restore built-in profiles to original settings
 - **Portable Profiles**: JSON-based profiles stored in user data directory for easy backup
@@ -68,6 +69,7 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 - **Proportional Scaling**: All UI elements scale via `controller.scaled()` and View > Size presets; preference persists
 - **Status Display**: VJoy connection status and real-time value monitoring
 - **Keyboard Shortcuts**: ESC to exit, SPACE to center
+- **Game Focus Mode**: Prevents Project Nimbus from stealing focus from games (Windows only)
 
 ## Accessibility
 
@@ -101,6 +103,22 @@ Project Nimbus works seamlessly in conjunction with **borderless gaming mode**. 
 - Run Project Nimbus as a separate window
 - Position the windows side-by-side or use Alt+Tab to switch between them
 - All controls remain fully functional with full mouse freedom across both windows
+
+## Game Focus Mode (Windows)
+
+When playing games that pause or lose input when unfocused, enable **Game Focus Mode** to keep your game running while interacting with Project Nimbus.
+
+**How it works:**
+1. Go to **View > Game Focus Mode** to enable
+2. When you click on Project Nimbus, it briefly takes focus to register your input
+3. When you release the mouse, focus is automatically restored to the previous window (your game)
+
+**Technical details:**
+- Uses Windows API (`SetForegroundWindow` with `AttachThreadInput`) to restore focus
+- Works with most games, though some that pause instantly on focus loss may still notice the brief switch
+- Setting is saved and persists across sessions
+
+**Note:** This feature is only available on Windows. On other platforms, the menu option will be disabled.
 
 ## Installation
 
@@ -169,10 +187,13 @@ See [build_tools/BUILD_EXECUTABLE.md](build_tools/BUILD_EXECUTABLE.md) for detai
 - **RTH Button**: Configurable Return to Home button (button 10) with toggle/momentary mode
 
 ### Menu System
-- **File > Configure Axes**: Open axis mapping dialog to assign VJoy axes
-- **Joystick Settings**: Configure sensitivity curves, deadzone, and extremity deadzone for joysticks
-- **Button Settings**: Configure toggle/momentary modes for all 10 buttons (1-8, ARM, RTH)
-- **Rudder Settings**: Configure sensitivity curves, deadzone, and extremity deadzone for rudder control
+- **File > Profile**: Switch between profiles (Flight Simulator, Adaptive Platform, custom)
+- **File > Save Profile / Save Profile As...**: Save current settings to profile
+- **File > Settings**: Consolidated settings submenu
+  - **Joystick Sensitivity**: Configure sensitivity curves for joysticks
+  - **Throttle/Rudder or Trigger Sensitivity**: Profile-aware slider/trigger settings
+  - **Axis Mapping**: Assign UI controls to VJoy axes (labels adapt to profile)
+  - **Button Modes**: Configure toggle/momentary modes for buttons
 
 ### Keyboard Shortcuts
 - **ESC**: Exit application (or close open dialogs)
@@ -430,6 +451,22 @@ An optional Qt Widgets-based shell is available for experimentation:
 Legacy pygame-based UI and dialogs are kept under `src/legacy/` for reference only and are not used by the QML app launched via `run.py`.
 
 ## Changelog (recent)
+
+### v2.1 - Profile-Specific Settings & Menu Redesign
+- **Profile-Specific Settings**: Joystick sensitivity, slider sensitivity, and button toggle modes are now saved per-profile instead of globally
+  - Each profile stores its own `joystick_settings`, `rudder_settings`, and button `toggle_mode` configurations
+  - Switching profiles automatically loads that profile's settings
+  - Settings dialogs (Joystick, Slider, Button, Axis Mapping) now persist changes to the current profile
+- **Consolidated Settings Menu**: All settings now under `File > Settings` submenu with clearer organization:
+  - `Joystick Sensitivity...` - Sensitivity curves for joysticks
+  - `Throttle/Rudder Sensitivity...` or `Trigger Sensitivity...` (profile-aware label)
+  - `Axis Mapping...` - Map UI controls to VJoy axes
+  - `Button Modes...` - Toggle/momentary button behavior
+- **Profile-Aware Labels**: Axis mapping and settings dialogs show context-appropriate names:
+  - Flight Sim: "Throttle", "Rudder"
+  - Adaptive Platform: "Left Trigger (LT)", "Right Trigger (RT)"
+- **Profiles Menu in Qt Widgets Shell**: Added Profiles menu to the alternative Qt shell for profile switching
+- **Qt Widgets Shell Warning**: Running `qt_main.py` directly now displays a warning directing users to use `run.py`
 
 ### v2.0 - Adaptive Platform & Steam Input Support
 - **New Adaptive Platform Profile**: Accessibility-focused layout with larger buttons, Greek symbols (α, Ω, β), and prominent L3/R3 stick click buttons

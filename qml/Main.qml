@@ -25,6 +25,33 @@ ApplicationWindow {
     // Track available profiles for dynamic updates
     property var availableProfiles: controller ? controller.getAvailableProfiles() : []
     
+    // Initialize window reference for game focus mode
+    Component.onCompleted: {
+        if (controller) {
+            controller.setWindow(root)
+        }
+    }
+    
+    // Global mouse tracker for game focus mode
+    // This detects when user starts/stops interacting with the window
+    MouseArea {
+        id: globalMouseTracker
+        anchors.fill: parent
+        z: -1  // Behind everything so it doesn't block other mouse areas
+        propagateComposedEvents: true
+        acceptedButtons: Qt.AllButtons
+        
+        onPressed: function(mouse) {
+            if (controller) controller.onMousePressed()
+            mouse.accepted = false  // Let event propagate to children
+        }
+        
+        onReleased: function(mouse) {
+            if (controller) controller.onMouseReleased()
+            mouse.accepted = false
+        }
+    }
+    
     // Update when profile changes
     Connections {
         target: controller
@@ -44,6 +71,10 @@ ApplicationWindow {
             } else {
                 saveNotification.show("Failed to save profile")
             }
+        }
+        function onNoFocusModeChanged(enabled) {
+            // Update menu checkbox when mode changes
+            noFocusModeItem.checked = enabled
         }
     }
     
@@ -320,16 +351,48 @@ ApplicationWindow {
             }
             
             MenuSeparator {}
-            MenuItem { text: qsTr("Configure Axes"); onTriggered: { fileMenu.close(); Qt.callLater(function(){ if (controller) controller.openAxisMapping(); }); } }
-            MenuItem { text: qsTr("Joystick Settings..."); onTriggered: { fileMenu.close(); Qt.callLater(function(){ if (controller) controller.openJoystickSettings(); }); } }
-            MenuItem { text: qsTr("Button Settings..."); onTriggered: { fileMenu.close(); Qt.callLater(function(){ if (controller) controller.openButtonSettings(); }); } }
-            MenuItem { text: qsTr("Rudder Settings..."); onTriggered: { fileMenu.close(); Qt.callLater(function(){ if (controller) controller.openRudderSettings(); }); } }
-            MenuSeparator {}
             MenuItem { text: qsTr("Exit"); onTriggered: Qt.quit() }
         }
+        
+        // Settings menu - top level between File and View
+        Menu {
+            id: settingsMenu
+            title: qsTr("Settings")
+            
+            MenuItem { 
+                text: qsTr("Axis Configuration...")
+                onTriggered: { 
+                    settingsMenu.close()
+                    Qt.callLater(function(){ if (controller) controller.openAxisSettings(); })
+                } 
+            }
+            MenuSeparator {}
+            MenuItem { 
+                text: qsTr("Button Modes...")
+                onTriggered: { 
+                    settingsMenu.close()
+                    Qt.callLater(function(){ if (controller) controller.openButtonSettings(); })
+                } 
+            }
+        }
+        
         Menu {
             id: viewMenu
             title: qsTr("View")
+            MenuItem {
+                id: noFocusModeItem
+                text: qsTr("Game Focus Mode")
+                checkable: true
+                checked: controller ? controller.noFocusMode : false
+                enabled: controller ? controller.isNoFocusModeAvailable() : false
+                onTriggered: { 
+                    viewMenu.close()
+                    Qt.callLater(function(){ 
+                        if (controller) controller.noFocusMode = checked
+                    })
+                }
+            }
+            MenuSeparator {}
             MenuItem {
                 id: debugBordersItem
                 text: qsTr("Debug Borders")
@@ -337,6 +400,113 @@ ApplicationWindow {
                 checked: controller ? controller.debugBorders : false
                 onTriggered: { viewMenu.close(); Qt.callLater(function(){ if (controller) controller.debugBorders = checked; }); }
             }
+        }
+        
+        Menu {
+            id: helpMenu
+            title: qsTr("Help")
+            MenuItem { 
+                text: qsTr("GitHub Repository")
+                onTriggered: { 
+                    helpMenu.close()
+                    Qt.openUrlExternally("https://github.com/owenpkent/Project-Nimbus")
+                } 
+            }
+            MenuSeparator {}
+            MenuItem { 
+                text: qsTr("About Project Nimbus...")
+                onTriggered: { 
+                    helpMenu.close()
+                    Qt.callLater(function(){ aboutDialog.open(); })
+                } 
+            }
+        }
+    }
+    
+    // About Dialog
+    Dialog {
+        id: aboutDialog
+        title: "About Project Nimbus"
+        modal: true
+        anchors.centerIn: parent
+        width: 450
+        height: 320
+        
+        background: Rectangle {
+            color: "#2a2a2a"
+            border.color: "#555"
+            border.width: 1
+            radius: 8
+        }
+        
+        header: Label {
+            text: aboutDialog.title
+            color: "white"
+            font.pixelSize: 16
+            font.bold: true
+            padding: 16
+            background: Rectangle { color: "#333"; radius: 8 }
+        }
+        
+        contentItem: Column {
+            spacing: 16
+            padding: 20
+            
+            Image {
+                source: "qrc:/logo.png"
+                width: 80
+                height: 80
+                anchors.horizontalCenter: parent.horizontalCenter
+                fillMode: Image.PreserveAspectFit
+                visible: status === Image.Ready
+            }
+            
+            Label {
+                text: "Project Nimbus"
+                color: "white"
+                font.pixelSize: 20
+                font.bold: true
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+            
+            Label {
+                text: "Version 2.1"
+                color: "#aaa"
+                font.pixelSize: 14
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+            
+            Label {
+                text: "Virtual controller interface for accessibility and adaptive gaming.\nTransforms mouse input into virtual joystick commands."
+                color: "#ccc"
+                font.pixelSize: 12
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                width: parent.width - 40
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+            
+            Label {
+                text: "© 2024-2025 Owen Kent"
+                color: "#888"
+                font.pixelSize: 11
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+            
+            Label {
+                text: "Licensed under MIT License"
+                color: "#666"
+                font.pixelSize: 10
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+        }
+        
+        footer: DialogButtonBox {
+            Button {
+                text: "OK"
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            }
+            background: Rectangle { color: "#333" }
         }
     }
 

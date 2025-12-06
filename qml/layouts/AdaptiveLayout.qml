@@ -12,25 +12,30 @@ Item {
     readonly property real minWidth: 700
     readonly property real minHeight: 450
 
-    // Helper for scaled values
-    function scaled(v) { return controller ? controller.scaled(v) : v }
+    // Calculate effective scale factor with minimum to prevent squishing
+    // Use higher minimum (0.95) to prevent overlap at small window sizes
+    readonly property real effectiveScale: Math.max(0.95, controller ? controller.scaleFactor : 1.0)
 
-    // Accessibility-focused larger sizes
-    readonly property real joystickSize: scaled(180)      // Bigger joysticks (was 140)
-    readonly property real dpadSize: scaled(160)          // Bigger D-pad (was 130)
-    readonly property real faceButtonSize: scaled(64)     // Bigger ABXY buttons (was 48)
-    readonly property real triggerWidth: scaled(90)       // Wider triggers (was 70)
-    readonly property real triggerHeight: scaled(60)      // Taller triggers (was 50)
-    readonly property real bumperWidth: scaled(120)       // Wider bumpers (was 100)
+    // Helper for scaled values - uses effectiveScale with minimum
+    function scaled(v) { return v * effectiveScale }
+
+    // Accessibility-focused sizes - balanced for small window support
+    readonly property real joystickSize: scaled(140)      // Smaller for better fit
+    readonly property real dpadSize: scaled(110)          // Smaller D-pad to prevent overlap
+    readonly property real faceButtonSize: scaled(52)     // Smaller ABXY buttons
+    readonly property real triggerWidth: scaled(75)       // Narrower triggers
+    readonly property real triggerHeight: scaled(48)      // Shorter triggers
+    readonly property real bumperWidth: scaled(100)       // Narrower bumpers
 
     // Controller body background
     Rectangle {
         id: controllerBody
         anchors.centerIn: parent
-        width: Math.max(minWidth, Math.min(parent.width - scaled(20), scaled(900)))
-        height: Math.max(minHeight, Math.min(parent.height - scaled(20), scaled(550)))
+        // Ensure minimum margins from window edges - always visible border
+        width: Math.min(parent.width - 20, Math.max(minWidth, scaled(900)))
+        height: Math.min(parent.height - 20, Math.max(minHeight, scaled(550)))
         color: "#1a1a1a"
-        radius: scaled(40)
+        radius: scaled(30)
         border.color: "#333"
         border.width: 2
 
@@ -66,21 +71,21 @@ Item {
         Rectangle {
             id: ltTrigger
             anchors.left: parent.left
-            anchors.leftMargin: scaled(30)
+            anchors.leftMargin: scaled(25)
             anchors.top: parent.top
-            anchors.topMargin: scaled(15)
+            anchors.topMargin: scaled(12)
             width: triggerWidth
             height: triggerHeight
-            radius: scaled(12)
+            radius: scaled(10)
             color: "#252525"
             border.color: "#444"
             border.width: 2
 
             Label { 
                 anchors.top: parent.top
-                anchors.topMargin: scaled(6)
+                anchors.topMargin: scaled(4)
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "LT"; color: "#aaa"; font.pixelSize: scaled(14); font.bold: true
+                text: "LT"; color: "#aaa"; font.pixelSize: scaled(12); font.bold: true
             }
 
             // Trigger slider - larger for accessibility
@@ -151,21 +156,21 @@ Item {
         Rectangle {
             id: rtTrigger
             anchors.right: parent.right
-            anchors.rightMargin: scaled(30)
+            anchors.rightMargin: scaled(25)
             anchors.top: parent.top
-            anchors.topMargin: scaled(15)
+            anchors.topMargin: scaled(12)
             width: triggerWidth
             height: triggerHeight
-            radius: scaled(12)
+            radius: scaled(10)
             color: "#252525"
             border.color: "#444"
             border.width: 2
 
             Label { 
                 anchors.top: parent.top
-                anchors.topMargin: scaled(6)
+                anchors.topMargin: scaled(4)
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "RT"; color: "#aaa"; font.pixelSize: scaled(14); font.bold: true
+                text: "RT"; color: "#aaa"; font.pixelSize: scaled(12); font.bold: true
             }
 
             Rectangle {
@@ -231,40 +236,40 @@ Item {
             }
         }
 
-        // =========== LEFT STICK - Larger for accessibility ===========
+        // =========== LEFT STICK ===========
         Item {
             id: leftStickArea
             anchors.left: parent.left
-            anchors.leftMargin: scaled(50)
+            anchors.leftMargin: scaled(45)
             anchors.top: ltTrigger.bottom
-            anchors.topMargin: scaled(30)
-            width: joystickSize + scaled(20)
-            height: joystickSize + scaled(40)
+            anchors.topMargin: scaled(20)
+            width: joystickSize + scaled(15)
+            height: joystickSize + scaled(30)
 
             Comp.Joystick {
                 anchors.centerIn: parent
-                anchors.verticalCenterOffset: -scaled(10)
+                anchors.verticalCenterOffset: -scaled(8)
                 width: joystickSize
                 height: joystickSize
                 onMoved: function(x, y) { if (controller) controller.setLeftStick(x, -y) }
             }
 
-            // LS click button - LARGE and prominent for accessibility
+            // LS click button (L3) - positioned below joystick
             Rectangle {
                 anchors.bottom: parent.bottom
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: scaled(80)
-                height: scaled(50)
-                radius: scaled(10)
+                width: scaled(70)
+                height: scaled(40)
+                radius: scaled(8)
                 color: lsArea.pressed ? "#4a4a4a" : "#2d2d2d"
                 border.color: lsArea.pressed ? "#6aa3ff" : "#555"
-                border.width: 3
+                border.width: 2
 
                 Label { 
                     anchors.centerIn: parent
                     text: "L3"
                     color: lsArea.pressed ? "#fff" : "#ccc"
-                    font.pixelSize: scaled(20)
+                    font.pixelSize: scaled(16)
                     font.bold: true
                 }
 
@@ -277,13 +282,13 @@ Item {
             }
         }
 
-        // =========== D-PAD - Larger for accessibility ===========
+        // =========== D-PAD ===========
         Item {
             id: dpadArea
             anchors.left: parent.left
-            anchors.leftMargin: scaled(55)
+            anchors.leftMargin: scaled(50)
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: scaled(40)
+            anchors.bottomMargin: scaled(25)
             width: dpadSize
             height: dpadSize
 
@@ -298,20 +303,20 @@ Item {
                 border.width: 2
             }
 
-            // D-Pad Up - larger
+            // D-Pad Up
             Rectangle {
                 id: dpadUp
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
-                anchors.topMargin: scaled(8)
-                width: scaled(50)
-                height: scaled(55)
-                radius: scaled(8)
+                anchors.topMargin: scaled(6)
+                width: scaled(40)
+                height: scaled(42)
+                radius: scaled(6)
                 color: dpadUpArea.pressed ? "#555" : "#333"
                 border.color: "#444"
                 border.width: 2
 
-                Label { anchors.centerIn: parent; text: "▲"; color: "#aaa"; font.pixelSize: scaled(22) }
+                Label { anchors.centerIn: parent; text: "▲"; color: "#aaa"; font.pixelSize: scaled(18) }
 
                 MouseArea {
                     id: dpadUpArea
@@ -321,20 +326,20 @@ Item {
                 }
             }
 
-            // D-Pad Down - larger
+            // D-Pad Down
             Rectangle {
                 id: dpadDown
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
-                anchors.bottomMargin: scaled(8)
-                width: scaled(50)
-                height: scaled(55)
-                radius: scaled(8)
+                anchors.bottomMargin: scaled(6)
+                width: scaled(40)
+                height: scaled(42)
+                radius: scaled(6)
                 color: dpadDownArea.pressed ? "#555" : "#333"
                 border.color: "#444"
                 border.width: 2
 
-                Label { anchors.centerIn: parent; text: "▼"; color: "#aaa"; font.pixelSize: scaled(22) }
+                Label { anchors.centerIn: parent; text: "▼"; color: "#aaa"; font.pixelSize: scaled(18) }
 
                 MouseArea {
                     id: dpadDownArea
@@ -344,20 +349,20 @@ Item {
                 }
             }
 
-            // D-Pad Left - larger
+            // D-Pad Left
             Rectangle {
                 id: dpadLeft
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.left: parent.left
-                anchors.leftMargin: scaled(8)
-                width: scaled(55)
-                height: scaled(50)
-                radius: scaled(8)
+                anchors.leftMargin: scaled(6)
+                width: scaled(42)
+                height: scaled(40)
+                radius: scaled(6)
                 color: dpadLeftArea.pressed ? "#555" : "#333"
                 border.color: "#444"
                 border.width: 2
 
-                Label { anchors.centerIn: parent; text: "◄"; color: "#aaa"; font.pixelSize: scaled(22) }
+                Label { anchors.centerIn: parent; text: "◄"; color: "#aaa"; font.pixelSize: scaled(18) }
 
                 MouseArea {
                     id: dpadLeftArea
@@ -367,20 +372,20 @@ Item {
                 }
             }
 
-            // D-Pad Right - larger
+            // D-Pad Right
             Rectangle {
                 id: dpadRight
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.right: parent.right
-                anchors.rightMargin: scaled(8)
-                width: scaled(55)
-                height: scaled(50)
-                radius: scaled(8)
+                anchors.rightMargin: scaled(6)
+                width: scaled(42)
+                height: scaled(40)
+                radius: scaled(6)
                 color: dpadRightArea.pressed ? "#555" : "#333"
                 border.color: "#444"
                 border.width: 2
 
-                Label { anchors.centerIn: parent; text: "►"; color: "#aaa"; font.pixelSize: scaled(22) }
+                Label { anchors.centerIn: parent; text: "►"; color: "#aaa"; font.pixelSize: scaled(18) }
 
                 MouseArea {
                     id: dpadRightArea
@@ -571,40 +576,40 @@ Item {
             }
         }
 
-        // =========== RIGHT STICK - Larger for accessibility ===========
+        // =========== RIGHT STICK ===========
         Item {
             id: rightStickArea
             anchors.right: parent.right
-            anchors.rightMargin: scaled(140)
+            anchors.rightMargin: scaled(120)
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: scaled(40)
-            width: joystickSize + scaled(20)
-            height: joystickSize + scaled(40)
+            anchors.bottomMargin: scaled(25)
+            width: joystickSize + scaled(15)
+            height: joystickSize + scaled(30)
 
             Comp.Joystick {
                 anchors.centerIn: parent
-                anchors.verticalCenterOffset: -scaled(10)
+                anchors.verticalCenterOffset: -scaled(8)
                 width: joystickSize
                 height: joystickSize
                 onMoved: function(x, y) { if (controller) controller.setRightStick(x, -y) }
             }
 
-            // RS click button - LARGE and prominent for accessibility
+            // RS click button (R3) - positioned below joystick
             Rectangle {
                 anchors.bottom: parent.bottom
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: scaled(80)
-                height: scaled(50)
-                radius: scaled(10)
+                width: scaled(70)
+                height: scaled(40)
+                radius: scaled(8)
                 color: rsArea.pressed ? "#4a4a4a" : "#2d2d2d"
                 border.color: rsArea.pressed ? "#6aa3ff" : "#555"
-                border.width: 3
+                border.width: 2
 
                 Label { 
                     anchors.centerIn: parent
                     text: "R3"
                     color: rsArea.pressed ? "#fff" : "#ccc"
-                    font.pixelSize: scaled(20)
+                    font.pixelSize: scaled(16)
                     font.bold: true
                 }
 

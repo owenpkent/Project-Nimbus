@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import sys
 from typing import Optional
 
 from PySide6.QtCore import QObject, Slot, Signal, Property, QTimer
+from PySide6.QtGui import QWindow
 
 from .config import ControllerConfig
 from .vjoy_interface import VJoyInterface
-from .qt_dialogs import AxisMappingQt, JoystickSettingsQt, ButtonSettingsQt, RudderSettingsQt
+from .qt_dialogs import AxisMappingQt, JoystickSettingsQt, ButtonSettingsQt, SliderSettingsQt, AxisSettingsQt
 
 # Try to import ViGEm for Xbox controller emulation (preferred for modern games)
 try:
@@ -14,6 +16,20 @@ try:
 except ImportError:
     VIGEM_AVAILABLE = False
     ViGEmInterface = None
+
+# Import window utilities for game focus mode (Windows only)
+try:
+    from .window_utils import (
+        make_window_no_activate,
+        remove_window_no_activate,
+        get_qt_window_handle,
+        is_no_activate_enabled,
+        save_foreground_window,
+        on_window_activated,
+    )
+    WINDOW_UTILS_AVAILABLE = True
+except ImportError:
+    WINDOW_UTILS_AVAILABLE = False
 
 
 class ControllerBridge(QObject):
@@ -30,10 +46,13 @@ class ControllerBridge(QObject):
     layoutTypeChanged = Signal(str)  # Emits new layout type
     profilesListChanged = Signal()  # Emits when profile list changes (add/delete)
     profileSaved = Signal(bool)  # Emits save result
+    noFocusModeChanged = Signal(bool)  # Emits when no-focus mode changes
 
     def __init__(self, config: ControllerConfig, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self._config = config
+        self._window: Optional[QWindow] = None
+        self._no_focus_mode = False
         
         # Determine which controller interface to use based on profile layout type
         # ViGEm (Xbox emulation) is preferred for xbox/adaptive profiles as it works with XInput games
@@ -138,6 +157,75 @@ class ControllerBridge(QObject):
         return int(self._buttons_version)
 
     buttonsVersion = Property(int, _get_buttons_version, notify=buttonsVersionChanged)
+
+    # ----- No-focus mode property (prevents stealing focus from games) -----
+    def _get_no_focus_mode(self) -> bool:
+        return bool(self._no_focus_mode)
+    
+    def _set_no_focus_mode(self, enabled: bool) -> None:
+        if self._no_focus_mode == enabled:
+            return
+        
+        if not WINDOW_UTILS_AVAILABLE:
+            print("No-focus mode: window_utils not available")
+            return
+        
+        if self._window is None:
+            print("No-focus mode: window not set yet")
+            return
+        
+        hwnd = get_qt_window_handle(self._window)
+        
+        if enabled:
+            success = make_window_no_activate(hwnd)
+            if success:
+                self._no_focus_mode = True
+                self._config.set("ui.no_focus_mode", True)
+                self._config.save_config()
+                self.noFocusModeChanged.emit(True)
+                print("No-focus mode ENABLED - window will not steal focus from games")
+        else:
+            success = remove_window_no_activate(hwnd)
+            if success:
+                self._no_focus_mode = False
+                self._config.set("ui.no_focus_mode", False)
+                self._config.save_config()
+                self.noFocusModeChanged.emit(False)
+                print("No-focus mode DISABLED - normal window behavior restored")
+    
+    noFocusMode = Property(bool, _get_no_focus_mode, _set_no_focus_mode, notify=noFocusModeChanged)
+    
+    @Slot(QWindow)
+    def setWindow(self, window: QWindow) -> None:  # noqa: N802
+        """Set the window reference for no-focus mode. Called from QML after window is ready."""
+        self._window = window
+        # Restore saved no-focus mode setting
+        if self._config.get("ui.no_focus_mode", False):
+            self._set_no_focus_mode(True)
+    
+    @Slot(result=bool)
+    def isNoFocusModeAvailable(self) -> bool:  # noqa: N802
+        """Check if no-focus mode is available on this platform."""
+        return WINDOW_UTILS_AVAILABLE and sys.platform == "win32"
+    
+    @Slot()
+    def onMousePressed(self) -> None:  # noqa: N802
+        """Called from QML when mouse is pressed on any interactive element.
+        
+        In game focus mode, this saves the current foreground window
+        so we can restore focus to it later.
+        """
+        if WINDOW_UTILS_AVAILABLE and self._no_focus_mode:
+            save_foreground_window()
+    
+    @Slot()
+    def onMouseReleased(self) -> None:  # noqa: N802
+        """Called from QML when mouse is released.
+        
+        In game focus mode, this restores focus to the previous foreground window.
+        """
+        if WINDOW_UTILS_AVAILABLE and self._no_focus_mode:
+            on_window_activated()
 
     # ----- Slots callable from QML -----
     @Slot(str, float)
@@ -308,6 +396,15 @@ class ControllerBridge(QObject):
             pass
 
     @Slot()
+    def openAxisSettings(self) -> None:  # noqa: N802
+        """Open unified per-axis sensitivity settings dialog."""
+        try:
+            dlg = AxisSettingsQt(self._config, None)
+            dlg.exec()
+        except Exception:
+            pass
+
+    @Slot()
     def openButtonSettings(self) -> None:  # noqa: N802
         try:
             dlg = ButtonSettingsQt(self._config, None)
@@ -319,9 +416,10 @@ class ControllerBridge(QObject):
             pass
 
     @Slot()
-    def openRudderSettings(self) -> None:  # noqa: N802
+    def openSliderSettings(self) -> None:  # noqa: N802
+        """Open slider/trigger sensitivity settings dialog."""
         try:
-            dlg = RudderSettingsQt(self._config, None)
+            dlg = SliderSettingsQt(self._config, None)
             dlg.exec()
         except Exception:
             pass
