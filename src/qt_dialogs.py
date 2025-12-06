@@ -991,15 +991,16 @@ class ButtonSettingsQt(QDialog):
                 (5, "LB", self.config.get("buttons.button_5.label", "LB")),
                 (6, "D-Up", self.config.get("buttons.button_6.label", "DPad Up")),
                 (7, "D-Down", self.config.get("buttons.button_7.label", "DPad Down")),
-                (8, "RB", self.config.get("buttons.button_8.label", "RB")),
-                (9, "L3", self.config.get("buttons.button_9.label", "LS")),
-                (10, "R3", self.config.get("buttons.button_10.label", "RS")),
-                (11, "D-Left", self.config.get("buttons.button_11.label", "DPad Left")),
-                (12, "D-Right", self.config.get("buttons.button_12.label", "DPad Right")),
+                (8, "D-Left", self.config.get("buttons.button_8.label", "DPad Left")),
+                (9, "D-Right", self.config.get("buttons.button_9.label", "DPad Right")),
+                (10, "RB", self.config.get("buttons.button_10.label", "RB")),
+                (11, "L3", self.config.get("buttons.button_11.label", "LS")),
+                (12, "R3", self.config.get("buttons.button_12.label", "RS")),
                 (13, "α (View)", self.config.get("buttons.button_13.label", "View/Back")),
-                (14, "⬚ (Share)", self.config.get("buttons.button_14.label", "Share")),
+                (14, "Unused", self.config.get("buttons.button_14.label", "Unused")),
                 (15, "Ω (Guide)", self.config.get("buttons.button_15.label", "Guide")),
                 (16, "β (Menu)", self.config.get("buttons.button_16.label", "Menu/Start")),
+                (17, "⬚ (Share)", self.config.get("buttons.button_17.label", "Share")),
             ]
         else:
             # Flight sim style

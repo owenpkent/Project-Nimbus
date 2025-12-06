@@ -231,8 +231,8 @@ Item {
             MouseArea {
                 id: rbArea
                 anchors.fill: parent
-                onPressed: if (controller) controller.setButton(6, true)
-                onReleased: if (controller) controller.setButton(6, false)
+                onPressed: if (controller) controller.setButton(10, true)
+                onReleased: if (controller) controller.setButton(10, false)
             }
         }
 
@@ -276,8 +276,8 @@ Item {
                 MouseArea {
                     id: lsArea
                     anchors.fill: parent
-                    onPressed: if (controller) controller.setButton(9, true)
-                    onReleased: if (controller) controller.setButton(9, false)
+                    onPressed: if (controller) controller.setButton(11, true)
+                    onReleased: if (controller) controller.setButton(11, false)
                 }
             }
         }
@@ -367,8 +367,8 @@ Item {
                 MouseArea {
                     id: dpadLeftArea
                     anchors.fill: parent
-                    onPressed: if (controller) controller.setButton(11, true)
-                    onReleased: if (controller) controller.setButton(11, false)
+                    onPressed: if (controller) controller.setButton(8, true)
+                    onReleased: if (controller) controller.setButton(8, false)
                 }
             }
 
@@ -390,8 +390,8 @@ Item {
                 MouseArea {
                     id: dpadRightArea
                     anchors.fill: parent
-                    onPressed: if (controller) controller.setButton(12, true)
-                    onReleased: if (controller) controller.setButton(12, false)
+                    onPressed: if (controller) controller.setButton(9, true)
+                    onReleased: if (controller) controller.setButton(9, false)
                 }
             }
         }
@@ -447,8 +447,8 @@ Item {
                 MouseArea {
                     id: shareArea
                     anchors.fill: parent
-                    onPressed: if (controller) controller.setButton(14, true)
-                    onReleased: if (controller) controller.setButton(14, false)
+                    onPressed: if (controller) controller.setButton(17, true)
+                    onReleased: if (controller) controller.setButton(17, false)
                 }
             }
 
@@ -640,8 +640,8 @@ Item {
                 MouseArea {
                     id: rsArea
                     anchors.fill: parent
-                    onPressed: if (controller) controller.setButton(10, true)
-                    onReleased: if (controller) controller.setButton(10, false)
+                    onPressed: if (controller) controller.setButton(12, true)
+                    onReleased: if (controller) controller.setButton(12, false)
                 }
             }
         }
