@@ -1,11 +1,17 @@
-# uiAccess & Code Signing Implementation TODO
+# uiAccess & Code Signing Implementation Checklist
+
+> **Status:** 🗺️ Future Roadmap
+
+This is the actionable checklist for implementing uiAccess and code signing. See [uiaccess-signing-strategy.md](uiaccess-signing-strategy.md) for the full strategy document.
+
+---
 
 ## Phase 1: Foundation
 
 ### Dependency Management
 - [ ] Create `requirements.txt` with exact pinned versions (`==`)
 - [ ] Generate lock file with transitive dependencies (`pip freeze` or `pip-compile`)
-- [ ] Audit current dependencies - remove any unused packages
+- [ ] Audit current dependencies — remove any unused packages
 - [ ] Add `pip-audit` to CI workflow
 - [ ] Document dependency update policy in CONTRIBUTING.md
 
@@ -133,7 +139,7 @@
 
 ---
 
-## Reference
+## Related Documents
 
-- Strategy document: `research/uiaccess-signing-release-strategy.md`
-- Game focus research: `research/game-focus-solutions.md`
+- [Full Strategy Document](uiaccess-signing-strategy.md)
+- [Game Focus Mode](../completed/game-focus-mode.md) — Current workaround (implemented)
