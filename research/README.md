@@ -11,6 +11,7 @@ Project Nimbus is a virtual controller application that allows users to control 
 | Document | Description |
 |----------|-------------|
 | [Game Focus Mode](completed/game-focus-mode.md) | Focus restoration solution for gaming - **IMPLEMENTED** |
+| [UI Automation Security Overview](completed/ui-automation-security-overview.md) | Summary of Windows UI Automation security model, `uiAccess`, and related resources |
 
 ### 🔴 In Progress / Open Problems
 
