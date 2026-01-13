@@ -46,4 +46,4 @@
   - [ ] Document how to launch (Qt vs legacy Pygame, command-line flags)
   - [ ] Include vJoy detection and installation instructions for portable users
 
-[TODO: triple click lock in mode]
+- [ ] triple click lock in mode
