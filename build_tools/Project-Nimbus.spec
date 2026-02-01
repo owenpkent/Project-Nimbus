@@ -7,6 +7,10 @@ This creates a standalone Windows executable with all dependencies bundled.
 import sys
 from pathlib import Path
 
+# Version info - keep in sync with src/__init__.py
+VERSION = "1.0.0"
+VERSION_TUPLE = (1, 0, 0, 0)
+
 block_cipher = None
 
 # Define the main script (use launcher.py for executable, not run.py)
@@ -86,4 +90,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=None,  # Set to None for now - can add .ico file later
+    version='build_tools/version_info.txt',  # Windows version resource
 )
