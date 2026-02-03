@@ -1,13 +1,17 @@
 # Project Nimbus – TODO
 
 ## UI & UX
+- [x] **Flight Sim layout aesthetics**
+  - [x] Responsive button sizing that scales with window height
+  - [x] Better visual balance at smaller window sizes
+
 - [ ] **Smaller, labeled numbered buttons**
   - [ ] Reduce button size for numbered buttons (1-9, etc.)
   - [ ] Add clear labels to each button
 
-- [ ] **Rudder control improvements**
-  - [ ] Make rudder control wider for better usability
-  - [ ] Add option to disable center return (sticky mode)
+- [x] **Rudder control improvements**
+  - [x] Make rudder control wider for better usability
+  - [x] Add option to disable center return (sticky mode) - Rudder Lock button implemented
 
 - [ ] **Profile system**
   - [ ] Implement profile switching (e.g., Microsoft Flight Simulator 24, General Gaming/Xbox, Driving Games)
@@ -41,3 +45,5 @@
   - [ ] Produce a zipped portable build for advanced users
   - [ ] Document how to launch (Qt vs legacy Pygame, command-line flags)
   - [ ] Include vJoy detection and installation instructions for portable users
+
+- [ ] triple click lock in mode

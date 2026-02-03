@@ -1,0 +1,39 @@
+{
+    "name": "Xbox Controller",
+    "description": "Standard Xbox gamepad layout with triggers, bumpers, and face buttons",
+    "layout_type": "xbox",
+    "axis_mapping": {
+        "left_x": "x",
+        "left_y": "y",
+        "right_x": "rx",
+        "right_y": "ry",
+        "left_trigger": "z",
+        "right_trigger": "rz"
+    },
+    "buttons": {
+        "button_1": {"label": "A", "toggle_mode": false},
+        "button_2": {"label": "B", "toggle_mode": false},
+        "button_3": {"label": "X", "toggle_mode": false},
+        "button_4": {"label": "Y", "toggle_mode": false},
+        "button_5": {"label": "LB", "toggle_mode": false},
+        "button_6": {"label": "RB", "toggle_mode": false},
+        "button_7": {"label": "Back", "toggle_mode": false},
+        "button_8": {"label": "Start", "toggle_mode": false},
+        "button_9": {"label": "LS", "toggle_mode": false},
+        "button_10": {"label": "RS", "toggle_mode": false},
+        "button_11": {"label": "DPad Up", "toggle_mode": false},
+        "button_12": {"label": "DPad Down", "toggle_mode": false},
+        "button_13": {"label": "DPad Left", "toggle_mode": false},
+        "button_14": {"label": "DPad Right", "toggle_mode": false}
+    },
+    "joystick_settings": {
+        "sensitivity": 50.0,
+        "deadzone": 10.0,
+        "extremity_deadzone": 5.0
+    },
+    "rudder_settings": {
+        "sensitivity": 50.0,
+        "deadzone": 5.0,
+        "extremity_deadzone": 5.0
+    }
+}

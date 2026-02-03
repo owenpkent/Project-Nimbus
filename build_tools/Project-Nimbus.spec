@@ -7,23 +7,31 @@ This creates a standalone Windows executable with all dependencies bundled.
 import sys
 from pathlib import Path
 
+# Version info - keep in sync with src/__init__.py
+VERSION = "1.0.1"
+VERSION_TUPLE = (1, 0, 1, 0)
+
 block_cipher = None
 
 # Define the main script (use launcher.py for executable, not run.py)
-main_script = 'build_tools/launcher.py'
+# Get the project root directory (parent of build_tools)
+SPEC_DIR = Path(__file__).parent if '__file__' in dir() else Path.cwd()
+PROJECT_ROOT = SPEC_DIR.parent if SPEC_DIR.name == 'build_tools' else SPEC_DIR
+main_script = str(PROJECT_ROOT / 'build_tools' / 'launcher.py')
 
 # Collect all QML files and resources
 qml_datas = []
-qml_path = Path('qml')
+qml_path = PROJECT_ROOT / 'qml'
 if qml_path.exists():
     for qml_file in qml_path.rglob('*.qml'):
-        qml_datas.append((str(qml_file), str(qml_file.parent)))
+        rel_path = qml_file.relative_to(PROJECT_ROOT)
+        qml_datas.append((str(qml_file), str(rel_path.parent)))
 
 # Add logo
-logo_datas = [('logo.png', '.')]
+logo_datas = [(str(PROJECT_ROOT / 'logo.png'), '.')]
 
 # Add controller config template
-config_datas = [('controller_config.json', '.')]
+config_datas = [(str(PROJECT_ROOT / 'controller_config.json'), '.')]
 
 # Combine all data files
 datas = qml_datas + logo_datas + config_datas
@@ -86,4 +94,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=None,  # Set to None for now - can add .ico file later
+    version=str(PROJECT_ROOT / 'build_tools' / 'version_info.txt'),  # Windows version resource
 )

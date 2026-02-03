@@ -8,6 +8,8 @@ import sys
 import os
 from pathlib import Path
 
+from src import __version__
+
 def main():
     """Main launcher function for executable."""
     # Change to script/executable directory

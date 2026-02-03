@@ -20,7 +20,7 @@ import sys
 from .config import ControllerConfig
 from .vjoy_interface import VJoyInterface
 from .qt_widgets import JoystickWidget, SliderWidget
-from .qt_dialogs import JoystickSettingsQt, ButtonSettingsQt, RudderSettingsQt, AxisMappingQt
+from .qt_dialogs import JoystickSettingsQt, ButtonSettingsQt, SliderSettingsQt, AxisMappingQt
 
 
 class MainWindow(QMainWindow):
@@ -340,6 +340,12 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
         view_menu.addAction(self._act_debug_borders)
 
+        # Profiles menu
+        self._profiles_menu: QMenu = menubar.addMenu("&Profiles")
+        self._profile_group = QActionGroup(self)
+        self._profile_group.setExclusive(True)
+        self._rebuild_profiles_menu()
+
         # Settings menus (each opens a dialog)
         js_menu: QMenu = menubar.addMenu("&Joystick Settings")
         js_open = QAction("Open...", self)
@@ -351,10 +357,41 @@ class MainWindow(QMainWindow):
         btn_open.triggered.connect(self._open_button_settings)
         btn_menu.addAction(btn_open)
 
-        rud_menu: QMenu = menubar.addMenu("&Rudder Settings")
-        rud_open = QAction("Open...", self)
-        rud_open.triggered.connect(self._open_rudder_settings)
-        rud_menu.addAction(rud_open)
+        slider_menu: QMenu = menubar.addMenu("&Slider Settings")
+        slider_open = QAction("Open...", self)
+        slider_open.triggered.connect(self._open_slider_settings)
+        slider_menu.addAction(slider_open)
+
+    # ----- Profile management -----
+    def _rebuild_profiles_menu(self) -> None:
+        """Rebuild the profiles menu with available profiles."""
+        self._profiles_menu.clear()
+        # Clear old actions from the group
+        for act in self._profile_group.actions():
+            self._profile_group.removeAction(act)
+
+        profiles = self.config.get_available_profiles()
+        current = self.config.get_current_profile()
+
+        for prof in profiles:
+            act = QAction(prof["name"], self)
+            act.setCheckable(True)
+            act.setData(prof["id"])
+            act.triggered.connect(self._on_profile_selected)
+            if prof["id"] == current:
+                act.setChecked(True)
+            self._profile_group.addAction(act)
+            self._profiles_menu.addAction(act)
+
+    def _on_profile_selected(self) -> None:
+        """Handle profile selection from menu."""
+        action = self.sender()
+        if not isinstance(action, QAction):
+            return
+        profile_id = str(action.data())
+        if self.config.switch_profile(profile_id):
+            # Refresh button modes after profile switch
+            self._apply_button_modes()
 
     # ----- Actions -----
     def _on_configure_axes(self) -> None:
@@ -466,8 +503,8 @@ class MainWindow(QMainWindow):
             # Refresh button behaviors after settings change
             self._apply_button_modes()
 
-    def _open_rudder_settings(self) -> None:
-        dlg = RudderSettingsQt(self.config, self)
+    def _open_slider_settings(self) -> None:
+        dlg = SliderSettingsQt(self.config, self)
         dlg.exec()
 
     # ----- Input handlers -----
@@ -683,4 +720,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    print("=" * 60)
+    print("WARNING: You are running the alternative Qt Widgets shell.")
+    print("The primary UI is the Qt Quick (QML) app.")
+    print("Please use 'python run.py' to launch the main application.")
+    print("=" * 60)
+    print()
     raise SystemExit(main())
