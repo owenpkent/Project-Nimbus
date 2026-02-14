@@ -683,6 +683,40 @@ class ControllerConfig:
         except IOError:
             return False
 
+    def save_custom_layout(self, widgets: list, grid_snap: int = 10, show_grid: bool = True) -> bool:
+        """
+        Save custom layout widget data to the current profile.
+        
+        Args:
+            widgets: List of widget dictionaries from the QML canvas
+            grid_snap: Grid snap size in pixels
+            show_grid: Whether to show the grid overlay
+            
+        Returns:
+            True if save was successful, False otherwise
+        """
+        profile_id = self.get_current_profile()
+        profile_path = self._user_profiles_dir / f"{profile_id}.json"
+        
+        profile_data = self.load_profile(profile_id)
+        if profile_data is None:
+            return False
+        
+        # Update custom layout section
+        if "custom_layout" not in profile_data:
+            profile_data["custom_layout"] = {}
+        
+        profile_data["custom_layout"]["widgets"] = widgets
+        profile_data["custom_layout"]["grid_snap"] = grid_snap
+        profile_data["custom_layout"]["show_grid"] = show_grid
+        
+        try:
+            with open(profile_path, 'w') as f:
+                json.dump(profile_data, f, indent=4)
+            return True
+        except IOError:
+            return False
+
     def reset_profile(self, profile_id: str) -> bool:
         """
         Reset a profile to its default (bundled) settings.

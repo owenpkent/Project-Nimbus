@@ -86,8 +86,8 @@ class ControllerBridge(QObject):
         layout_type = self._config.get_layout_type()
         use_vigem_config = self._config.get("controller.prefer_vigem", True)
         
-        # Use ViGEm for Xbox/Adaptive profiles if available (works with XInput games like No Man's Sky)
-        if layout_type in ("xbox", "adaptive") and VIGEM_AVAILABLE and use_vigem_config:
+        # Use ViGEm for Xbox/Adaptive/Custom profiles if available (works with XInput games like No Man's Sky)
+        if layout_type in ("xbox", "adaptive", "custom") and VIGEM_AVAILABLE and use_vigem_config:
             print(f"Profile '{layout_type}' detected - using ViGEm Xbox controller emulation")
             print("This provides XInput compatibility for games like No Man's Sky")
             if self._vigem is None:
@@ -527,6 +527,54 @@ class ControllerBridge(QObject):
     def getUserProfilesPath(self) -> str:  # noqa: N802
         """Get the path to the user profiles directory."""
         return self._config.get_user_profiles_path()
+
+    # ----- Custom layout system -----
+    @Slot(result=str)
+    def getCustomLayout(self) -> str:  # noqa: N802
+        """Get custom layout widgets as JSON string for QML."""
+        try:
+            profile_data = self._config.get_current_profile_data()
+            if profile_data and "custom_layout" in profile_data:
+                import json
+                widgets = profile_data["custom_layout"].get("widgets", [])
+                return json.dumps(widgets)
+        except Exception:
+            pass
+        return "[]"
+
+    @Slot(result=int)
+    def getCustomLayoutGridSnap(self) -> int:  # noqa: N802
+        """Get grid snap size for custom layout."""
+        try:
+            profile_data = self._config.get_current_profile_data()
+            if profile_data and "custom_layout" in profile_data:
+                return int(profile_data["custom_layout"].get("grid_snap", 10))
+        except Exception:
+            pass
+        return 10
+
+    @Slot(result=bool)
+    def getCustomLayoutShowGrid(self) -> bool:  # noqa: N802
+        """Get whether grid is shown for custom layout."""
+        try:
+            profile_data = self._config.get_current_profile_data()
+            if profile_data and "custom_layout" in profile_data:
+                return bool(profile_data["custom_layout"].get("show_grid", True))
+        except Exception:
+            pass
+        return True
+
+    @Slot(str, int, bool)
+    def saveCustomLayout(self, widgets_json: str, grid_snap: int, show_grid: bool) -> None:  # noqa: N802
+        """Save custom layout widgets from QML."""
+        try:
+            import json
+            widgets = json.loads(widgets_json)
+            self._config.save_custom_layout(widgets, int(grid_snap), bool(show_grid))
+            self.profileSaved.emit(True)
+        except Exception as e:
+            print(f"Error saving custom layout: {e}")
+            self.profileSaved.emit(False)
 
     @Slot()
     def openProfilesFolder(self) -> None:  # noqa: N802

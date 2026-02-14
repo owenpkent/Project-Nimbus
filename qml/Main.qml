@@ -510,11 +510,12 @@ ApplicationWindow {
         }
     }
 
-    // Layout loader - switches between Flight Sim, Xbox, and Adaptive layouts
+    // Layout loader - switches between Flight Sim, Xbox, Adaptive, and Custom layouts
     Loader {
         id: layoutLoader
         anchors.fill: parent
         sourceComponent: {
+            if (root.layoutType === "custom") return customLayout
             if (root.layoutType === "adaptive") return adaptiveLayout
             if (root.layoutType === "xbox") return xboxLayout
             return flightSimLayout
@@ -541,6 +542,14 @@ ApplicationWindow {
     Component {
         id: adaptiveLayout
         Layouts.AdaptiveLayout {
+            scaleFactor: root.scaleFactor
+        }
+    }
+
+    // Custom modular layout component (drag-and-drop canvas)
+    Component {
+        id: customLayout
+        Layouts.CustomLayout {
             scaleFactor: root.scaleFactor
         }
     }

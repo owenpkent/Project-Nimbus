@@ -1,0 +1,174 @@
+{
+    "name": "Adaptive Platform 2",
+    "description": "Modular controller builder - drag, drop, and resize controls on a customizable canvas. Place joysticks, buttons, and sliders wherever you want.",
+    "layout_type": "custom",
+    "custom_layout": {
+        "canvas_width": 1024,
+        "canvas_height": 600,
+        "grid_snap": 10,
+        "show_grid": true,
+        "widgets": [
+            {
+                "id": "left_stick",
+                "type": "joystick",
+                "x": 80,
+                "y": 180,
+                "width": 200,
+                "height": 200,
+                "label": "Left Stick",
+                "mapping": {
+                    "axis_x": "x",
+                    "axis_y": "y"
+                }
+            },
+            {
+                "id": "right_stick",
+                "type": "joystick",
+                "x": 744,
+                "y": 180,
+                "width": 200,
+                "height": 200,
+                "label": "Right Stick",
+                "mapping": {
+                    "axis_x": "rx",
+                    "axis_y": "ry"
+                }
+            },
+            {
+                "id": "lt_trigger",
+                "type": "slider",
+                "x": 80,
+                "y": 60,
+                "width": 160,
+                "height": 50,
+                "label": "LT",
+                "orientation": "horizontal",
+                "mapping": {
+                    "axis": "z"
+                }
+            },
+            {
+                "id": "rt_trigger",
+                "type": "slider",
+                "x": 784,
+                "y": 60,
+                "width": 160,
+                "height": 50,
+                "label": "RT",
+                "orientation": "horizontal",
+                "mapping": {
+                    "axis": "rz"
+                }
+            },
+            {
+                "id": "btn_a",
+                "type": "button",
+                "x": 660,
+                "y": 440,
+                "width": 60,
+                "height": 60,
+                "label": "A",
+                "button_id": 1,
+                "color": "#16a34a",
+                "shape": "circle"
+            },
+            {
+                "id": "btn_b",
+                "type": "button",
+                "x": 720,
+                "y": 400,
+                "width": 60,
+                "height": 60,
+                "label": "B",
+                "button_id": 2,
+                "color": "#dc2626",
+                "shape": "circle"
+            },
+            {
+                "id": "btn_x",
+                "type": "button",
+                "x": 600,
+                "y": 400,
+                "width": 60,
+                "height": 60,
+                "label": "X",
+                "button_id": 3,
+                "color": "#2563eb",
+                "shape": "circle"
+            },
+            {
+                "id": "btn_y",
+                "type": "button",
+                "x": 660,
+                "y": 360,
+                "width": 60,
+                "height": 60,
+                "label": "Y",
+                "button_id": 4,
+                "color": "#d4a017",
+                "shape": "circle"
+            },
+            {
+                "id": "btn_lb",
+                "type": "button",
+                "x": 80,
+                "y": 120,
+                "width": 100,
+                "height": 45,
+                "label": "LB",
+                "button_id": 5,
+                "color": "#333333",
+                "shape": "rounded"
+            },
+            {
+                "id": "btn_rb",
+                "type": "button",
+                "x": 844,
+                "y": 120,
+                "width": 100,
+                "height": 45,
+                "label": "RB",
+                "button_id": 6,
+                "color": "#333333",
+                "shape": "rounded"
+            }
+        ]
+    },
+    "axis_mapping": {
+        "left_x": "x",
+        "left_y": "y",
+        "right_x": "rx",
+        "right_y": "ry",
+        "left_trigger": "z",
+        "right_trigger": "rz"
+    },
+    "buttons": {
+        "button_1": {"label": "A", "toggle_mode": false},
+        "button_2": {"label": "B", "toggle_mode": false},
+        "button_3": {"label": "X", "toggle_mode": false},
+        "button_4": {"label": "Y", "toggle_mode": false},
+        "button_5": {"label": "LB", "toggle_mode": false},
+        "button_6": {"label": "RB", "toggle_mode": false},
+        "button_7": {"label": "Back", "toggle_mode": false},
+        "button_8": {"label": "Start", "toggle_mode": false},
+        "button_9": {"label": "LS", "toggle_mode": false},
+        "button_10": {"label": "RS", "toggle_mode": false}
+    },
+    "joystick_settings": {
+        "sensitivity": 50.0,
+        "deadzone": 10.0,
+        "extremity_deadzone": 5.0
+    },
+    "rudder_settings": {
+        "sensitivity": 50.0,
+        "deadzone": 10.0,
+        "extremity_deadzone": 5.0
+    },
+    "accessibility_options": {
+        "larger_deadzones": true,
+        "sticky_buttons": false,
+        "haptic_feedback": true,
+        "high_contrast_ui": false,
+        "large_text": false
+    }
+}
