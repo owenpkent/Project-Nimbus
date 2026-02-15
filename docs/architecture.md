@@ -2,143 +2,252 @@
 
 ## High-Level Overview
 
-Project Nimbus is a Python-based virtual controller that converts mouse/GUI input into joystick commands via the **vJoy** driver. The modern UI is implemented with **Qt Quick (PySide6 + QML)**, backed by a Python core that manages configuration, curves, and vJoy I/O.
+Project Nimbus is a Python-based modular virtual controller that converts mouse/GUI input into joystick commands via **vJoy** (DirectInput) or **ViGEm** (Xbox 360 XInput emulation). The UI is implemented with **Qt Quick (PySide6 + QML)**, backed by a Python core that manages configuration, sensitivity curves, profiles, and controller I/O.
 
-At a high level:
-- The user interacts with a **QML UI** (joysticks, sliders, buttons).
-- QML calls into a **Python bridge** (`ControllerBridge`) exposed as `controller`.
-- The bridge uses **`ControllerConfig`** to read/write settings and apply curves.
-- The bridge talks to **`VJoyInterface`** to send axis/button updates to the vJoy driver.
+The project's goal is to be a **free, open-source software Xbox Adaptive Controller** — enabling users with physical disabilities to build fully custom controller layouts without expensive hardware.
+
+### Data Flow
+
+```
+User (mouse) → QML UI → ControllerBridge (Python) → ControllerConfig (curves/mapping)
+                                                   → VJoyInterface or ViGEmInterface
+                                                   → Virtual Controller Driver
+                                                   → Game / Application
+```
 
 ## Launch Flow
 
 ### 1. Top-Level Launcher (`run.py`)
 
 - Performs Python version checks and virtual environment setup.
-- Ensures dependencies (PySide6, vJoy bindings, etc.) are installed.
-- Launches the QML application module:
-  - `python run.py` → runs `src.qt_qml_app` in the venv.
-
-For bundled executables, `build_tools/launcher.py` is used instead (no console / input prompts) and calls the same QML entry.
+- Ensures dependencies (PySide6, pyvjoy, numpy, etc.) are installed.
+- Launches the QML application module: `python run.py` → runs `src.qt_qml_app` in the venv.
+- For bundled executables, `build_tools/launcher.py` is used instead.
 
 ### 2. QML Application Entry (`src/qt_qml_app.py`)
 
-Responsibilities:
-- Create `QApplication` and `QQmlApplicationEngine`.
-- Instantiate:
-  - `ControllerConfig` – configuration manager
-  - `ControllerBridge` – QML↔Python bridge
-- Expose objects to QML:
-  - `controller` → `ControllerBridge` instance
-  - `config` → `ControllerConfig` instance
-- Load `qml/Main.qml` and start the Qt event loop.
+- Creates `QApplication` and `QQmlApplicationEngine`.
+- Instantiates `ControllerConfig` and `ControllerBridge`.
+- Exposes to QML as context properties: `controller` and `config`.
+- Loads `qml/Main.qml` and starts the Qt event loop.
 
 ### 3. QML UI (`qml/`)
 
-- `qml/Main.qml` defines the main window, top menu bar, and overall layout.
-- Reusable controls live under `qml/components/`, e.g.:
-  - `Joystick.qml`
-  - `SliderVertical.qml` (Throttle)
-  - `SliderHorizontal.qml` (Rudder)
+`Main.qml` defines the main window, menu bar, profile system, and a **layout loader** that switches between layout components based on profile `layout_type`:
 
-QML controls call into the Python bridge using slots/properties such as:
-- `controller.setLeftStick(x, y)`
-- `controller.setRightStick(x, y)`
-- `controller.setThrottle(value)`
-- `controller.setRudder(value)`
-- `controller.setButton(id, pressed)`
-- `controller.setScaleFactor(scale)` and `controller.scaled(base)`
+| Layout Type | QML Component | Description |
+|-------------|---------------|-------------|
+| `flight_sim` | `FlightSimLayout.qml` | Fixed dual joysticks + throttle/rudder |
+| `xbox` | `XboxLayout.qml` | Fixed Xbox gamepad layout |
+| `adaptive` | `AdaptiveLayout.qml` | Fixed accessibility-focused layout |
+| `custom` | `CustomLayout.qml` | **Modular drag-and-drop canvas** |
+
+### 4. Controller Interface Selection
+
+The bridge auto-selects the controller backend based on profile layout type:
+- **ViGEm** (preferred for `xbox`, `adaptive`, `custom`) — Xbox 360 emulation for XInput games
+- **vJoy** (preferred for `flight_sim`, or fallback) — DirectInput with 8 axes + 128 buttons
+
+---
+
+## Custom Layout System (Adaptive Platform 2)
+
+The `custom` layout type is the architectural centerpiece of the modular controller builder. Instead of hardcoded widget positions, everything is driven by a JSON widget array stored in the profile.
+
+### Architecture
+
+```
+Profile JSON                    QML Rendering
+─────────────                   ─────────────
+custom_layout.widgets[] ──→ CustomLayout.qml (canvas)
+  ├── {type: "joystick", ...}       ├── Repeater over widget model
+  ├── {type: "button", ...}         ├── DraggableWidget.qml (per widget)
+  ├── {type: "slider", ...}         │   ├── Edit mode: drag/resize/delete/config
+  └── ...                           │   └── Play mode: interactive control
+                                    ├── WidgetPalette.qml (sidebar, edit mode only)
+                                    └── Widget Config Dialog (double-click)
+```
+
+### Widget Schema
+
+Each widget in `custom_layout.widgets[]` has:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Unique identifier (e.g. `"left_stick"`, `"btn_a"`) |
+| `type` | string | `"joystick"`, `"button"`, `"slider"`, `"dpad"`, `"wheel"` |
+| `x`, `y` | number | Position on canvas (pixels, grid-snapped) |
+| `width`, `height` | number | Size (pixels, grid-snapped) |
+| `label` | string | Display label |
+
+**Type-specific fields:**
+
+- **Joystick**: `mapping.axis_x`, `mapping.axis_y` (e.g. `"x"/"y"`, `"rx"/"ry"`, `"sl0"/"sl1"`)
+- **Button**: `button_id` (1–128), `color` (hex), `shape` (`"circle"/"rounded"/"square"`), `toggle_mode`
+- **Slider**: `mapping.axis` (e.g. `"z"`, `"rz"`, `"sl0"`), `orientation`, `center_return` (bool)
+- **D-Pad**: `mapping` with `up`/`down`/`left`/`right` button IDs
+- **Wheel**: `mapping.axis` (single rotational axis)
+
+### Edit Mode vs. Play Mode
+
+| Feature | Edit Mode | Play Mode |
+|---------|-----------|-----------|
+| Drag widgets | ✅ | ❌ |
+| Resize widgets | ✅ | ❌ |
+| Delete widgets | ✅ | ❌ |
+| Config dialog (double-click) | ✅ | ❌ |
+| Widget Palette sidebar | ✅ visible | ❌ hidden |
+| Grid overlay | ✅ optional | ❌ hidden |
+| Interactive controls | ❌ blocked | ✅ active |
+| Selection border | ✅ blue outline | ❌ none |
+
+### DraggableWidget.qml
+
+The universal wrapper component. It:
+1. Receives widget data as properties (`widgetType`, `widgetId`, `mapping`, etc.)
+2. In edit mode: renders drag handle, resize handle, delete button, type label
+3. In play mode: renders the interactive control via a `Loader` that selects the correct `Component`:
+   - `joystickContent` — full joystick with thumb, base circle, axis output
+   - `buttonContent` — colored button with toggle/momentary support
+   - `sliderContent` — horizontal/vertical slider with fill bar
+
+### Persistence
+
+- Widget positions/sizes/config saved to profile JSON under `custom_layout`
+- `ControllerConfig.save_custom_layout(widgets, grid_snap, show_grid)` writes to disk
+- Bridge slots: `getCustomLayout()`, `saveCustomLayout()`, `getCustomLayoutGridSnap()`, `getCustomLayoutShowGrid()`
+- Auto-saves when exiting edit mode
+
+---
 
 ## Core Python Components
 
 ### `ControllerConfig` (`src/config.py`)
 
 Configuration manager responsible for:
-- Loading defaults and merging with `controller_config.json`.
-- Providing `get`/`set` helpers with dot-notation paths.
-- Persisting settings to disk (`save_config`).
-- Validating configuration (joystick, vJoy, safety, UI scale).
-- UI scaling utilities:
-  - `get_scaled_value`, `get_scaled_int`
-  - `set_scale_factor` (updates window/joystick sizes and font size).
-- Input processing:
-  - Joystick and rudder sensitivity curves
-  - Deadzone/extremity handling
-  - Conversion from normalized values (−1..1) to vJoy range.
+- Loading defaults and merging with `controller_config.json`
+- `get`/`set` helpers with dot-notation paths (e.g. `"joystick_settings.sensitivity"`)
+- Persisting settings to disk (`save_config`)
+- **Profile system**: load/save/switch/duplicate/delete/reset profiles
+- **Custom layout persistence**: `save_custom_layout()` for the modular canvas
+- UI scaling utilities: `get_scaled_value`, `get_scaled_int`, `set_scale_factor`
+- Input processing: sensitivity curves, deadzone/extremity handling, normalized-to-vJoy conversion
 
 ### `VJoyInterface` (`src/vjoy_interface.py`)
 
 Wrapper around the vJoy driver (via `pyvjoy`):
-- Initializes and validates the vJoy device (ID, status, axis capabilities).
-- Maintains current axis values and update rate constraints.
-- Provides APIs:
-  - `update_axis(axis, value)` – update a single axis in −1..1
-  - `update_joystick(left_x, left_y, right_x, right_y)`
-  - `set_button(button_id, pressed)`
-  - `get_status()` – diagnostic information
-- Handles:
-  - Mapping logical axes (`x`, `y`, `z`, `rx`, `ry`, `rz`) to vJoy constants/IDs
-  - Centering axes on initialization/reset
-  - Optional failsafe / emergency stop behavior
+- Supports **8 axes**: X, Y, Z, RX, RY, RZ, SL0, SL1
+- Supports up to **128 buttons**
+- APIs: `update_axis(axis, value)`, `set_button(button_id, pressed)`, `get_status()`
+- Maps logical axis names to vJoy HID constants
+- Handles initialization, validation, centering, and failsafe
+
+### `ViGEmInterface` (`src/vigem_interface.py`)
+
+Xbox 360 controller emulation via ViGEm/vgamepad:
+- **2 analog sticks** (left/right), **2 triggers** (LT/RT), **14 buttons**
+- Compatible API with VJoyInterface: `update_axis()`, `set_button()`
+- Auto-selected for `xbox`, `adaptive`, and `custom` layout types when available
+- Provides XInput compatibility for games like No Man's Sky
 
 ### `ControllerBridge` (`src/bridge.py`)
 
 Qt `QObject` exposed to QML as `controller`:
-- Owns:
-  - `ControllerConfig` (injected from `qt_qml_app.py`)
-  - `VJoyInterface` instance
-- Manages high-level state:
-  - `scaleFactor` property (with `scaleFactorChanged` signal)
-  - `debugBorders` property
-  - Button-mode versioning (`buttonsVersion`) so QML can refresh toggles
-- Provides QML-callable slots:
-  - Axis methods: `setLeftStick`, `setRightStick`, `setThrottle`, `setRudder`
-  - Button control: `setButton`
-  - Scaling helpers: `setScaleFactor`, `scaled(base)`
-  - Settings dialogs: `openJoystickSettings`, `openAxisSettings`, `openButtonSettings`
-  - Game Focus Mode: `setWindow`, `onMousePressed`, `onMouseReleased`, `noFocusMode` property
-- Implements axis smoothing using a `QTimer` that interpolates toward target values before sending to vJoy.
+- Owns `ControllerConfig` + controller interface (VJoy or ViGEm)
+- **Properties**: `scaleFactor`, `debugBorders`, `buttonsVersion`, `noFocusMode`
+- **Axis slots**: `setLeftStick`, `setRightStick`, `setThrottle`, `setRudder`, `setAxis`
+- **Button slot**: `setButton(id, pressed)`
+- **Profile slots**: `switchProfile`, `saveCurrentProfile`, `createProfileAs`, `deleteProfile`
+- **Custom layout slots**: `getCustomLayout`, `saveCustomLayout`, `getCustomLayoutGridSnap`, `getCustomLayoutShowGrid`
+- **Settings dialog openers**: `openAxisSettings`, `openButtonSettings`, `openSliderSettings`
+- **Axis smoothing**: QTimer-based interpolation toward target values before sending to vJoy
 
 ### `WindowUtils` (`src/window_utils.py`)
 
 Windows-specific utilities for Game Focus Mode:
-- **Focus Restoration**: Saves the foreground window before Project Nimbus takes focus, then restores it on mouse release.
-- Uses Windows API via ctypes:
-  - `GetForegroundWindow` / `SetForegroundWindow`
-  - `AttachThreadInput` trick to allow focus switching
-- Provides functions:
-  - `save_foreground_window()` – called on mouse press
-  - `on_window_activated()` – called on mouse release to restore focus
-  - `enable_game_focus_mode()` / `disable_game_focus_mode()`
-- Only available on Windows; gracefully disabled on other platforms.
+- Saves foreground window on mouse press, restores on release
+- Uses Windows API: `GetForegroundWindow`, `SetForegroundWindow`, `AttachThreadInput`
+- Only available on Windows; gracefully disabled on other platforms
+
+---
 
 ## Settings & Dialogs (`src/qt_dialogs.py`)
 
-Qt Widgets-based dialogs used by the QML/bridge layer:
-- **Axis Configuration**: Combined sensitivity and VJoy axis mapping for all controller axes.
-- **Slider/Trigger Settings**: independent tuning for throttle/rudder or trigger axes.
-- **Button Settings**: per-button toggle vs momentary modes (supports up to 16 buttons including D-pad, face buttons, and system buttons).
+Qt Widgets-based dialogs invoked from the bridge:
 
-These dialogs read/write values through `ControllerConfig`, ensuring that QML, Qt Widgets, and runtime behavior all share the same configuration.
+| Dialog | Class | Purpose |
+|--------|-------|---------|
+| Axis Configuration | `AxisSettingsQt` | Per-axis sensitivity, deadzone, VJoy mapping |
+| Slider/Trigger Settings | `SliderSettingsQt` | Throttle/rudder or trigger sensitivity |
+| Button Settings | `ButtonSettingsQt` | Toggle vs. momentary mode per button |
+
+All dialogs read/write through `ControllerConfig` and persist to the current profile.
+
+---
+
+## Profile System
+
+Profiles are JSON files stored in the user data directory:
+
+| Platform | Location |
+|----------|----------|
+| Windows | `%APPDATA%\ProjectNimbus\profiles\` |
+| macOS | `~/Library/Application Support/ProjectNimbus/profiles/` |
+| Linux | `~/.local/share/ProjectNimbus/profiles/` |
+
+### Bundled Profiles
+
+| Profile | Layout Type | Description |
+|---------|-------------|-------------|
+| `flight_simulator` | `flight_sim` | Dual joysticks + throttle/rudder |
+| `xbox_controller` | `xbox` | Standard Xbox gamepad |
+| `adaptive_platform_1` | `adaptive` | Fixed accessibility layout with mode switching |
+| `adaptive_platform_2` | `custom` | **Modular drag-and-drop canvas** |
+
+### Profile Lifecycle
+
+1. Bundled profiles copied to user directory on first run (if not already present)
+2. User can modify, save, duplicate, or create new profiles
+3. Built-in profiles can be reset to defaults
+4. Switching profiles reloads settings and swaps the QML layout
+
+---
+
+## Hardware Capabilities
+
+### vJoy (DirectInput)
+
+| Resource | Limit |
+|----------|-------|
+| Axes | 8 (X, Y, Z, RX, RY, RZ, SL0, SL1) |
+| Joysticks | Up to 4 (each uses 2 axes) |
+| Buttons | Up to 128 |
+| POV hats | Supported |
+
+### ViGEm (Xbox 360 XInput)
+
+| Resource | Limit |
+|----------|-------|
+| Analog sticks | 2 (left, right) |
+| Triggers | 2 (LT, RT) |
+| Buttons | 14 (A, B, X, Y, LB, RB, Back, Start, L3, R3, D-Pad ×4) |
+
+---
 
 ## Alternative Shells & Legacy Code
 
 ### Qt Widgets Shell (`src/qt_main.py`)
-
-- Alternative (non-QML) Qt Widgets-based interface.
-- Uses the same `ControllerConfig` and `VJoyInterface` backend.
-- Not the default entry point; intended for experimentation and layout prototyping.
+- Alternative (non-QML) interface for experimentation. Not the default entry point.
 
 ### Legacy Pygame UI (`src/legacy/`)
+- Original pygame-based UI. Kept for reference only; not used by `run.py`.
 
-- Contains the original pygame-based UI and dialog implementations.
-- Kept for reference only; not used by `run.py` or the QML application.
+---
 
 ## Build & Packaging
 
-- **Source-based runs**: `python run.py` (sets up venv, dependencies, and launches QML app).
-- **Executable builds**:
-  - PyInstaller spec and scripts under `build_tools/`.
-  - `build_tools/launcher.py` serves as a GUI-friendly entry point for the bundled EXE.
+- **Source**: `python run.py` (sets up venv, installs deps, launches QML app)
+- **Executable**: PyInstaller spec and scripts under `build_tools/`
+- **EV Signing**: Owner has EV signing certificate for `UIAccess=true` manifest (future)
 
-For detailed build steps, see `build_tools/BUILD_EXECUTABLE.md`.
+See `build_tools/BUILD_EXECUTABLE.md` for detailed build steps.

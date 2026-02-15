@@ -61,7 +61,9 @@ class VJoyInterface:
             'z': 0.5,
             'rx': 0.5,
             'ry': 0.5,
-            'rz': 0.5
+            'rz': 0.5,
+            'sl0': 0.5,
+            'sl1': 0.5
         }
         
         # Failsafe system (disabled per user preference)
@@ -194,6 +196,11 @@ class VJoyInterface:
                 self.device.set_axis(pyvjoy.HID_USAGE_RX, center_value)
                 self.device.set_axis(pyvjoy.HID_USAGE_RY, center_value)
                 self.device.set_axis(pyvjoy.HID_USAGE_RZ, center_value)
+                # Slider axes (SL0, SL1)
+                if hasattr(pyvjoy, 'HID_USAGE_SL0'):
+                    self.device.set_axis(pyvjoy.HID_USAGE_SL0, center_value)
+                if hasattr(pyvjoy, 'HID_USAGE_SL1'):
+                    self.device.set_axis(pyvjoy.HID_USAGE_SL1, center_value)
             else:
                 # Fallback to axis IDs
                 self.device.set_axis(1, center_value)  # X
@@ -202,6 +209,8 @@ class VJoyInterface:
                 self.device.set_axis(4, center_value)  # RX
                 self.device.set_axis(5, center_value)  # RY
                 self.device.set_axis(6, center_value)  # RZ
+                self.device.set_axis(7, center_value)  # SL0
+                self.device.set_axis(8, center_value)  # SL1
             
             # Update current values
             for axis in self.current_values:
@@ -253,7 +262,7 @@ class VJoyInterface:
         Update a single axis value.
         
         Args:
-            axis: Axis name ('x', 'y', 'z', 'rx', 'ry', 'rz')
+            axis: Axis name ('x', 'y', 'z', 'rx', 'ry', 'rz', 'sl0', 'sl1')
             value: Normalized value (-1.0 to 1.0)
             
         Returns:
@@ -284,8 +293,13 @@ class VJoyInterface:
                     'z': pyvjoy.HID_USAGE_Z,
                     'rx': pyvjoy.HID_USAGE_RX,
                     'ry': pyvjoy.HID_USAGE_RY,
-                    'rz': pyvjoy.HID_USAGE_RZ
+                    'rz': pyvjoy.HID_USAGE_RZ,
                 }
+                # Add slider axes if available
+                if hasattr(pyvjoy, 'HID_USAGE_SL0'):
+                    axis_mapping['sl0'] = pyvjoy.HID_USAGE_SL0
+                if hasattr(pyvjoy, 'HID_USAGE_SL1'):
+                    axis_mapping['sl1'] = pyvjoy.HID_USAGE_SL1
             else:
                 # Fallback to axis IDs for minimal PyVjoy
                 axis_mapping = {
@@ -294,7 +308,9 @@ class VJoyInterface:
                     'z': 3,   # Z axis
                     'rx': 4,  # RX axis
                     'ry': 5,  # RY axis
-                    'rz': 6   # RZ axis
+                    'rz': 6,  # RZ axis
+                    'sl0': 7, # Slider 0
+                    'sl1': 8  # Slider 1
                 }
             
             if axis not in axis_mapping:

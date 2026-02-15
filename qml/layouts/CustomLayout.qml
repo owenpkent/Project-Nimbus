@@ -121,6 +121,8 @@ Item {
                 widgetShape: wData.shape || "rounded"
                 orientation: wData.orientation || "horizontal"
                 mapping: wData.mapping || {}
+                centerReturn: wData.center_return || false
+                toggleMode: wData.toggle_mode || false
 
                 editMode: root.editMode
                 gridSnap: root.gridSnap
@@ -153,6 +155,7 @@ Item {
         anchors.bottom: parent.bottom
         width: 160
         editMode: root.editMode
+        widgetModel: root.widgetModel
 
         onAddWidget: function(widgetData) {
             root._addWidget(widgetData)
@@ -172,7 +175,8 @@ Item {
     Rectangle {
         anchors.bottom: parent.bottom
         anchors.right: parent.right
-        anchors.margins: 12
+        anchors.rightMargin: root.editMode ? 172 : 12
+        anchors.bottomMargin: 12
         width: editToggleRow.width + 20
         height: 36
         radius: 18
@@ -239,15 +243,21 @@ Item {
                         colorField.text = targetWidget.color || "#333"
                         shapeCombo.currentIndex = ["circle", "rounded", "square"].indexOf(targetWidget.shape || "rounded")
                     }
+                    if (targetWidget.type === "button") {
+                        toggleModeSwitch.checked = targetWidget.toggle_mode || false
+                    }
                     if (targetWidget.type === "joystick") {
                         var axPair = (targetWidget.mapping.axis_x || "x") + "/" + (targetWidget.mapping.axis_y || "y")
-                        axisPairCombo.currentIndex = ["x/y", "rx/ry", "z/rz"].indexOf(axPair)
+                        axisPairCombo.currentIndex = ["x/y", "rx/ry", "z/rz", "sl0/sl1"].indexOf(axPair)
                         if (axisPairCombo.currentIndex < 0) axisPairCombo.currentIndex = 0
                     }
-                    if (targetWidget.type === "slider") {
+                    if (targetWidget.type === "slider" || targetWidget.type === "wheel") {
                         var slAxis = targetWidget.mapping.axis || "z"
-                        sliderAxisCombo.currentIndex = ["z", "rz", "x", "y", "rx", "ry"].indexOf(slAxis)
+                        sliderAxisCombo.currentIndex = ["z", "rz", "sl0", "sl1", "x", "y", "rx", "ry"].indexOf(slAxis)
                         if (sliderAxisCombo.currentIndex < 0) sliderAxisCombo.currentIndex = 0
+                        if (targetWidget.type === "slider") {
+                            centerReturnSwitch.checked = targetWidget.center_return || false
+                        }
                     }
                     visible = true
                     return
@@ -357,6 +367,42 @@ Item {
                         contentItem: Text { text: shapeCombo.displayText; color: "white"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
                     }
                 }
+
+                // Toggle mode
+                Row {
+                    spacing: 8
+                    Text { text: "Mode:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
+                    Rectangle {
+                        width: 180; height: 30; radius: 4; color: "transparent"
+                        Row {
+                            spacing: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            Rectangle {
+                                id: toggleModeSwitch
+                                property bool checked: false
+                                width: 44; height: 22; radius: 11
+                                color: checked ? "#16a34a" : "#555"
+                                Rectangle {
+                                    width: 18; height: 18; radius: 9
+                                    color: "white"
+                                    x: parent.checked ? parent.width - width - 2 : 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Behavior on x { NumberAnimation { duration: 120 } }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: parent.checked = !parent.checked
+                                }
+                            }
+                            Text {
+                                text: toggleModeSwitch.checked ? "Toggle" : "Momentary"
+                                color: toggleModeSwitch.checked ? "#4ade80" : "#aaa"
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                    }
+                }
             }
 
             // Joystick-specific fields
@@ -370,18 +416,18 @@ Item {
                     Text { text: "Axis Pair:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
                     Basic.ComboBox {
                         id: axisPairCombo
-                        width: 180
-                        model: ["x/y (Left Stick)", "rx/ry (Right Stick)", "z/rz (Throttle/Rudder)"]
+                        width: 200
+                        model: ["x/y (Left Stick)", "rx/ry (Right Stick)", "z/rz (Throttle/Rudder)", "sl0/sl1 (Slider Axes)"]
                         background: Rectangle { color: "#1a1a1a"; border.color: "#444"; radius: 4 }
                         contentItem: Text { text: axisPairCombo.displayText; color: "white"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
                     }
                 }
             }
 
-            // Slider-specific fields
+            // Slider & Wheel axis fields
             Column {
                 spacing: 8
-                visible: configDialog.targetWidget ? configDialog.targetWidget.type === "slider" : false
+                visible: configDialog.targetWidget ? (configDialog.targetWidget.type === "slider" || configDialog.targetWidget.type === "wheel") : false
                 width: parent.width
 
                 Row {
@@ -389,10 +435,47 @@ Item {
                     Text { text: "Axis:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
                     Basic.ComboBox {
                         id: sliderAxisCombo
-                        width: 180
-                        model: ["z (LT/Throttle)", "rz (RT/Rudder)", "x", "y", "rx", "ry"]
+                        width: 200
+                        model: ["z (LT/Throttle)", "rz (RT/Rudder)", "sl0 (Slider 0)", "sl1 (Slider 1)", "x", "y", "rx", "ry"]
                         background: Rectangle { color: "#1a1a1a"; border.color: "#444"; radius: 4 }
                         contentItem: Text { text: sliderAxisCombo.displayText; color: "white"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
+                    }
+                }
+
+                // Center return (slider only)
+                Row {
+                    spacing: 8
+                    visible: configDialog.targetWidget ? configDialog.targetWidget.type === "slider" : false
+                    Text { text: "Center:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
+                    Rectangle {
+                        width: 200; height: 30; radius: 4; color: "transparent"
+                        Row {
+                            spacing: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            Rectangle {
+                                id: centerReturnSwitch
+                                property bool checked: false
+                                width: 44; height: 22; radius: 11
+                                color: checked ? "#2e6bd1" : "#555"
+                                Rectangle {
+                                    width: 18; height: 18; radius: 9
+                                    color: "white"
+                                    x: parent.checked ? parent.width - width - 2 : 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Behavior on x { NumberAnimation { duration: 120 } }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: parent.checked = !parent.checked
+                                }
+                            }
+                            Text {
+                                text: centerReturnSwitch.checked ? "Spring to center" : "Hold position"
+                                color: centerReturnSwitch.checked ? "#6aa3ff" : "#aaa"
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
                     }
                 }
             }
@@ -428,17 +511,21 @@ Item {
                                 _updateWidgetProp(wid, "button_id", parseInt(buttonIdField.text) || 1)
                                 _updateWidgetProp(wid, "color", colorField.text)
                                 _updateWidgetProp(wid, "shape", shapeCombo.currentText)
+                                _updateWidgetProp(wid, "toggle_mode", toggleModeSwitch.checked)
                             }
 
                             if (configDialog.targetWidget.type === "joystick") {
-                                var axisPairs = [["x", "y"], ["rx", "ry"], ["z", "rz"]]
+                                var axisPairs = [["x", "y"], ["rx", "ry"], ["z", "rz"], ["sl0", "sl1"]]
                                 var pair = axisPairs[axisPairCombo.currentIndex] || ["x", "y"]
                                 _updateWidgetProp(wid, "mapping", {"axis_x": pair[0], "axis_y": pair[1]})
                             }
 
-                            if (configDialog.targetWidget.type === "slider") {
-                                var sliderAxes = ["z", "rz", "x", "y", "rx", "ry"]
+                            if (configDialog.targetWidget.type === "slider" || configDialog.targetWidget.type === "wheel") {
+                                var sliderAxes = ["z", "rz", "sl0", "sl1", "x", "y", "rx", "ry"]
                                 _updateWidgetProp(wid, "mapping", {"axis": sliderAxes[sliderAxisCombo.currentIndex] || "z"})
+                                if (configDialog.targetWidget.type === "slider") {
+                                    _updateWidgetProp(wid, "center_return", centerReturnSwitch.checked)
+                                }
                             }
 
                             configDialog.visible = false

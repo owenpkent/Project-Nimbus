@@ -61,7 +61,7 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 - **Save Profile As**: Create new profiles with custom names and descriptions
 - **Reset to Defaults**: Restore built-in profiles to original settings
 - **Portable Profiles**: JSON-based profiles stored in user data directory for easy backup
-- **Layout Types**: Each profile specifies its layout type (flight_sim, xbox, or adaptive)
+- **Layout Types**: Each profile specifies its layout type (`flight_sim`, `xbox`, `adaptive`, or `custom`)
 
 ### User Interface
 - **Qt Quick (PySide6 QML) UI**: Dark-themed, resizable interface with smooth animations
@@ -227,11 +227,12 @@ Profiles are stored in your user data directory for easy access and backup:
 Each profile is a JSON file containing:
 - **name**: Display name shown in the menu
 - **description**: Optional description of the profile
-- **layout_type**: UI layout (`flight_sim`, `xbox`, or `adaptive`)
+- **layout_type**: UI layout (`flight_sim`, `xbox`, `adaptive`, or `custom`)
 - **joystick_settings**: Sensitivity, deadzone, extremity deadzone
 - **rudder_settings**: Rudder-specific sensitivity settings
 - **buttons**: Button labels and toggle modes
 - **axis_mapping**: VJoy axis assignments
+- **custom_layout**: (custom type only) Widget array with positions, sizes, and mappings
 
 ### Backing Up Profiles
 
@@ -242,10 +243,11 @@ To back up your profiles:
 
 ### Built-in Profiles
 
-Three profiles are included by default:
+Four profiles are included by default:
 - **Flight Simulator**: Optimized for flight sims with throttle/rudder layout
 - **Xbox Controller**: Standard Xbox gamepad layout with ABXY buttons and triggers
-- **Adaptive Platform 1**: Accessibility-focused layout with larger buttons, Greek symbols (α, Ω, β), and prominent L3/R3 stick click buttons
+- **Adaptive Platform 1**: Accessibility-focused fixed layout with larger buttons, Greek symbols (α, Ω, β), and mode switching
+- **Adaptive Platform 2**: Modular drag-and-drop controller builder — place joysticks, buttons, and sliders anywhere on a customizable canvas
 
 Built-in profiles can be customized and saved, then reset to defaults at any time using **File > Reset Profile to Defaults**.
 
@@ -324,28 +326,44 @@ The sensitivity curve system provides precise control over input response:
 ### Project Structure
 ```
 Project-Nimbus/
-├── qml/                           # QML UI (Qt Quick)
-│   ├── Main.qml                   # Main window, menus, and layout
-│   └── components/                # Reusable QML controls
-│       ├── Joystick.qml
-│       ├── SliderVertical.qml     # Throttle (vertical)
-│       └── SliderHorizontal.qml   # Rudder (horizontal)
+├── qml/                               # QML UI (Qt Quick)
+│   ├── Main.qml                       # Main window, menus, layout loader
+│   ├── layouts/                       # Layout QML files
+│   │   ├── FlightSimLayout.qml        # Dual joysticks + throttle/rudder
+│   │   ├── XboxLayout.qml             # Standard Xbox gamepad
+│   │   ├── AdaptiveLayout.qml         # Accessibility-focused fixed layout
+│   │   └── CustomLayout.qml           # Modular drag-and-drop canvas
+│   └── components/                    # Reusable QML controls
+│       ├── Joystick.qml               # Virtual joystick
+│       ├── DraggableWidget.qml        # Drag/resize wrapper for any widget
+│       ├── WidgetPalette.qml          # Sidebar toolbar for adding widgets
+│       ├── SliderVertical.qml         # Throttle slider
+│       ├── SliderHorizontal.qml       # Rudder slider
+│       └── NumberPad.qml              # Button grid
 ├── src/
-│   ├── qt_qml_app.py              # QML application entry (QQmlApplicationEngine)
-│   ├── bridge.py                  # Python↔QML bridge (ControllerBridge)
-│   ├── qt_dialogs.py              # Qt Widgets dialogs used by QML (Axis/Joystick/Rudder/Buttons)
-│   ├── vjoy_interface.py          # VJoy driver interface
-│   ├── config.py                  # Configuration management
-│   └── legacy/                    # Legacy pygame-based UI/dialogs retained for reference only
-├── build_tools/                   # Executable build system
-│   ├── build_exe.bat              # Automated build script
-│   ├── Project-Nimbus.spec        # PyInstaller configuration
-│   ├── launcher.py                # GUI-friendly entry point for executable
-│   ├── BUILD_EXECUTABLE.md        # Build documentation
-│   └── README.md                  # Build tools documentation
-├── run.py                         # Launcher with dependency checks
-├── requirements.txt               # Python dependencies
-├── controller_config.json         # Persistent settings (auto-generated)
+│   ├── qt_qml_app.py                  # QML application entry
+│   ├── bridge.py                      # Python↔QML bridge (ControllerBridge)
+│   ├── config.py                      # Configuration & profile management
+│   ├── qt_dialogs.py                  # Qt Widgets settings dialogs
+│   ├── vjoy_interface.py              # vJoy driver interface (8 axes, 128 buttons)
+│   ├── vigem_interface.py             # ViGEm Xbox 360 controller emulation
+│   ├── window_utils.py                # Game Focus Mode (Windows API)
+│   └── legacy/                        # Legacy pygame UI (reference only)
+├── profiles/                          # Bundled profile JSON files
+│   ├── flight_simulator.json
+│   ├── xbox_controller.json
+│   ├── adaptive_platform_1.json
+│   └── adaptive_platform_2.json       # Modular custom layout
+├── docs/                              # Documentation
+│   ├── architecture.md                # System architecture
+│   ├── WIDGET_IDEAS.md                # Widget brainstorm for accessibility
+│   └── ACCESSIBILITY_SPOTLIGHT_NOMINATION.md
+├── build_tools/                       # PyInstaller build system
+├── research/                          # Research notes
+├── run.py                             # Launcher with venv + dependency checks
+├── run.bat                            # Windows batch launcher
+├── requirements.txt                   # Python dependencies
+├── controller_config.json             # Runtime settings (auto-generated)
 ├── logo.png
 ├── screenshots/
 ├── tests/
@@ -450,7 +468,47 @@ An optional Qt Widgets-based shell is available for experimentation:
 ## Legacy
 Legacy pygame-based UI and dialogs are kept under `src/legacy/` for reference only and are not used by the QML app launched via `run.py`.
 
+## Adaptive Platform 2 — Custom Layout Builder
+
+The **Adaptive Platform 2** profile introduces a modular controller builder where users can design their own controller layout:
+
+### How It Works
+1. Switch to **File > Profile > Adaptive Platform 2**
+2. Click **"Edit Layout"** (bottom-right corner) to enter edit mode
+3. **Drag** widgets to reposition, **corner handle** to resize, **×** to delete
+4. **Double-click** any widget to configure (label, axis mapping, button ID, color)
+5. Use the **Widget Palette** sidebar to add new joysticks, buttons, or sliders
+6. Click **"Done Editing"** to save and return to play mode
+
+### Available Widgets
+| Widget | Description |
+|--------|-------------|
+| **Joystick** | 2-axis analog stick (maps to any axis pair) |
+| **Button** | Single press with toggle/momentary support (maps to any vJoy button 1-128) |
+| **Slider** | Single-axis analog control (throttle, trigger, rudder, etc.) |
+
+### Hardware Limits
+| Backend | Axes | Joysticks | Buttons |
+|---------|------|-----------|---------|
+| **vJoy** | 8 (X,Y,Z,RX,RY,RZ,SL0,SL1) | Up to 4 | Up to 128 |
+| **ViGEm** (Xbox) | 4 + 2 triggers | 2 | 14 |
+
+See [docs/WIDGET_IDEAS.md](docs/WIDGET_IDEAS.md) for planned accessibility widgets including dwell buttons, scan mode strips, steering wheels, and more.
+
+See [docs/architecture.md](docs/architecture.md) for detailed technical documentation of the custom layout system.
+
 ## Changelog (recent)
+
+### v3.0 - Adaptive Platform 2 & Custom Layout Builder
+- **Modular Controller Builder**: New `custom` layout type with drag-and-drop canvas for placing joysticks, buttons, and sliders anywhere
+- **DraggableWidget System**: Universal wrapper providing drag, resize, delete, and config for any widget type
+- **Widget Palette**: Sidebar toolbar for adding new widgets with axis limit information
+- **Widget Config Dialog**: Double-click to edit label, axis mapping, button ID, color, and shape
+- **Grid Snapping**: Configurable grid with optional overlay for clean alignment
+- **Auto-Save**: Layout automatically saved when exiting edit mode
+- **Profile Persistence**: Full widget layout stored in profile JSON for portability
+- **8-Axis Support**: vJoy SL0/SL1 slider axes exposed (8 total axes, up to 4 joysticks)
+- **Comprehensive Documentation**: Updated architecture docs, widget brainstorm, accessibility focus
 
 ### v2.1 - Profile-Specific Settings & Menu Redesign
 - **Profile-Specific Settings**: Joystick sensitivity, slider sensitivity, and button toggle modes are now saved per-profile instead of globally

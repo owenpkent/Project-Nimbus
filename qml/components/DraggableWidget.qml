@@ -6,13 +6,15 @@ Item {
 
     // Widget data from profile (set by CustomLayout)
     property string widgetId: ""
-    property string widgetType: "button"   // "joystick", "button", "slider"
+    property string widgetType: "button"   // "joystick", "button", "slider", "dpad", "wheel"
     property string widgetLabel: ""
     property int buttonId: 1
     property string widgetColor: "#333"
     property string widgetShape: "rounded" // "circle", "rounded", "square"
     property string orientation: "horizontal"
     property var mapping: ({})
+    property bool centerReturn: false      // Slider: spring back to center on release
+    property bool toggleMode: false        // Button: toggle vs momentary (per-widget override)
 
     // Edit mode toggle (controlled by parent CustomLayout)
     property bool editMode: false
@@ -21,8 +23,8 @@ Item {
     property int gridSnap: 10
 
     // Minimum widget sizes
-    readonly property int minWidth: widgetType === "button" ? 40 : 80
-    readonly property int minHeight: widgetType === "button" ? 40 : 80
+    readonly property int minWidth: (widgetType === "button") ? 40 : (widgetType === "dpad" ? 100 : 80)
+    readonly property int minHeight: (widgetType === "button") ? 40 : (widgetType === "dpad" ? 100 : 80)
 
     // Signals
     signal widgetMoved(string wid, real wx, real wy)
@@ -187,6 +189,8 @@ Item {
             if (root.widgetType === "joystick") return joystickContent
             if (root.widgetType === "button") return buttonContent
             if (root.widgetType === "slider") return sliderContent
+            if (root.widgetType === "dpad") return dpadContent
+            if (root.widgetType === "wheel") return wheelContent
             return null
         }
         // Block mouse events to content when in edit mode (so drag works)
@@ -201,6 +205,7 @@ Item {
             id: joyRoot
             property real xValue: 0
             property real yValue: 0
+            property bool mouseLocked: false  // Triple-click lock state
 
             readonly property real borderWidth: 2
             readonly property real joyRadius: Math.max(1, Math.min(width, height) / 2 - borderWidth / 2)
@@ -214,6 +219,40 @@ Item {
             property real _startXValue: 0
             property real _startYValue: 0
 
+            // Triple-click detection
+            property int _clickCount: 0
+            property real _lastClickTime: 0
+
+            function _checkTripleClick() {
+                var now = Date.now()
+                if (now - _lastClickTime < 400) {
+                    _clickCount++
+                } else {
+                    _clickCount = 1
+                }
+                _lastClickTime = now
+                if (_clickCount >= 3) {
+                    _clickCount = 0
+                    mouseLocked = !mouseLocked
+                }
+            }
+
+            function _sendJoystickValues(nx, ny) {
+                if (!controller) return
+                var axisX = root.mapping["axis_x"] || ""
+                var axisY = root.mapping["axis_y"] || ""
+                if (axisX && axisY) {
+                    if (axisX === "x" && axisY === "y") {
+                        controller.setLeftStick(nx, -ny)
+                    } else if (axisX === "rx" && axisY === "ry") {
+                        controller.setRightStick(nx, -ny)
+                    } else {
+                        controller.setAxis(axisX, nx)
+                        controller.setAxis(axisY, -ny)
+                    }
+                }
+            }
+
             // Base circle
             Rectangle {
                 width: joyRoot.joyRadius * 2
@@ -221,7 +260,7 @@ Item {
                 anchors.centerIn: parent
                 radius: width / 2
                 color: "#1e1e1e"
-                border.color: "#3d3d3d"
+                border.color: joyRoot.mouseLocked ? "#ff6a00" : "#3d3d3d"
                 border.width: joyRoot.borderWidth
             }
 
@@ -231,13 +270,25 @@ Item {
                 width: Math.min(joyRoot.width, joyRoot.height) * 0.18
                 height: width
                 radius: width / 2
-                color: "#2e6bd1"
-                border.color: "#6aa3ff"
+                color: joyRoot.mouseLocked ? "#d45500" : "#2e6bd1"
+                border.color: joyRoot.mouseLocked ? "#ff8833" : "#6aa3ff"
                 x: joyRoot.centerX + joyRoot.xValue * joyRoot.effectiveRadius - width / 2
                 y: joyRoot.centerY + joyRoot.yValue * joyRoot.effectiveRadius - height / 2
 
                 Behavior on x { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
                 Behavior on y { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+            }
+
+            // Lock indicator
+            Text {
+                anchors.top: parent.top
+                anchors.topMargin: 4
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "LOCKED"
+                color: "#ff6a00"
+                font.pixelSize: 10
+                font.bold: true
+                visible: joyRoot.mouseLocked
             }
 
             // Label
@@ -253,18 +304,29 @@ Item {
 
             MouseArea {
                 anchors.fill: parent
+                hoverEnabled: joyRoot.mouseLocked
+
                 onPressed: function(mouse) {
+                    joyRoot._checkTripleClick()
                     joyRoot._pressX = mouse.x
                     joyRoot._pressY = mouse.y
                     joyRoot._startXValue = joyRoot.xValue
                     joyRoot._startYValue = joyRoot.yValue
                 }
                 onPositionChanged: function(mouse) {
-                    if (!pressed) return
+                    // In locked mode, respond to hover; otherwise need press
+                    if (!pressed && !joyRoot.mouseLocked) return
                     var dx = mouse.x - joyRoot._pressX
                     var dy = mouse.y - joyRoot._pressY
-                    var nx = joyRoot._startXValue + (dx / joyRoot.effectiveRadius)
-                    var ny = joyRoot._startYValue + (dy / joyRoot.effectiveRadius)
+                    var nx, ny
+                    if (joyRoot.mouseLocked) {
+                        // In locked mode, map absolute position to joystick range
+                        nx = ((mouse.x / width) * 2 - 1)
+                        ny = ((mouse.y / height) * 2 - 1)
+                    } else {
+                        nx = joyRoot._startXValue + (dx / joyRoot.effectiveRadius)
+                        ny = joyRoot._startYValue + (dy / joyRoot.effectiveRadius)
+                    }
                     var mag2 = nx * nx + ny * ny
                     if (mag2 > 1.0) {
                         var mag = Math.sqrt(mag2)
@@ -273,38 +335,13 @@ Item {
                     }
                     joyRoot.xValue = nx
                     joyRoot.yValue = ny
-                    if (controller) {
-                        var axisX = root.mapping["axis_x"] || ""
-                        var axisY = root.mapping["axis_y"] || ""
-                        if (axisX && axisY) {
-                            // Use setLeftStick or setRightStick based on mapping
-                            if (axisX === "x" && axisY === "y") {
-                                controller.setLeftStick(nx, -ny)
-                            } else if (axisX === "rx" && axisY === "ry") {
-                                controller.setRightStick(nx, -ny)
-                            } else {
-                                // Generic axis set for custom mappings
-                                controller.setAxis(axisX, nx)
-                                controller.setAxis(axisY, -ny)
-                            }
-                        }
-                    }
+                    joyRoot._sendJoystickValues(nx, ny)
                 }
                 onReleased: {
+                    if (joyRoot.mouseLocked) return  // Don't release in locked mode
                     joyRoot.xValue = 0
                     joyRoot.yValue = 0
-                    if (controller) {
-                        var axisX = root.mapping["axis_x"] || ""
-                        var axisY = root.mapping["axis_y"] || ""
-                        if (axisX === "x" && axisY === "y") {
-                            controller.setLeftStick(0, 0)
-                        } else if (axisX === "rx" && axisY === "ry") {
-                            controller.setRightStick(0, 0)
-                        } else {
-                            if (axisX) controller.setAxis(axisX, 0)
-                            if (axisY) controller.setAxis(axisY, 0)
-                        }
-                    }
+                    joyRoot._sendJoystickValues(0, 0)
                 }
             }
         }
@@ -345,8 +382,9 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 onPressed: {
-                    var isToggleMode = controller ? controller.isButtonToggle(root.buttonId) : false
-                    if (isToggleMode) {
+                    // Use per-widget toggleMode first, fall back to global config
+                    var isToggle = root.toggleMode || (controller ? controller.isButtonToggle(root.buttonId) : false)
+                    if (isToggle) {
                         btnRect.isToggled = !btnRect.isToggled
                         if (controller) controller.setButton(root.buttonId, btnRect.isToggled)
                     } else {
@@ -355,8 +393,8 @@ Item {
                     }
                 }
                 onReleased: {
-                    var isToggleMode = controller ? controller.isButtonToggle(root.buttonId) : false
-                    if (!isToggleMode) {
+                    var isToggle = root.toggleMode || (controller ? controller.isButtonToggle(root.buttonId) : false)
+                    if (!isToggle) {
                         btnRect.isPressed = false
                         if (controller) controller.setButton(root.buttonId, false)
                     }
@@ -399,8 +437,9 @@ Item {
                 radius: 6
                 color: "#1a1a1a"
 
-                // Fill
+                // Fill — changes behavior based on centerReturn
                 Rectangle {
+                    visible: !root.centerReturn
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
@@ -409,9 +448,32 @@ Item {
                     color: "#107c10"
                 }
 
+                // Center-return fill (shows deviation from center)
+                Rectangle {
+                    visible: root.centerReturn
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    x: sliderDragArea.value >= 0.5
+                       ? parent.width / 2
+                       : parent.width * sliderDragArea.value
+                    width: Math.abs(sliderDragArea.value - 0.5) * parent.width
+                    radius: 6
+                    color: "#2e6bd1"
+                }
+
+                // Center line for center-return sliders
+                Rectangle {
+                    visible: root.centerReturn
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    x: parent.width / 2 - 1
+                    width: 2
+                    color: "#666"
+                }
+
                 MouseArea {
                     id: sliderDragArea
-                    property real value: 0
+                    property real value: root.centerReturn ? 0.5 : 0
                     anchors.fill: parent
                     onPositionChanged: function(mouse) {
                         value = Math.max(0, Math.min(1, mouse.x / width))
@@ -422,20 +484,204 @@ Item {
                         _sendSliderValue(value)
                     }
                     onReleased: {
-                        value = 0
-                        _sendSliderValue(0)
+                        if (root.centerReturn) {
+                            // Spring back to center
+                            value = 0.5
+                            _sendSliderValue(0.5)
+                        } else {
+                            // Keep at current position (throttle-like)
+                        }
                     }
 
                     function _sendSliderValue(v) {
                         if (!controller) return
                         var axis = root.mapping["axis"] || ""
-                        if (axis === "z") {
-                            controller.setThrottle(v)
-                        } else if (axis === "rz") {
-                            controller.setRudder(v * 2 - 1)
-                        } else if (axis !== "") {
-                            controller.setAxis(axis, v * 2 - 1)
+                        if (root.centerReturn) {
+                            // Center-return: 0.5 = center (0), 0 = -1, 1 = +1
+                            var normalized = (v - 0.5) * 2  // -1 to +1
+                            if (axis !== "") controller.setAxis(axis, normalized)
+                        } else {
+                            // One-way: 0 = min, 1 = max
+                            if (axis === "z") {
+                                controller.setThrottle(v)
+                            } else if (axis === "rz") {
+                                controller.setRudder(v * 2 - 1)
+                            } else if (axis !== "") {
+                                controller.setAxis(axis, v * 2 - 1)
+                            }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // ==================== D-PAD ====================
+    Component {
+        id: dpadContent
+
+        Item {
+            id: dpadRoot
+            readonly property real btnSize: Math.min(width, height) * 0.35
+            readonly property real gap: 2
+            readonly property real cx: width / 2
+            readonly property real cy: height / 2
+
+            function _pressDir(dir, pressed) {
+                if (!controller) return
+                var m = root.mapping || {}
+                var btnId = m[dir] || 0
+                if (btnId > 0) controller.setButton(btnId, pressed)
+            }
+
+            // Up
+            Rectangle {
+                x: dpadRoot.cx - dpadRoot.btnSize / 2
+                y: dpadRoot.cy - dpadRoot.btnSize - dpadRoot.gap - dpadRoot.btnSize / 2
+                width: dpadRoot.btnSize; height: dpadRoot.btnSize
+                radius: 4; color: dpadUp.pressed ? "#4a9eff" : "#333"
+                border.color: "#555"; border.width: 1
+                Text { anchors.centerIn: parent; text: "\u25B2"; color: "white"; font.pixelSize: dpadRoot.btnSize * 0.4 }
+                MouseArea { id: dpadUp; anchors.fill: parent
+                    onPressed: dpadRoot._pressDir("up", true)
+                    onReleased: dpadRoot._pressDir("up", false)
+                }
+            }
+            // Down
+            Rectangle {
+                x: dpadRoot.cx - dpadRoot.btnSize / 2
+                y: dpadRoot.cy + dpadRoot.gap + dpadRoot.btnSize / 2
+                width: dpadRoot.btnSize; height: dpadRoot.btnSize
+                radius: 4; color: dpadDown.pressed ? "#4a9eff" : "#333"
+                border.color: "#555"; border.width: 1
+                Text { anchors.centerIn: parent; text: "\u25BC"; color: "white"; font.pixelSize: dpadRoot.btnSize * 0.4 }
+                MouseArea { id: dpadDown; anchors.fill: parent
+                    onPressed: dpadRoot._pressDir("down", true)
+                    onReleased: dpadRoot._pressDir("down", false)
+                }
+            }
+            // Left
+            Rectangle {
+                x: dpadRoot.cx - dpadRoot.btnSize - dpadRoot.gap - dpadRoot.btnSize / 2
+                y: dpadRoot.cy - dpadRoot.btnSize / 2
+                width: dpadRoot.btnSize; height: dpadRoot.btnSize
+                radius: 4; color: dpadLeft.pressed ? "#4a9eff" : "#333"
+                border.color: "#555"; border.width: 1
+                Text { anchors.centerIn: parent; text: "\u25C0"; color: "white"; font.pixelSize: dpadRoot.btnSize * 0.4 }
+                MouseArea { id: dpadLeft; anchors.fill: parent
+                    onPressed: dpadRoot._pressDir("left", true)
+                    onReleased: dpadRoot._pressDir("left", false)
+                }
+            }
+            // Right
+            Rectangle {
+                x: dpadRoot.cx + dpadRoot.gap + dpadRoot.btnSize / 2
+                y: dpadRoot.cy - dpadRoot.btnSize / 2
+                width: dpadRoot.btnSize; height: dpadRoot.btnSize
+                radius: 4; color: dpadRight.pressed ? "#4a9eff" : "#333"
+                border.color: "#555"; border.width: 1
+                Text { anchors.centerIn: parent; text: "\u25B6"; color: "white"; font.pixelSize: dpadRoot.btnSize * 0.4 }
+                MouseArea { id: dpadRight; anchors.fill: parent
+                    onPressed: dpadRoot._pressDir("right", true)
+                    onReleased: dpadRoot._pressDir("right", false)
+                }
+            }
+            // Center cross
+            Rectangle {
+                x: dpadRoot.cx - dpadRoot.btnSize / 2; y: dpadRoot.cy - dpadRoot.btnSize / 2
+                width: dpadRoot.btnSize; height: dpadRoot.btnSize
+                radius: 4; color: "#222"; border.color: "#444"; border.width: 1
+            }
+            // Label
+            Text {
+                anchors.bottom: parent.bottom; anchors.bottomMargin: 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: root.widgetLabel; color: "#666"; font.pixelSize: 10
+                visible: root.widgetLabel !== ""
+            }
+        }
+    }
+
+    // ==================== STEERING WHEEL ====================
+    Component {
+        id: wheelContent
+
+        Item {
+            id: wheelRoot
+            property real angle: 0  // -1 to +1
+
+            readonly property real wheelRadius: Math.min(width, height) / 2 - 6
+            readonly property real cx: width / 2
+            readonly property real cy: height / 2
+
+            // Outer ring
+            Rectangle {
+                anchors.centerIn: parent
+                width: wheelRoot.wheelRadius * 2; height: width
+                radius: width / 2
+                color: "transparent"
+                border.color: "#555"; border.width: 4
+            }
+
+            // Inner ring
+            Rectangle {
+                anchors.centerIn: parent
+                width: wheelRoot.wheelRadius * 1.4; height: width
+                radius: width / 2
+                color: "transparent"
+                border.color: "#333"; border.width: 2
+            }
+
+            // Rotation indicator (spoke)
+            Rectangle {
+                id: wheelSpoke
+                width: 6; height: wheelRoot.wheelRadius * 0.8
+                radius: 3
+                color: "#2e6bd1"
+                x: wheelRoot.cx - 3
+                y: wheelRoot.cy - wheelRoot.wheelRadius * 0.8
+                transformOrigin: Item.Bottom
+                rotation: wheelRoot.angle * 135  // ±135 degrees visual range
+
+                Behavior on rotation { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            }
+
+            // Center hub
+            Rectangle {
+                anchors.centerIn: parent
+                width: 16; height: 16; radius: 8
+                color: "#444"; border.color: "#666"; border.width: 1
+            }
+
+            // Label
+            Text {
+                anchors.bottom: parent.bottom; anchors.bottomMargin: 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: root.widgetLabel; color: "#666"; font.pixelSize: 10
+                visible: root.widgetLabel !== ""
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                property real _pressX: 0
+
+                onPressed: function(mouse) { _pressX = mouse.x }
+                onPositionChanged: function(mouse) {
+                    if (!pressed) return
+                    // Map horizontal drag to -1..+1
+                    var raw = ((mouse.x / width) * 2 - 1)
+                    wheelRoot.angle = Math.max(-1, Math.min(1, raw))
+                    if (controller) {
+                        var axis = root.mapping["axis"] || ""
+                        if (axis !== "") controller.setAxis(axis, wheelRoot.angle)
+                    }
+                }
+                onReleased: {
+                    // Spring to center
+                    wheelRoot.angle = 0
+                    if (controller) {
+                        var axis = root.mapping["axis"] || ""
+                        if (axis !== "") controller.setAxis(axis, 0)
                     }
                 }
             }
