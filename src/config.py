@@ -717,6 +717,25 @@ class ControllerConfig:
         except IOError:
             return False
 
+    def save_profile_as(self, profile_id: str, profile_data: dict) -> bool:
+        """
+        Save profile data as a new profile file.
+        
+        Args:
+            profile_id: New profile identifier (used as filename)
+            profile_data: Complete profile data dictionary
+            
+        Returns:
+            True if save was successful, False otherwise
+        """
+        profile_path = self._user_profiles_dir / f"{profile_id}.json"
+        try:
+            with open(profile_path, 'w') as f:
+                json.dump(profile_data, f, indent=4)
+            return True
+        except IOError:
+            return False
+
     def reset_profile(self, profile_id: str) -> bool:
         """
         Reset a profile to its default (bundled) settings.

@@ -566,14 +566,38 @@ class ControllerBridge(QObject):
 
     @Slot(str, int, bool)
     def saveCustomLayout(self, widgets_json: str, grid_snap: int, show_grid: bool) -> None:  # noqa: N802
-        """Save custom layout widgets from QML."""
+        """Save custom layout widgets from QML (silent — no profileSaved signal)."""
         try:
             import json
             widgets = json.loads(widgets_json)
             self._config.save_custom_layout(widgets, int(grid_snap), bool(show_grid))
-            self.profileSaved.emit(True)
         except Exception as e:
             print(f"Error saving custom layout: {e}")
+
+    @Slot(str, str, int, bool)
+    def saveCustomLayoutAs(self, name: str, widgets_json: str, grid_snap: int, show_grid: bool) -> None:  # noqa: N802
+        """Save custom layout as a new profile with a custom name."""
+        try:
+            import json
+            import copy
+            widgets = json.loads(widgets_json)
+            # Duplicate current profile with new name
+            profile_data = copy.deepcopy(self._config.get_current_profile_data() or {})
+            profile_id = name.lower().replace(" ", "_").replace("-", "_")
+            profile_data["name"] = name
+            profile_data["description"] = f"Custom layout: {name}"
+            profile_data["layout_type"] = "custom"
+            if "custom_layout" not in profile_data:
+                profile_data["custom_layout"] = {}
+            profile_data["custom_layout"]["widgets"] = widgets
+            profile_data["custom_layout"]["grid_snap"] = int(grid_snap)
+            profile_data["custom_layout"]["show_grid"] = bool(show_grid)
+            # Save as new profile
+            self._config.save_profile_as(profile_id, profile_data)
+            print(f"Saved custom layout as: {name} (id: {profile_id})")
+            self.profileSaved.emit(True)
+        except Exception as e:
+            print(f"Error saving custom layout as '{name}': {e}")
             self.profileSaved.emit(False)
 
     @Slot()

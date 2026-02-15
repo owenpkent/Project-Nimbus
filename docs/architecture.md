@@ -84,7 +84,7 @@ Each widget in `custom_layout.widgets[]` has:
 
 - **Joystick**: `mapping.axis_x`, `mapping.axis_y` (e.g. `"x"/"y"`, `"rx"/"ry"`, `"sl0"/"sl1"`)
 - **Button**: `button_id` (1–128), `color` (hex), `shape` (`"circle"/"rounded"/"square"`), `toggle_mode`
-- **Slider**: `mapping.axis` (e.g. `"z"`, `"rz"`, `"sl0"`), `orientation`, `center_return` (bool)
+- **Slider**: `mapping.axis` (e.g. `"z"`, `"rz"`, `"sl0"`), `orientation` (`"horizontal"`/`"vertical"`), `snap_mode` (`"none"`/`"left"`/`"center"`), `click_mode` (`"jump"`/`"relative"`)
 - **D-Pad**: `mapping` with `up`/`down`/`left`/`right` button IDs
 - **Wheel**: `mapping.axis` (single rotational axis)
 
@@ -96,7 +96,7 @@ Each widget in `custom_layout.widgets[]` has:
 | Resize widgets | ✅ | ❌ |
 | Delete widgets | ✅ | ❌ |
 | Config dialog (double-click) | ✅ | ❌ |
-| Widget Palette sidebar | ✅ visible | ❌ hidden |
+| Widget Palette (pop-out window) | ✅ visible | ❌ hidden |
 | Grid overlay | ✅ optional | ❌ hidden |
 | Interactive controls | ❌ blocked | ✅ active |
 | Selection border | ✅ blue outline | ❌ none |
@@ -107,16 +107,51 @@ The universal wrapper component. It:
 1. Receives widget data as properties (`widgetType`, `widgetId`, `mapping`, etc.)
 2. In edit mode: renders drag handle, resize handle, delete button, type label
 3. In play mode: renders the interactive control via a `Loader` that selects the correct `Component`:
-   - `joystickContent` — full joystick with thumb, base circle, axis output
+   - `joystickContent` — full joystick with thumb, base circle, axis output, triple-click mouse lock
    - `buttonContent` — colored button with toggle/momentary support
-   - `sliderContent` — horizontal/vertical slider with fill bar
+   - `sliderContent` — horizontal/vertical slider with 3 snap modes, jump/relative click, smooth snap-back easing, and fill bar
+   - `dpadContent` — 4-directional button cluster with arrow symbols
+   - `wheelContent` — rotational single-axis with spoke indicator
+4. Exposes `joystickLocked`, `updateJoystickPosition()`, `triggerTripleClick()` for the parent overlay
+5. `_applyCurve()` applies sensitivity using the same formula as `config.py:apply_joystick_dialog_curve()`
+
+### Widget Palette (Pop-Out Window)
+
+The palette is rendered as a separate `Window` with `Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint`:
+- Custom draggable title bar (dark blue, drag to reposition)
+- Stays on top so it's always accessible
+- Never overlaps the canvas since it's a separate OS window
+- Auto-shows/hides with edit mode
+- Contains: add widget buttons, axis limits info, toggle grid, save as, done editing
+
+### Mouse Lock Overlay
+
+When a joystick is triple-click locked, `CustomLayout.qml` shows a full-canvas `MouseArea` overlay:
+- `hoverEnabled: true` — tracks mouse position without clicking
+- Maps global coordinates to the locked joystick's local space via `mapToItem()`
+- Calls `updateJoystickPosition(nx, ny)` on the locked widget
+- Handles triple-click for unlock
+- Joystick returns to center (0,0) when unlocked
+- Fixes the edge-sticking bug from the old hover-based approach
+
+### Sensitivity Curve (Per-Widget)
+
+Each axis widget stores sensitivity settings as percentages (0–100), matching the Settings menu:
+- `sensitivity` (50% = linear, <50% = exponential, >50% = responsive)
+- `dead_zone` (0–100%, maps to 0–0.25 of axis range internally)
+- `extremity_dead_zone` (0–100%, scales max output)
+
+The `_applyCurve()` function in `DraggableWidget.qml` uses the identical formula as `apply_joystick_dialog_curve()` in `config.py`.
+
+The config dialog includes a **Response Curve Preview** canvas that draws the curve in real-time as sliders change.
 
 ### Persistence
 
 - Widget positions/sizes/config saved to profile JSON under `custom_layout`
 - `ControllerConfig.save_custom_layout(widgets, grid_snap, show_grid)` writes to disk
-- Bridge slots: `getCustomLayout()`, `saveCustomLayout()`, `getCustomLayoutGridSnap()`, `getCustomLayoutShowGrid()`
-- Auto-saves when exiting edit mode
+- Bridge slots: `getCustomLayout()`, `saveCustomLayout()`, `saveCustomLayoutAs()`, `getCustomLayoutGridSnap()`, `getCustomLayoutShowGrid()`
+- Auto-saves on every widget move/resize/config change and when exiting edit mode
+- Save As dialog for creating named layout profiles
 
 ---
 
@@ -247,7 +282,17 @@ Profiles are JSON files stored in the user data directory:
 ## Build & Packaging
 
 - **Source**: `python run.py` (sets up venv, installs deps, launches QML app)
-- **Executable**: PyInstaller spec and scripts under `build_tools/`
-- **EV Signing**: Owner has EV signing certificate for `UIAccess=true` manifest (future)
+- **Executable**: PyInstaller one-file build via `build_tools/build_exe.bat`
+- **Installer**: NSIS installer via `build_tools/installer.nsi` (built automatically if NSIS is in PATH)
+- **EV Signing**: `build_tools/sign_exe.bat` signs both exe and installer with SHA-256 + DigiCert timestamp
+- **UIAccess**: `build_tools/Project-Nimbus.manifest` embeds `uiAccess="true"` for on-screen keyboard parity
+- **Icon**: `build_tools/Project-Nimbus.ico` (multi-size: 16–256px)
+- **Version**: Defined in `src/__init__.py`, `build_tools/version_info.txt`, and `build_tools/Project-Nimbus.spec`
 
-See `build_tools/BUILD_EXECUTABLE.md` for detailed build steps.
+### Build Workflow
+```
+build_exe.bat  →  PyInstaller (Project-Nimbus.exe)  →  NSIS (Project-Nimbus-Setup-X.Y.Z.exe)
+sign_exe.bat   →  signtool signs both .exe files with EV cert + timestamp
+```
+
+See `build_tools/BUILD_EXECUTABLE.md` and `build_tools/CODE_SIGNING.md` for detailed steps.

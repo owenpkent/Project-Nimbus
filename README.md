@@ -13,24 +13,24 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 ## Adaptive Platform Profile
 
 <div align="center">
-  <img src="screenshots/adaptive-platform-layout.png" alt="Adaptive Platform Layout" width="800"/>
+  <img src="docs/screenshots/adaptive-platform-layout.png" alt="Adaptive Platform Layout" width="800"/>
   <p><em>Adaptive Platform 1 profile with accessibility-focused design: larger buttons, Greek symbols (α, Ω, β), and prominent L3/R3 stick click buttons</em></p>
 </div>
 
 ## Screenshots
 
 <div align="center">
-  <img src="screenshots/main-interface.png" alt="Main Interface" width="800"/>
+  <img src="docs/screenshots/main-interface.png" alt="Main Interface" width="800"/>
   <p><em>Main interface showing dual joysticks, throttle, rudder, and configurable buttons with menu bar</em></p>
 </div>
 
 <div align="center">
-  <img src="screenshots/joystick-settings.png" alt="Joystick Settings" width="600"/>
+  <img src="docs/screenshots/joystick-settings.png" alt="Joystick Settings" width="600"/>
   <p><em>Joystick Settings dialog with real-time sensitivity curve visualization, deadzone, and extremity deadzone controls</em></p>
 </div>
 
 <div align="center">
-  <img src="screenshots/button-settings.png" alt="Button Settings" width="600"/>
+  <img src="docs/screenshots/button-settings.png" alt="Button Settings" width="600"/>
   <p><em>Button Settings dialog showing toggle/momentary mode configuration with color-coded visual feedback</em></p>
 </div>
 
@@ -365,7 +365,7 @@ Project-Nimbus/
 ├── requirements.txt                   # Python dependencies
 ├── controller_config.json             # Runtime settings (auto-generated)
 ├── logo.png
-├── screenshots/
+├── docs/screenshots/
 ├── tests/
 └── README.md
 ```
@@ -483,9 +483,11 @@ The **Adaptive Platform 2** profile introduces a modular controller builder wher
 ### Available Widgets
 | Widget | Description |
 |--------|-------------|
-| **Joystick** | 2-axis analog stick (maps to any axis pair) |
-| **Button** | Single press with toggle/momentary support (maps to any vJoy button 1-128) |
-| **Slider** | Single-axis analog control (throttle, trigger, rudder, etc.) |
+| **Joystick** | 2-axis analog stick with triple-click mouse lock (maps to any axis pair) |
+| **Button** | Single press with toggle/momentary support and color/shape options (maps to any vJoy button 1-128) |
+| **Slider** | Single-axis analog control with horizontal/vertical orientation and 3 snap modes: hold position, snap to zero, snap to center |
+| **D-Pad** | 4-directional digital button cluster with auto-assigned button IDs |
+| **Steering Wheel** | Rotational single-axis input with spoke indicator |
 
 ### Hardware Limits
 | Backend | Axes | Joysticks | Buttons |
@@ -499,15 +501,29 @@ See [docs/architecture.md](docs/architecture.md) for detailed technical document
 
 ## Changelog (recent)
 
+### v3.1 - Widget Palette Pop-Out, Mouse Lock Fix, Enhanced Axis Config
+- **Pop-Out Widget Palette**: Palette is now a separate floating window with custom draggable title bar — never overlaps the canvas
+- **Triple-Click Mouse Lock Fix**: Joystick lock now uses a full-canvas hover overlay that tracks mouse everywhere without edge-sticking
+- **Unlock Returns to Center**: Joystick automatically snaps back to (0,0) when triple-click unlocked
+- **3-Mode Slider Snap**: Sliders now have three snap behaviors — hold position, snap to zero (return-to-zero), snap to center (spring-to-center)
+- **Slider Orientation**: Each slider can be set to horizontal or vertical in the config dialog
+- **Per-Widget Sensitivity Settings**: Sensitivity (0-100%), deadzone (0-100%), and extremity deadzone (0-100%) per axis widget
+- **Response Curve Preview**: Live-updating graph in config dialog showing exact sensitivity curve with deadzone regions
+- **Settings Menu Formula Match**: Widget `_applyCurve()` now uses the identical formula as the Settings menu dialogs
+- **Scrollable Config Dialog**: Config dialog now scrolls when content exceeds screen height
+
 ### v3.0 - Adaptive Platform 2 & Custom Layout Builder
 - **Modular Controller Builder**: New `custom` layout type with drag-and-drop canvas for placing joysticks, buttons, and sliders anywhere
+- **5 Widget Types**: Joystick, Button, Slider, D-Pad, and Steering Wheel
 - **DraggableWidget System**: Universal wrapper providing drag, resize, delete, and config for any widget type
-- **Widget Palette**: Sidebar toolbar for adding new widgets with axis limit information
-- **Widget Config Dialog**: Double-click to edit label, axis mapping, button ID, color, and shape
+- **Widget Palette**: Toolbar for adding new widgets with smart auto-assignment of button IDs and axes
+- **Widget Config Dialog**: Double-click to edit label, axis mapping, button ID, color, shape, toggle mode
 - **Grid Snapping**: Configurable grid with optional overlay for clean alignment
-- **Auto-Save**: Layout automatically saved when exiting edit mode
+- **Auto-Save**: Layout automatically saved on every change
 - **Profile Persistence**: Full widget layout stored in profile JSON for portability
+- **Save As**: Create named layout profiles from the palette
 - **8-Axis Support**: vJoy SL0/SL1 slider axes exposed (8 total axes, up to 4 joysticks)
+- **Triple-Click Mouse Lock**: Lock mouse to joystick for continuous control
 - **Comprehensive Documentation**: Updated architecture docs, widget brainstorm, accessibility focus
 
 ### v2.1 - Profile-Specific Settings & Menu Redesign

@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 # Version info - keep in sync with src/__init__.py
-VERSION = "1.0.1"
-VERSION_TUPLE = (1, 0, 1, 0)
+VERSION = "1.2.0"
+VERSION_TUPLE = (1, 2, 0, 0)
 
 block_cipher = None
 
@@ -33,8 +33,16 @@ logo_datas = [(str(PROJECT_ROOT / 'logo.png'), '.')]
 # Add controller config template
 config_datas = [(str(PROJECT_ROOT / 'controller_config.json'), '.')]
 
+# Add profiles directory
+profile_datas = []
+profiles_path = PROJECT_ROOT / 'profiles'
+if profiles_path.exists():
+    for profile_file in profiles_path.rglob('*.json'):
+        rel_path = profile_file.relative_to(PROJECT_ROOT)
+        profile_datas.append((str(profile_file), str(rel_path.parent)))
+
 # Combine all data files
-datas = qml_datas + logo_datas + config_datas
+datas = qml_datas + logo_datas + config_datas + profile_datas
 
 # Hidden imports for PySide6 and other dependencies
 hiddenimports = [
@@ -51,6 +59,7 @@ hiddenimports = [
     'src.bridge',
     'src.config',
     'src.vjoy_interface',
+    'src.vigem_interface',
     'src.qt_dialogs',
     'src.qt_widgets',
 ]
@@ -93,6 +102,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Set to None for now - can add .ico file later
+    manifest=str(PROJECT_ROOT / 'build_tools' / 'Project-Nimbus.manifest'),
+    icon=str(PROJECT_ROOT / 'build_tools' / 'Project-Nimbus.ico'),
     version=str(PROJECT_ROOT / 'build_tools' / 'version_info.txt'),  # Windows version resource
 )

@@ -1,88 +1,56 @@
-# Virtual Environment
+# ---- Virtual Environment ----
 venv/
 .venv/
 env/
 .env/
 
-# Python
+# ---- Python ----
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Python Cache Files
 *.pyc
 *.pyo
 *.pyd
 .Python
-.cache/
+*.egg-info/
+*.egg
+MANIFEST
+
+# ---- PyInstaller build artifacts ----
+build/
+dist/
+*.spec~
+
+# ---- Testing ----
 .pytest_cache/
 .coverage
 .tox/
 .nox/
 coverage.xml
 *.cover
-*.py,cover
 .hypothesis/
 
-# Pygame Cache
-.pygame_cache/
-
-# Configuration files (may contain sensitive data)
+# ---- Runtime config (generated per-machine) ----
 controller_config.json
 
-# IDE
+# ---- IDE ----
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# ---- OS ----
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
+ehthumbs.db
 
-# Logs
+# ---- Logs & temp ----
 *.log
-
-# Temporary files
 *.tmp
 *.temp
 
-# PyInstaller build artifacts
-build/
-dist/
-*.spec~
-
-# Pip output files
-*.0.0
-
-# Inspiration
+# ---- Reference materials (not source) ----
 inspiration/
-*.inspiration
 reference/
-examples/

@@ -11,17 +11,10 @@ REM Change to project root directory (parent of build_tools)
 cd /d "%~dp0\.."
 
 REM Configure paths - update SIGNTOOL path if needed
-set SIGNTOOL="C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
+set SIGNTOOL="C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\signtool.exe"
 set TIMESTAMP_URL=http://timestamp.digicert.com
 set EXE_PATH=dist\Project-Nimbus.exe
-
-REM Check if executable exists
-if not exist "%EXE_PATH%" (
-    echo ERROR: %EXE_PATH% not found!
-    echo Run build_exe.bat first to create the executable.
-    pause
-    exit /b 1
-)
+set INSTALLER_PATH=dist\Project-Nimbus-Setup-1.2.0.exe
 
 REM Check if signtool exists
 if not exist %SIGNTOOL% (
@@ -31,40 +24,56 @@ if not exist %SIGNTOOL% (
     exit /b 1
 )
 
-echo Signing %EXE_PATH%...
-echo.
 echo NOTE: You may be prompted for your hardware token PIN.
 echo.
 
-%SIGNTOOL% sign /tr %TIMESTAMP_URL% /td sha256 /fd sha256 /a "%EXE_PATH%"
-
-if errorlevel 1 (
+REM Sign the main executable
+if exist "%EXE_PATH%" (
+    echo Signing %EXE_PATH%...
+    %SIGNTOOL% sign /tr %TIMESTAMP_URL% /td sha256 /fd sha256 /a "%EXE_PATH%"
+    if errorlevel 1 (
+        echo ERROR: Failed to sign %EXE_PATH%
+        pause
+        exit /b 1
+    )
+    echo Verifying...
+    %SIGNTOOL% verify /pa "%EXE_PATH%"
+    if errorlevel 1 (
+        echo ERROR: Signature verification failed for %EXE_PATH%
+        pause
+        exit /b 1
+    )
+    echo [OK] %EXE_PATH% signed and verified.
     echo.
-    echo ERROR: Signing failed!
-    echo.
-    echo Common issues:
-    echo - Hardware token not connected
-    echo - Token not unlocked (wrong PIN)
-    echo - Certificate expired
-    echo.
-    pause
-    exit /b 1
+) else (
+    echo WARNING: %EXE_PATH% not found, skipping.
 )
 
-echo.
-echo Verifying signature...
-%SIGNTOOL% verify /pa "%EXE_PATH%"
-
-if errorlevel 1 (
+REM Sign the installer (if it exists)
+if exist "%INSTALLER_PATH%" (
+    echo Signing %INSTALLER_PATH%...
+    %SIGNTOOL% sign /tr %TIMESTAMP_URL% /td sha256 /fd sha256 /a "%INSTALLER_PATH%"
+    if errorlevel 1 (
+        echo ERROR: Failed to sign %INSTALLER_PATH%
+        pause
+        exit /b 1
+    )
+    echo Verifying...
+    %SIGNTOOL% verify /pa "%INSTALLER_PATH%"
+    if errorlevel 1 (
+        echo ERROR: Signature verification failed for %INSTALLER_PATH%
+        pause
+        exit /b 1
+    )
+    echo [OK] %INSTALLER_PATH% signed and verified.
     echo.
-    echo ERROR: Signature verification failed!
-    pause
-    exit /b 1
+) else (
+    echo WARNING: %INSTALLER_PATH% not found, skipping installer signing.
 )
 
 echo.
 echo ================================================
-echo SUCCESS: %EXE_PATH% is signed and verified!
+echo SUCCESS: All available files are signed!
 echo ================================================
 echo.
 pause

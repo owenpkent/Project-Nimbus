@@ -13,8 +13,13 @@ Item {
     property string widgetShape: "rounded" // "circle", "rounded", "square"
     property string orientation: "horizontal"
     property var mapping: ({})
-    property bool centerReturn: false      // Slider: spring back to center on release
+    property string snapMode: "none"       // Slider snap: "none" (hold), "left" (return to 0), "center" (spring to center)
+    property string clickMode: "jump"      // Slider click: "jump" (teleport to click) or "relative" (drag from current)
     property bool toggleMode: false        // Button: toggle vs momentary (per-widget override)
+    property bool tripleClickEnabled: true // Joystick: allow triple-click mouse lock
+    property real sensitivity: 50.0        // Axis sensitivity % (0-100, 50 = linear, matches Settings menu)
+    property real deadZone: 0.0            // Axis dead zone % (0-100, matches Settings menu)
+    property real extremityDeadZone: 5.0   // Extremity dead zone % (0-100, matches Settings menu)
 
     // Edit mode toggle (controlled by parent CustomLayout)
     property bool editMode: false
@@ -31,9 +36,62 @@ Item {
     signal widgetResized(string wid, real ww, real wh)
     signal widgetRemoved(string wid)
     signal widgetConfigRequested(string wid)
+    signal mouseLockChanged(string wid, bool locked)
+
+    // Joystick lock state (readable by parent for overlay)
+    property bool joystickLocked: false
+
+    // Public: parent overlay calls this to update joystick position during lock
+    function updateJoystickPosition(nx, ny) {
+        if (contentLoader.item && widgetType === "joystick") {
+            var mag2 = nx * nx + ny * ny
+            if (mag2 > 1.0) { var mag = Math.sqrt(mag2); nx /= mag; ny /= mag }
+            contentLoader.item.xValue = nx
+            contentLoader.item.yValue = ny
+            contentLoader.item._sendJoystickValues(nx, ny)
+        }
+    }
+
+    // Public: parent overlay calls this to check triple-click for unlock
+    function triggerTripleClick() {
+        if (contentLoader.item && widgetType === "joystick") {
+            contentLoader.item._checkTripleClick()
+        }
+    }
 
     // Snap helper
     function snap(v) { return gridSnap > 0 ? Math.round(v / gridSnap) * gridSnap : v }
+
+    // Apply sensitivity curve matching Settings menu (apply_joystick_dialog_curve)
+    // All params are percentages 0-100
+    function _applyCurve(val) {
+        var sens = root.sensitivity / 100.0      // 0..1, 0.5 = linear
+        var dz = (root.deadZone / 100.0) * 0.25  // 0..0.25 of range
+        var edz = root.extremityDeadZone / 100.0 // 0..1 fraction
+
+        var v = val
+        if (Math.abs(v) < dz) return 0.0
+
+        var sign = v >= 0 ? 1.0 : -1.0
+        var absInput = Math.abs(v)
+        var availRange = 1.0 - dz
+        var normalized = (absInput - dz) / Math.max(1e-6, availRange)
+
+        var output
+        if (Math.abs(sens - 0.5) < 1e-9) {
+            output = normalized                               // linear
+        } else if (sens < 0.5) {
+            var power = 1.0 + (0.5 - sens) * 6.0              // up to 4.0
+            output = Math.pow(normalized, power)
+        } else {
+            var power2 = 1.0 - (sens - 0.5) * 1.8            // down to 0.1
+            output = Math.pow(normalized, Math.max(0.1, power2))
+        }
+
+        if (edz > 0) output *= (1.0 - edz)                    // scale max output
+
+        return output * sign
+    }
 
     // ==================== EDIT MODE OVERLAY ====================
     // Selection border when in edit mode
@@ -206,6 +264,16 @@ Item {
             property real xValue: 0
             property real yValue: 0
             property bool mouseLocked: false  // Triple-click lock state
+            onMouseLockedChanged: {
+                root.joystickLocked = mouseLocked
+                root.mouseLockChanged(root.widgetId, mouseLocked)
+                // Return to center when unlocking
+                if (!mouseLocked) {
+                    xValue = 0
+                    yValue = 0
+                    _sendJoystickValues(0, 0)
+                }
+            }
 
             readonly property real borderWidth: 2
             readonly property real joyRadius: Math.max(1, Math.min(width, height) / 2 - borderWidth / 2)
@@ -224,6 +292,7 @@ Item {
             property real _lastClickTime: 0
 
             function _checkTripleClick() {
+                if (!root.tripleClickEnabled) return
                 var now = Date.now()
                 if (now - _lastClickTime < 400) {
                     _clickCount++
@@ -234,11 +303,15 @@ Item {
                 if (_clickCount >= 3) {
                     _clickCount = 0
                     mouseLocked = !mouseLocked
+                    // Signal emitted via onMouseLockedChanged
                 }
             }
 
             function _sendJoystickValues(nx, ny) {
                 if (!controller) return
+                // Apply sensitivity curve
+                nx = root._applyCurve(nx)
+                ny = root._applyCurve(ny)
                 var axisX = root.mapping["axis_x"] || ""
                 var axisY = root.mapping["axis_y"] || ""
                 if (axisX && axisY) {
@@ -302,9 +375,10 @@ Item {
                 visible: root.widgetLabel !== ""
             }
 
+            // Normal (unlocked) interaction — locked mode handled by parent overlay
             MouseArea {
                 anchors.fill: parent
-                hoverEnabled: joyRoot.mouseLocked
+                enabled: !joyRoot.mouseLocked
 
                 onPressed: function(mouse) {
                     joyRoot._checkTripleClick()
@@ -314,19 +388,11 @@ Item {
                     joyRoot._startYValue = joyRoot.yValue
                 }
                 onPositionChanged: function(mouse) {
-                    // In locked mode, respond to hover; otherwise need press
-                    if (!pressed && !joyRoot.mouseLocked) return
+                    if (!pressed) return
                     var dx = mouse.x - joyRoot._pressX
                     var dy = mouse.y - joyRoot._pressY
-                    var nx, ny
-                    if (joyRoot.mouseLocked) {
-                        // In locked mode, map absolute position to joystick range
-                        nx = ((mouse.x / width) * 2 - 1)
-                        ny = ((mouse.y / height) * 2 - 1)
-                    } else {
-                        nx = joyRoot._startXValue + (dx / joyRoot.effectiveRadius)
-                        ny = joyRoot._startYValue + (dy / joyRoot.effectiveRadius)
-                    }
+                    var nx = joyRoot._startXValue + (dx / joyRoot.effectiveRadius)
+                    var ny = joyRoot._startYValue + (dy / joyRoot.effectiveRadius)
                     var mag2 = nx * nx + ny * ny
                     if (mag2 > 1.0) {
                         var mag = Math.sqrt(mag2)
@@ -338,7 +404,6 @@ Item {
                     joyRoot._sendJoystickValues(nx, ny)
                 }
                 onReleased: {
-                    if (joyRoot.mouseLocked) return  // Don't release in locked mode
                     joyRoot.xValue = 0
                     joyRoot.yValue = 0
                     joyRoot._sendJoystickValues(0, 0)
@@ -414,6 +479,9 @@ Item {
             border.width: 2
             radius: 10
 
+            readonly property bool isVertical: root.orientation === "vertical"
+            readonly property bool isCenter: root.snapMode === "center"
+
             // Label
             Text {
                 id: sliderLabel
@@ -437,77 +505,118 @@ Item {
                 radius: 6
                 color: "#1a1a1a"
 
-                // Fill — changes behavior based on centerReturn
+                // Normal fill (left-to-right or bottom-to-top)
+                // No anchors — explicit x/y/width/height avoids QML anchor conflicts
                 Rectangle {
-                    visible: !root.centerReturn
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: parent.width * sliderDragArea.value
+                    visible: !sliderRect.isCenter
+                    x: 0
+                    y: sliderRect.isVertical ? parent.height * (1 - sliderDragArea.value) : 0
+                    width: sliderRect.isVertical ? parent.width : parent.width * sliderDragArea.value
+                    height: sliderRect.isVertical ? parent.height * sliderDragArea.value : parent.height
                     radius: 6
                     color: "#107c10"
                 }
 
-                // Center-return fill (shows deviation from center)
+                // Center fill (deviation from center)
                 Rectangle {
-                    visible: root.centerReturn
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    x: sliderDragArea.value >= 0.5
-                       ? parent.width / 2
-                       : parent.width * sliderDragArea.value
-                    width: Math.abs(sliderDragArea.value - 0.5) * parent.width
+                    visible: sliderRect.isCenter
+                    x: sliderRect.isVertical ? 0 : (sliderDragArea.value >= 0.5 ? parent.width / 2 : parent.width * sliderDragArea.value)
+                    y: sliderRect.isVertical ? (sliderDragArea.value >= 0.5 ? parent.height * (1 - sliderDragArea.value) : parent.height / 2) : 0
+                    width: sliderRect.isVertical ? parent.width : Math.abs(sliderDragArea.value - 0.5) * parent.width
+                    height: sliderRect.isVertical ? Math.abs(sliderDragArea.value - 0.5) * parent.height : parent.height
                     radius: 6
                     color: "#2e6bd1"
                 }
 
-                // Center line for center-return sliders
+                // Center line
                 Rectangle {
-                    visible: root.centerReturn
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    x: parent.width / 2 - 1
-                    width: 2
+                    visible: sliderRect.isCenter
+                    x: sliderRect.isVertical ? 0 : parent.width / 2 - 1
+                    y: sliderRect.isVertical ? parent.height / 2 - 1 : 0
+                    width: sliderRect.isVertical ? parent.width : 2
+                    height: sliderRect.isVertical ? 2 : parent.height
                     color: "#666"
                 }
 
                 MouseArea {
                     id: sliderDragArea
-                    property real value: root.centerReturn ? 0.5 : 0
+                    property real value: sliderRect.isCenter ? 0.5 : 0
+                    property real _dragStartValue: 0
+                    property real _dragStartMouse: 0
                     anchors.fill: parent
+
+                    // Explicit snap-back animation — sends smoothed values to vJoy every frame
+                    NumberAnimation {
+                        id: snapBackAnim
+                        target: sliderDragArea
+                        property: "value"
+                        duration: 300
+                        easing.type: Easing.OutCubic
+                    }
+
+                    // Send axis values on every value change (drag AND animation frames)
+                    onValueChanged: _sendSliderValue(value)
+
+                    function _rawFromMouse(mouse) {
+                        if (sliderRect.isVertical) {
+                            return Math.max(0, Math.min(1, 1 - mouse.y / height))
+                        } else {
+                            return Math.max(0, Math.min(1, mouse.x / width))
+                        }
+                    }
+
+                    function _mousePos(mouse) {
+                        return sliderRect.isVertical ? mouse.y : mouse.x
+                    }
+
+                    function _trackLen() {
+                        return sliderRect.isVertical ? height : width
+                    }
+
                     onPositionChanged: function(mouse) {
-                        value = Math.max(0, Math.min(1, mouse.x / width))
-                        _sendSliderValue(value)
+                        snapBackAnim.stop()
+                        if (root.clickMode === "relative") {
+                            var delta = (_mousePos(mouse) - _dragStartMouse) / _trackLen()
+                            if (sliderRect.isVertical) delta = -delta
+                            value = Math.max(0, Math.min(1, _dragStartValue + delta))
+                        } else {
+                            value = _rawFromMouse(mouse)
+                        }
                     }
                     onPressed: function(mouse) {
-                        value = Math.max(0, Math.min(1, mouse.x / width))
-                        _sendSliderValue(value)
+                        snapBackAnim.stop()
+                        if (root.clickMode === "relative") {
+                            _dragStartValue = value
+                            _dragStartMouse = _mousePos(mouse)
+                        } else {
+                            value = _rawFromMouse(mouse)
+                        }
                     }
                     onReleased: {
-                        if (root.centerReturn) {
-                            // Spring back to center
-                            value = 0.5
-                            _sendSliderValue(0.5)
-                        } else {
-                            // Keep at current position (throttle-like)
+                        if (root.snapMode === "center") {
+                            snapBackAnim.to = 0.5
+                            snapBackAnim.start()
+                        } else if (root.snapMode === "left") {
+                            snapBackAnim.to = 0
+                            snapBackAnim.start()
                         }
+                        // "none": hold position
                     }
 
                     function _sendSliderValue(v) {
                         if (!controller) return
                         var axis = root.mapping["axis"] || ""
-                        if (root.centerReturn) {
-                            // Center-return: 0.5 = center (0), 0 = -1, 1 = +1
-                            var normalized = (v - 0.5) * 2  // -1 to +1
+                        if (root.snapMode === "center") {
+                            var normalized = (v - 0.5) * 2
+                            normalized = root._applyCurve(normalized)
                             if (axis !== "") controller.setAxis(axis, normalized)
                         } else {
-                            // One-way: 0 = min, 1 = max
                             if (axis === "z") {
                                 controller.setThrottle(v)
                             } else if (axis === "rz") {
-                                controller.setRudder(v * 2 - 1)
+                                controller.setRudder(root._applyCurve(v * 2 - 1))
                             } else if (axis !== "") {
-                                controller.setAxis(axis, v * 2 - 1)
+                                controller.setAxis(axis, root._applyCurve(v * 2 - 1))
                             }
                         }
                     }
@@ -522,10 +631,12 @@ Item {
 
         Item {
             id: dpadRoot
-            readonly property real btnSize: Math.min(width, height) * 0.35
+            // Size each button so 3 fit in both dimensions with gaps and label space
+            readonly property real availH: height - 16  // reserve for label
+            readonly property real btnSize: Math.floor((Math.min(width, availH) - 2 * gap) / 3)
             readonly property real gap: 2
             readonly property real cx: width / 2
-            readonly property real cy: height / 2
+            readonly property real cy: availH / 2
 
             function _pressDir(dir, pressed) {
                 if (!controller) return
@@ -537,7 +648,7 @@ Item {
             // Up
             Rectangle {
                 x: dpadRoot.cx - dpadRoot.btnSize / 2
-                y: dpadRoot.cy - dpadRoot.btnSize - dpadRoot.gap - dpadRoot.btnSize / 2
+                y: dpadRoot.cy - dpadRoot.btnSize * 1.5 - dpadRoot.gap
                 width: dpadRoot.btnSize; height: dpadRoot.btnSize
                 radius: 4; color: dpadUp.pressed ? "#4a9eff" : "#333"
                 border.color: "#555"; border.width: 1
@@ -550,7 +661,7 @@ Item {
             // Down
             Rectangle {
                 x: dpadRoot.cx - dpadRoot.btnSize / 2
-                y: dpadRoot.cy + dpadRoot.gap + dpadRoot.btnSize / 2
+                y: dpadRoot.cy + dpadRoot.btnSize * 0.5 + dpadRoot.gap
                 width: dpadRoot.btnSize; height: dpadRoot.btnSize
                 radius: 4; color: dpadDown.pressed ? "#4a9eff" : "#333"
                 border.color: "#555"; border.width: 1
@@ -562,7 +673,7 @@ Item {
             }
             // Left
             Rectangle {
-                x: dpadRoot.cx - dpadRoot.btnSize - dpadRoot.gap - dpadRoot.btnSize / 2
+                x: dpadRoot.cx - dpadRoot.btnSize * 1.5 - dpadRoot.gap
                 y: dpadRoot.cy - dpadRoot.btnSize / 2
                 width: dpadRoot.btnSize; height: dpadRoot.btnSize
                 radius: 4; color: dpadLeft.pressed ? "#4a9eff" : "#333"
@@ -575,7 +686,7 @@ Item {
             }
             // Right
             Rectangle {
-                x: dpadRoot.cx + dpadRoot.gap + dpadRoot.btnSize / 2
+                x: dpadRoot.cx + dpadRoot.btnSize * 0.5 + dpadRoot.gap
                 y: dpadRoot.cy - dpadRoot.btnSize / 2
                 width: dpadRoot.btnSize; height: dpadRoot.btnSize
                 radius: 4; color: dpadRight.pressed ? "#4a9eff" : "#333"
@@ -673,7 +784,7 @@ Item {
                     wheelRoot.angle = Math.max(-1, Math.min(1, raw))
                     if (controller) {
                         var axis = root.mapping["axis"] || ""
-                        if (axis !== "") controller.setAxis(axis, wheelRoot.angle)
+                        if (axis !== "") controller.setAxis(axis, root._applyCurve(wheelRoot.angle))
                     }
                 }
                 onReleased: {

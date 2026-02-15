@@ -60,24 +60,44 @@ if errorlevel 1 (
 )
 
 REM Check if executable was created
-if exist "dist\Project-Nimbus.exe" (
-    echo.
-    echo ================================================
-    echo SUCCESS! Executable created successfully!
-    echo ================================================
-    echo.
-    echo Location: dist\Project-Nimbus.exe
-    echo.
-    echo You can now:
-    echo 1. Run dist\Project-Nimbus.exe directly
-    echo 2. Copy dist\Project-Nimbus.exe to any location
-    echo.
-    echo NOTE: Make sure VJoy driver is installed on the target system!
-    echo.
-) else (
+if not exist "dist\Project-Nimbus.exe" (
     echo.
     echo ERROR: Executable was not created!
     echo Check the build output for errors.
+    pause
+    exit /b 1
 )
 
+echo.
+echo ================================================
+echo SUCCESS! Executable created: dist\Project-Nimbus.exe
+echo ================================================
+echo.
+
+REM Build NSIS installer (optional - skip if makensis not found)
+echo Checking for NSIS...
+where makensis >nul 2>&1
+if errorlevel 1 (
+    echo NSIS not found in PATH. Skipping installer build.
+    echo Install NSIS from https://nsis.sourceforge.io/ to build the installer.
+    echo.
+) else (
+    echo Building installer with NSIS...
+    makensis build_tools\installer.nsi
+    if errorlevel 1 (
+        echo WARNING: Installer build failed. Executable is still available.
+    ) else (
+        echo.
+        echo Installer created: dist\Project-Nimbus-Setup-1.2.0.exe
+    )
+)
+
+echo.
+echo You can now:
+echo 1. Run dist\Project-Nimbus.exe directly
+echo 2. Sign with: build_tools\sign_exe.bat
+echo 3. Distribute dist\Project-Nimbus-Setup-1.2.0.exe (if NSIS was available)
+echo.
+echo NOTE: VJoy driver must be installed on the target system!
+echo.
 pause

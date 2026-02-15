@@ -8,7 +8,7 @@ Rectangle {
     border.color: "#444"
     border.width: 1
     radius: 8
-    visible: editMode
+    // visibility controlled by parent (Window or inline)
 
     property bool editMode: false
     property int gridSnap: 10
@@ -18,6 +18,31 @@ Rectangle {
     signal addWidget(var widgetData)
     signal saveLayout()
     signal toggleGrid()
+    signal doneEditing()
+    signal saveLayoutAs(string layoutName)
+
+    // Check if all axis pairs are used
+    function _allAxisPairsUsed() {
+        var usedPairs = 0
+        for (var i = 0; i < widgetModel.length; i++) {
+            var w = widgetModel[i]
+            if (w.mapping && w.mapping.axis_x && w.mapping.axis_y) usedPairs++
+        }
+        return usedPairs >= 4  // 4 pairs: x/y, rx/ry, z/rz, sl0/sl1
+    }
+
+    // Check if all single axes are used
+    function _allSingleAxesUsed() {
+        var usedAxes = {}
+        for (var i = 0; i < widgetModel.length; i++) {
+            var w = widgetModel[i]
+            if (w.mapping) {
+                if (w.mapping.axis) usedAxes[w.mapping.axis] = true
+                if (w.mapping.axis_x) { usedAxes[w.mapping.axis_x] = true; usedAxes[w.mapping.axis_y] = true }
+            }
+        }
+        return Object.keys(usedAxes).length >= 8  // 8 axes total
+    }
 
     // Find next unused button ID by scanning existing widgets
     function _nextButtonId() {
@@ -171,7 +196,7 @@ Rectangle {
             }
         }
 
-        // Add Slider
+        // Add Horizontal Slider
         Rectangle {
             Layout.fillWidth: true
             height: 36
@@ -186,7 +211,7 @@ Rectangle {
                 spacing: 6
 
                 Text { text: "▬"; color: "#6aff6a"; font.pixelSize: 16 }
-                Text { text: "Slider"; color: "#ddd"; font.pixelSize: 12; font.bold: true; Layout.fillWidth: true }
+                Text { text: "H Slider"; color: "#ddd"; font.pixelSize: 12; font.bold: true; Layout.fillWidth: true }
             }
 
             MouseArea {
@@ -205,6 +230,47 @@ Rectangle {
                         "height": 50,
                         "label": "Slider",
                         "orientation": "horizontal",
+                        "center_return": false,
+                        "mapping": {"axis": axis}
+                    })
+                }
+            }
+        }
+
+        // Add Vertical Slider
+        Rectangle {
+            Layout.fillWidth: true
+            height: 36
+            radius: 6
+            color: vSliderAddArea.containsMouse ? "#3a5a3a" : "#2e4e2e"
+            border.color: "#4aaa4a"
+            border.width: 1
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 6
+                spacing: 6
+
+                Text { text: "▮"; color: "#6aff6a"; font.pixelSize: 16 }
+                Text { text: "V Slider"; color: "#ddd"; font.pixelSize: 12; font.bold: true; Layout.fillWidth: true }
+            }
+
+            MouseArea {
+                id: vSliderAddArea
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: {
+                    var uid = "vslider_" + Date.now()
+                    var axis = palette._nextSingleAxis()
+                    palette.addWidget({
+                        "id": uid,
+                        "type": "slider",
+                        "x": 300,
+                        "y": 100,
+                        "width": 50,
+                        "height": 160,
+                        "label": "Slider",
+                        "orientation": "vertical",
                         "center_return": false,
                         "mapping": {"axis": axis}
                     })
@@ -342,26 +408,72 @@ Rectangle {
             }
         }
 
-        // Save Layout
+        // Axis exhaustion warning
+        Rectangle {
+            Layout.fillWidth: true
+            height: axisWarnText.height + 8
+            radius: 4
+            color: "#442200"
+            border.color: "#ff6a00"
+            border.width: 1
+            visible: palette._allSingleAxesUsed()
+
+            Text {
+                id: axisWarnText
+                anchors.centerIn: parent
+                width: parent.width - 8
+                text: "All 8 axes in use"
+                color: "#ff6a00"
+                font.pixelSize: 9
+                font.bold: true
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+            }
+        }
+
+        // Save As
+        Rectangle {
+            Layout.fillWidth: true
+            height: 30
+            radius: 4
+            color: saveAsArea.containsMouse ? "#444" : "#333"
+            border.color: "#555"
+            border.width: 1
+
+            Text {
+                anchors.centerIn: parent
+                text: "Save Layout As..."
+                color: "#ccc"
+                font.pixelSize: 11
+            }
+
+            MouseArea {
+                id: saveAsArea
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: palette.saveLayoutAs("")
+            }
+        }
+
+        // Done Editing
         Rectangle {
             Layout.fillWidth: true
             height: 34
             radius: 6
-            color: saveArea.containsMouse ? "#1a8cff" : "#0078d4"
+            color: doneArea.containsMouse ? "#1a8cff" : "#0078d4"
 
-            Text {
+            Row {
                 anchors.centerIn: parent
-                text: "Save Layout"
-                color: "white"
-                font.pixelSize: 12
-                font.bold: true
+                spacing: 6
+                Text { text: "\u2713"; color: "white"; font.pixelSize: 14 }
+                Text { text: "Done Editing"; color: "white"; font.pixelSize: 12; font.bold: true }
             }
 
             MouseArea {
-                id: saveArea
+                id: doneArea
                 anchors.fill: parent
                 hoverEnabled: true
-                onClicked: palette.saveLayout()
+                onClicked: palette.doneEditing()
             }
         }
 
