@@ -14,7 +14,7 @@ REM Configure paths - update SIGNTOOL path if needed
 set SIGNTOOL="C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\signtool.exe"
 set TIMESTAMP_URL=http://timestamp.digicert.com
 set EXE_PATH=dist\Project-Nimbus.exe
-set INSTALLER_PATH=dist\Project-Nimbus-Setup-1.2.0.exe
+set INSTALLER_PATH=dist\Project-Nimbus-Setup-1.2.1.exe
 
 REM Check if signtool exists
 if not exist %SIGNTOOL% (

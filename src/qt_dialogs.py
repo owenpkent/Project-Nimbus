@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QGroupBox,
     QSizePolicy,
+    QScrollArea,
 )
 from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QFont
 
@@ -321,7 +322,29 @@ class AxisSettingsQt(QDialog):
         
         splitter.addWidget(left_panel)
         
-        # Right panel - settings
+        # Right panel - scrollable settings
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setFrameShape(QFrame.NoFrame)
+        right_scroll.setStyleSheet("""
+            QScrollArea { background: transparent; }
+            QScrollBar:vertical {
+                background: #2a2a2a;
+                width: 10px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: #555;
+                border-radius: 5px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #777;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(8, 0, 0, 0)
@@ -392,7 +415,8 @@ class AxisSettingsQt(QDialog):
         reset_btn.clicked.connect(self._reset_current)
         right_layout.addWidget(reset_btn)
         
-        splitter.addWidget(right_panel)
+        right_scroll.setWidget(right_panel)
+        splitter.addWidget(right_scroll)
         splitter.setSizes([200, 500])
         
         main_layout.addWidget(splitter, 1)
@@ -922,8 +946,31 @@ class ButtonSettingsQt(QDialog):
         desc.setStyleSheet("color: #888; font-size: 11px;")
         layout.addWidget(desc)
         
-        # Grid layout for buttons
-        grid = QGridLayout()
+        # Grid layout for buttons inside a scroll area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("""
+            QScrollArea { background: transparent; }
+            QScrollBar:vertical {
+                background: #2a2a2a;
+                width: 10px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: #555;
+                border-radius: 5px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #777;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
+        grid_widget = QWidget()
+        grid = QGridLayout(grid_widget)
         grid.setHorizontalSpacing(20)
         grid.setVerticalSpacing(10)
         
@@ -961,8 +1008,8 @@ class ButtonSettingsQt(QDialog):
             self.checks[vjoy_num] = chk
             grid.addWidget(chk, row, 3)
         
-        layout.addLayout(grid)
-        layout.addStretch()
+        scroll.setWidget(grid_widget)
+        layout.addWidget(scroll, 1)
         
         # Buttons
         btn_layout = QHBoxLayout()

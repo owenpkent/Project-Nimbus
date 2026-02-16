@@ -4,7 +4,7 @@ import sys
 from typing import Optional
 
 from PySide6.QtCore import QObject, Slot, Signal, Property, QTimer
-from PySide6.QtGui import QWindow
+from PySide6.QtGui import QCursor, QWindow
 
 from .config import ControllerConfig
 from .vjoy_interface import VJoyInterface
@@ -208,6 +208,68 @@ class ControllerBridge(QObject):
         """Check if no-focus mode is available on this platform."""
         return WINDOW_UTILS_AVAILABLE and sys.platform == "win32"
     
+    @Slot()
+    def clipCursorToWindow(self) -> None:  # noqa: N802
+        """Confine the mouse cursor to the application window bounds (Windows only)."""
+        if sys.platform != "win32" or not self._window:
+            return
+        try:
+            import ctypes
+            from ctypes import wintypes
+            hwnd = int(self._window.winId())
+            rect = wintypes.RECT()
+            ctypes.windll.user32.GetClientRect(hwnd, ctypes.byref(rect))
+            # Convert client coords to screen coords
+            pt_tl = wintypes.POINT(rect.left, rect.top)
+            pt_br = wintypes.POINT(rect.right, rect.bottom)
+            ctypes.windll.user32.ClientToScreen(hwnd, ctypes.byref(pt_tl))
+            ctypes.windll.user32.ClientToScreen(hwnd, ctypes.byref(pt_br))
+            clip_rect = wintypes.RECT(pt_tl.x, pt_tl.y, pt_br.x, pt_br.y)
+            ctypes.windll.user32.ClipCursor(ctypes.byref(clip_rect))
+        except Exception as e:
+            print(f"ClipCursor failed: {e}")
+
+    @Slot(int, int, int, int)
+    def clipCursorToRect(self, screen_x: int, screen_y: int, width: int, height: int) -> None:  # noqa: N802
+        """Confine the mouse cursor to a specific screen rectangle (Windows only).
+
+        Used to lock cursor to the joystick widget area so a wheelchair joystick
+        maps 1:1 to the virtual joystick.
+        """
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            from ctypes import wintypes
+            clip_rect = wintypes.RECT(screen_x, screen_y, screen_x + width, screen_y + height)
+            ctypes.windll.user32.ClipCursor(ctypes.byref(clip_rect))
+        except Exception as e:
+            print(f"ClipCursorToRect failed: {e}")
+
+    @Slot(int, int)
+    def setCursorPos(self, screen_x: int, screen_y: int) -> None:  # noqa: N802
+        """Move the mouse cursor to a specific screen position.
+
+        Uses Qt's QCursor.setPos() which handles DPI scaling correctly,
+        unlike Windows SetCursorPos which expects physical pixels.
+        """
+        try:
+            from PySide6.QtCore import QPoint
+            QCursor.setPos(QPoint(screen_x, screen_y))
+        except Exception as e:
+            print(f"setCursorPos failed: {e}")
+
+    @Slot()
+    def unclipCursor(self) -> None:  # noqa: N802
+        """Release the mouse cursor confinement."""
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            ctypes.windll.user32.ClipCursor(None)
+        except Exception as e:
+            print(f"UnclipCursor failed: {e}")
+
     @Slot()
     def onMousePressed(self) -> None:  # noqa: N802
         """Called from QML when mouse is pressed on any interactive element.

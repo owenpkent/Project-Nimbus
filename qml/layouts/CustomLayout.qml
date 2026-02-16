@@ -125,6 +125,10 @@ Item {
                 clickMode: wData.click_mode || "jump"
                 toggleMode: wData.toggle_mode || false
                 tripleClickEnabled: wData.triple_click_enabled !== undefined ? wData.triple_click_enabled : true
+                autoCenter: wData.auto_center || false
+                autoCenterDelay: wData.auto_center_delay !== undefined ? Math.max(1, Math.min(10, wData.auto_center_delay)) : 5
+                lockSensitivity: wData.lock_sensitivity !== undefined ? wData.lock_sensitivity : 4.0
+                tremorFilter: wData.tremor_filter !== undefined ? wData.tremor_filter : 0.0
                 sensitivity: wData.sensitivity !== undefined ? wData.sensitivity : 50.0
                 deadZone: wData.dead_zone !== undefined ? wData.dead_zone : 0.0
                 extremityDeadZone: wData.extremity_dead_zone !== undefined ? wData.extremity_dead_zone : 5.0
@@ -157,9 +161,19 @@ Item {
                     if (locked) {
                         root.lockedJoystickId = wid
                         root.lockedWidget = dragWidget
+                        joyLockOverlay._warping = true
+                        warpSafetyTimer.restart()
+                        if (controller) {
+                            // Keep cursor inside window so hover events keep firing
+                            controller.clipCursorToWindow()
+                            // Warp cursor to joystick center for accurate mapping
+                            var center = dragWidget.mapToGlobal(dragWidget.width / 2, dragWidget.height / 2)
+                            controller.setCursorPos(Math.round(center.x), Math.round(center.y))
+                        }
                     } else {
                         root.lockedJoystickId = ""
                         root.lockedWidget = null
+                        if (controller) controller.unclipCursor()
                     }
                 }
             }
@@ -173,14 +187,136 @@ Item {
         anchors.fill: parent
         visible: root.lockedJoystickId !== "" && !root.editMode
         hoverEnabled: true
+        cursorShape: Qt.BlankCursor
         z: 200
+
+        // Track current joystick position for auto-center easing
+        property real lockNx: 0
+        property real lockNy: 0
+        property bool _animating: false
+        property bool _warping: false   // true while SetCursorPos is in flight; skip stale events
+
+        // EMA tremor filter state
+        property real _smoothNx: 0
+        property real _smoothNy: 0
+
+        // Safety: clear _warping after a short delay in case SetCursorPos
+        // doesn't generate a QML positionChanged event
+        Timer {
+            id: warpSafetyTimer
+            interval: 100
+            repeat: false
+            onTriggered: {
+                if (joyLockOverlay._warping) {
+                    joyLockOverlay._warping = false
+                    joyLockOverlay.lockNx = 0
+                    joyLockOverlay.lockNy = 0
+                    if (root.lockedWidget)
+                        root.lockedWidget.updateJoystickPosition(0, 0)
+                }
+            }
+        }
+
+        onLockNxChanged: {
+            if (_animating && root.lockedWidget)
+                root.lockedWidget.updateJoystickPosition(lockNx, lockNy)
+        }
+        onLockNyChanged: {
+            if (_animating && root.lockedWidget)
+                root.lockedWidget.updateJoystickPosition(lockNx, lockNy)
+        }
+
+        // Auto-center: fires when mouse stops moving
+        Timer {
+            id: autoCenterTimer
+            interval: root.lockedWidget ? root.lockedWidget.autoCenterDelay : 200
+            repeat: false
+            onTriggered: {
+                if (root.lockedWidget && root.lockedWidget.autoCenter) {
+                    var delay = root.lockedWidget.autoCenterDelay
+                    if (delay <= 0) {
+                        // Instant snap — no animation
+                        joyLockOverlay.lockNx = 0
+                        joyLockOverlay.lockNy = 0
+                        root.lockedWidget.updateJoystickPosition(0, 0)
+                    } else {
+                        // Eased return — animation duration scales with delay (min 100ms)
+                        var animDur = Math.max(100, Math.min(delay, 300))
+                        autoCenterAnimX.duration = animDur
+                        autoCenterAnimY.duration = animDur
+                        joyLockOverlay._animating = true
+                        autoCenterAnimX.to = 0
+                        autoCenterAnimY.to = 0
+                        autoCenterAnim.start()
+                    }
+                }
+            }
+        }
+
+        ParallelAnimation {
+            id: autoCenterAnim
+            NumberAnimation { id: autoCenterAnimX; target: joyLockOverlay; property: "lockNx"; duration: 300; easing.type: Easing.OutCubic }
+            NumberAnimation { id: autoCenterAnimY; target: joyLockOverlay; property: "lockNy"; duration: 300; easing.type: Easing.OutCubic }
+            onStopped: joyLockOverlay._animating = false
+        }
 
         onPositionChanged: function(mouse) {
             if (!root.lockedWidget) return
+
             var localPt = mapToItem(root.lockedWidget, mouse.x, mouse.y)
-            var nx = ((localPt.x / root.lockedWidget.width) * 2 - 1)
-            var ny = ((localPt.y / root.lockedWidget.height) * 2 - 1)
-            root.lockedWidget.updateJoystickPosition(nx, ny)
+            var dx = localPt.x - root.lockedWidget.width / 2
+            var dy = localPt.y - root.lockedWidget.height / 2
+
+            // Skip warp-back events (cursor near center = our SetCursorPos just landed)
+            // Also skips stale initial event from lock
+            if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
+                _warping = false
+                return
+            }
+
+            // Skip stale events before initial warp lands
+            if (_warping) return
+
+            // Stop any in-progress auto-center animation
+            autoCenterAnim.stop()
+            _animating = false
+
+            // Scale delta to -1..1: multiplier controls how far cursor must
+            // move from center for full deflection. Configurable per-widget.
+            var scale = root.lockedWidget.lockSensitivity * 2
+            var half_w = root.lockedWidget.width / 2
+            var half_h = root.lockedWidget.height / 2
+            var rawNx = Math.max(-1, Math.min(1, (dx / half_w) * scale))
+            var rawNy = Math.max(-1, Math.min(1, (dy / half_h) * scale))
+
+            // Apply EMA tremor filter: higher tremorFilter value = more smoothing
+            var tf = root.lockedWidget.tremorFilter
+            if (tf > 0) {
+                // alpha: 1.0 (no smooth) to 0.1 (heavy smooth)
+                var alpha = 1.0 - (tf / 10.0) * 0.9
+                _smoothNx = _smoothNx * (1.0 - alpha) + rawNx * alpha
+                _smoothNy = _smoothNy * (1.0 - alpha) + rawNy * alpha
+                lockNx = _smoothNx
+                lockNy = _smoothNy
+            } else {
+                lockNx = rawNx
+                lockNy = rawNy
+                _smoothNx = rawNx
+                _smoothNy = rawNy
+            }
+            root.lockedWidget.updateJoystickPosition(lockNx, lockNy)
+
+            // Warp cursor back to joystick center (FPS-style)
+            if (controller) {
+                var center = root.lockedWidget.mapToGlobal(
+                    root.lockedWidget.width / 2,
+                    root.lockedWidget.height / 2
+                )
+                controller.setCursorPos(Math.round(center.x), Math.round(center.y))
+            }
+
+            // Restart auto-center timer if enabled
+            if (root.lockedWidget.autoCenter) autoCenterTimer.restart()
         }
 
         onClicked: function(mouse) {
@@ -291,46 +427,7 @@ Item {
         }
     }
 
-    // ==================== EDIT MODE TOGGLE BUTTON (play mode only) ====================
-    Rectangle {
-        anchors.bottom: parent.bottom
-        anchors.right: parent.right
-        anchors.margins: 12
-        width: editToggleRow.width + 20
-        height: 36
-        radius: 18
-        color: "#333"
-        border.color: "#555"
-        border.width: 1
-        z: 300
-        visible: !root.editMode
-
-        Row {
-            id: editToggleRow
-            anchors.centerIn: parent
-            spacing: 6
-
-            Text {
-                text: "\u270F"
-                color: "white"
-                font.pixelSize: 14
-            }
-            Text {
-                text: "Edit Layout"
-                color: "white"
-                font.pixelSize: 12
-                font.bold: true
-            }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                root.editMode = true
-            }
-        }
-    }
+    // Edit Layout is now in Settings menu (Main.qml)
 
     // ==================== WIDGET CONFIG DIALOG ====================
     Rectangle {
@@ -372,6 +469,10 @@ Item {
                         axisPairCombo.currentIndex = ["x/y", "rx/ry", "z/rz", "sl0/sl1"].indexOf(axPair)
                         if (axisPairCombo.currentIndex < 0) axisPairCombo.currentIndex = 0
                         tripleClickSwitch.checked = targetWidget.triple_click_enabled !== undefined ? targetWidget.triple_click_enabled : true
+                        autoCenterSwitch.checked = targetWidget.auto_center || false
+                        autoCenterDelaySlider.value = targetWidget.auto_center_delay !== undefined ? Math.max(1, Math.min(10, targetWidget.auto_center_delay)) : 5
+                        lockSensSlider.value = targetWidget.lock_sensitivity !== undefined ? targetWidget.lock_sensitivity : 4
+                        tremorFilterSlider.value = targetWidget.tremor_filter !== undefined ? targetWidget.tremor_filter : 0
                     }
                     if (targetWidget.type === "slider" || targetWidget.type === "wheel") {
                         var slAxis = targetWidget.mapping.axis || "z"
@@ -421,6 +522,21 @@ Item {
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             flickableDirection: Flickable.VerticalFlick
+
+            ScrollBar.vertical: Basic.ScrollBar {
+                policy: configFlickable.contentHeight > configFlickable.height ? Basic.ScrollBar.AlwaysOn : Basic.ScrollBar.AsNeeded
+                width: 8
+                contentItem: Rectangle {
+                    implicitWidth: 8
+                    radius: 4
+                    color: parent.pressed ? "#888" : (parent.hovered ? "#777" : "#555")
+                }
+                background: Rectangle {
+                    implicitWidth: 8
+                    radius: 4
+                    color: "#2a2a2a"
+                }
+            }
 
         Column {
             id: configContent
@@ -616,6 +732,98 @@ Item {
                         }
                     }
                 }
+
+                // Auto-center toggle (return to center when mouse stops in locked mode)
+                Row {
+                    spacing: 8
+                    Text { text: "Return:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
+                    Rectangle {
+                        width: 200; height: 30; radius: 4; color: "transparent"
+                        Row {
+                            spacing: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            Rectangle {
+                                id: autoCenterSwitch
+                                property bool checked: false
+                                width: 44; height: 22; radius: 11
+                                color: checked ? "#0078d4" : "#555"
+                                Rectangle {
+                                    width: 18; height: 18; radius: 9; color: "white"
+                                    x: parent.checked ? parent.width - width - 2 : 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Behavior on x { NumberAnimation { duration: 120 } }
+                                }
+                                MouseArea { anchors.fill: parent; onClicked: parent.checked = !parent.checked }
+                            }
+                            Text {
+                                text: autoCenterSwitch.checked ? "Auto-return to center when locked" : "Auto-return to center OFF"
+                                color: autoCenterSwitch.checked ? "#4a9eff" : "#aaa"
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                    }
+                }
+
+                // Lock sensitivity slider (how responsive the locked joystick is)
+                Row {
+                    spacing: 8
+                    visible: tripleClickSwitch.checked
+                    Text { text: "Lock Sens:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
+                    Basic.Slider {
+                        id: lockSensSlider
+                        width: 140
+                        from: 1; to: 10; stepSize: 1
+                        value: 4
+                        background: Rectangle {
+                            x: lockSensSlider.leftPadding; y: lockSensSlider.topPadding + lockSensSlider.availableHeight / 2 - height / 2
+                            width: lockSensSlider.availableWidth; height: 4; radius: 2; color: "#444"
+                            Rectangle { width: lockSensSlider.visualPosition * parent.width; height: parent.height; radius: 2; color: "#ff8833" }
+                        }
+                        handle: Rectangle { x: lockSensSlider.leftPadding + lockSensSlider.visualPosition * (lockSensSlider.availableWidth - width); y: lockSensSlider.topPadding + lockSensSlider.availableHeight / 2 - height / 2; width: 16; height: 16; radius: 8; color: "#fff" }
+                    }
+                    Text { text: lockSensSlider.value.toFixed(0); color: "#ff8833"; font.pixelSize: 11; width: 30; verticalAlignment: Text.AlignVCenter; height: 30 }
+                }
+
+                // Tremor filter slider (smooths jittery wheelchair joystick input)
+                Row {
+                    spacing: 8
+                    visible: tripleClickSwitch.checked
+                    Text { text: "Tremor:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
+                    Basic.Slider {
+                        id: tremorFilterSlider
+                        width: 140
+                        from: 0; to: 10; stepSize: 1
+                        value: 0
+                        background: Rectangle {
+                            x: tremorFilterSlider.leftPadding; y: tremorFilterSlider.topPadding + tremorFilterSlider.availableHeight / 2 - height / 2
+                            width: tremorFilterSlider.availableWidth; height: 4; radius: 2; color: "#444"
+                            Rectangle { width: tremorFilterSlider.visualPosition * parent.width; height: parent.height; radius: 2; color: "#66bb6a" }
+                        }
+                        handle: Rectangle { x: tremorFilterSlider.leftPadding + tremorFilterSlider.visualPosition * (tremorFilterSlider.availableWidth - width); y: tremorFilterSlider.topPadding + tremorFilterSlider.availableHeight / 2 - height / 2; width: 16; height: 16; radius: 8; color: "#fff" }
+                    }
+                    Text { text: tremorFilterSlider.value > 0 ? tremorFilterSlider.value.toFixed(0) : "Off"; color: "#66bb6a"; font.pixelSize: 11; width: 30; verticalAlignment: Text.AlignVCenter; height: 30 }
+                }
+
+                // Auto-center delay slider (only visible when auto-center is on)
+                Row {
+                    spacing: 8
+                    visible: autoCenterSwitch.checked
+                    Text { text: "Delay:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
+                    Basic.Slider {
+                        id: autoCenterDelaySlider
+                        width: 140
+                        from: 1; to: 10; stepSize: 1
+                        value: 5
+                        background: Rectangle {
+                            x: autoCenterDelaySlider.leftPadding; y: autoCenterDelaySlider.topPadding + autoCenterDelaySlider.availableHeight / 2 - height / 2
+                            width: autoCenterDelaySlider.availableWidth; height: 4; radius: 2; color: "#444"
+                            Rectangle { width: autoCenterDelaySlider.visualPosition * parent.width; height: parent.height; radius: 2; color: "#0078d4" }
+                        }
+                        handle: Rectangle { x: autoCenterDelaySlider.leftPadding + autoCenterDelaySlider.visualPosition * (autoCenterDelaySlider.availableWidth - width); y: autoCenterDelaySlider.topPadding + autoCenterDelaySlider.availableHeight / 2 - height / 2; width: 16; height: 16; radius: 8; color: "#fff" }
+                    }
+                    Text { text: autoCenterDelaySlider.value.toFixed(0) + "ms"; color: "#0078d4"; font.pixelSize: 11; width: 40; verticalAlignment: Text.AlignVCenter; height: 30 }
+                }
             }
 
             // D-Pad specific fields
@@ -754,6 +962,68 @@ Item {
                 Rectangle { width: parent.width; height: 1; color: "#444" }
 
                 Text { text: "Sensitivity Settings"; color: "#aaa"; font.pixelSize: 11; font.bold: true }
+
+                // Copy sensitivity from another widget
+                Row {
+                    spacing: 8
+                    Text { text: "Copy from:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
+                    Basic.ComboBox {
+                        id: copySensCombo
+                        width: 200
+                        property var axisWidgets: {
+                            var list = ["-- Select --"]
+                            if (!root.widgetModel) return list
+                            for (var i = 0; i < root.widgetModel.length; i++) {
+                                var w = root.widgetModel[i]
+                                if ((w.type === "joystick" || w.type === "slider" || w.type === "wheel") && w.id !== configDialog.targetWidgetId) {
+                                    list.push((w.label || w.type) + " (" + w.id.substring(0,6) + ")")
+                                }
+                            }
+                            return list
+                        }
+                        property var axisWidgetIds: {
+                            var ids = [null]
+                            if (!root.widgetModel) return ids
+                            for (var i = 0; i < root.widgetModel.length; i++) {
+                                var w = root.widgetModel[i]
+                                if ((w.type === "joystick" || w.type === "slider" || w.type === "wheel") && w.id !== configDialog.targetWidgetId) {
+                                    ids.push(w.id)
+                                }
+                            }
+                            return ids
+                        }
+                        model: axisWidgets
+                        currentIndex: 0
+                        onCurrentIndexChanged: {
+                            if (currentIndex <= 0) return
+                            var srcId = axisWidgetIds[currentIndex]
+                            if (!srcId) return
+                            for (var i = 0; i < root.widgetModel.length; i++) {
+                                if (root.widgetModel[i].id === srcId) {
+                                    var src = root.widgetModel[i]
+                                    sensitivitySlider.value = src.sensitivity !== undefined ? src.sensitivity : 50
+                                    deadZoneSlider.value = src.dead_zone !== undefined ? src.dead_zone : 0
+                                    extremityDzSlider.value = src.extremity_dead_zone !== undefined ? src.extremity_dead_zone : 5
+                                    break
+                                }
+                            }
+                            currentIndex = 0
+                        }
+                        background: Rectangle { color: "#1a1a1a"; border.color: "#444"; radius: 4 }
+                        contentItem: Text { text: copySensCombo.displayText; color: "white"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
+                        delegate: ItemDelegate {
+                            width: copySensCombo.width
+                            highlighted: copySensCombo.highlightedIndex === index
+                            contentItem: Text { text: modelData; color: parent.highlighted ? "white" : "#ccc"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
+                            background: Rectangle { color: parent.highlighted ? "#4a9eff" : "#333" }
+                        }
+                        popup: Popup {
+                            y: copySensCombo.height; width: copySensCombo.width; padding: 1
+                            background: Rectangle { color: "#333"; border.color: "#555"; radius: 4 }
+                            contentItem: ListView { clip: true; implicitHeight: contentHeight; model: copySensCombo.delegateModel; currentIndex: copySensCombo.highlightedIndex }
+                        }
+                    }
+                }
 
                 // Sensitivity slider (0-100%, 50% = linear)
                 Row {
@@ -936,6 +1206,10 @@ Item {
                             var pair = axisPairs[axisPairCombo.currentIndex] || ["x", "y"]
                             _updateWidgetProp(wid, "mapping", {"axis_x": pair[0], "axis_y": pair[1]})
                             _updateWidgetProp(wid, "triple_click_enabled", tripleClickSwitch.checked)
+                            _updateWidgetProp(wid, "auto_center", autoCenterSwitch.checked)
+                            _updateWidgetProp(wid, "auto_center_delay", autoCenterDelaySlider.value)
+                            _updateWidgetProp(wid, "lock_sensitivity", lockSensSlider.value)
+                            _updateWidgetProp(wid, "tremor_filter", tremorFilterSlider.value)
                         }
 
                         if (wType === "slider" || wType === "wheel") {

@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 # Version info - keep in sync with src/__init__.py
-VERSION = "1.2.0"
-VERSION_TUPLE = (1, 2, 0, 0)
+VERSION = "1.2.1"
+VERSION_TUPLE = (1, 2, 1, 0)
 
 block_cipher = None
 
@@ -41,8 +41,16 @@ if profiles_path.exists():
         rel_path = profile_file.relative_to(PROJECT_ROOT)
         profile_datas.append((str(profile_file), str(rel_path.parent)))
 
+# Add src package as data (so it can be imported)
+src_datas = []
+src_path = PROJECT_ROOT / 'src'
+if src_path.exists():
+    for py_file in src_path.rglob('*.py'):
+        rel_path = py_file.relative_to(PROJECT_ROOT)
+        src_datas.append((str(py_file), str(rel_path.parent)))
+
 # Combine all data files
-datas = qml_datas + logo_datas + config_datas + profile_datas
+datas = qml_datas + logo_datas + config_datas + profile_datas + src_datas
 
 # Hidden imports for PySide6 and other dependencies
 hiddenimports = [
@@ -66,7 +74,7 @@ hiddenimports = [
 
 a = Analysis(
     [main_script],
-    pathex=[],
+    pathex=[str(PROJECT_ROOT)],  # Add project root so 'src' package is found
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,

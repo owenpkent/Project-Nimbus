@@ -33,13 +33,6 @@
 - [x] **Triple-click mouse lock** — full-canvas hover overlay tracks mouse everywhere, no edge-sticking
 - [x] **Unlock returns to center** — joystick snaps back to (0,0) on triple-click unlock
 
-### Planned Widgets
-- [ ] **Dwell Button** — hover-to-activate for users who can't click
-- [ ] **Scan Mode Strip** — sequential highlight for single-switch access
-- [ ] **Macro Button** — fire a sequence of button presses
-- [ ] **Pressure Pad** — hold duration → analog value
-- [ ] **Radial Menu** — circular button selector
-
 ## Completed Features
 - [x] **Flight Sim layout** — dual joysticks + throttle/rudder with responsive scaling
 - [x] **Xbox layout** — standard Xbox gamepad
@@ -51,6 +44,20 @@
 - [x] **Game Focus Mode** — prevent stealing focus from games (Windows)
 - [x] **ViGEm Xbox emulation** — XInput support for modern games
 - [x] **Rudder improvements** — wider control, center-lock toggle
+
+## v1.2.1 New Features
+- [x] **Wheelchair joystick support (FPS-style delta tracking)** — cursor hidden, anchored to joystick center, delta-based deflection with continuous warp-back
+- [x] **Lock Sensitivity slider** — per-joystick (1-10), controls how much physical movement is needed for full virtual deflection
+- [x] **Tremor Filter** — per-joystick EMA smoothing (0-10) for jittery wheelchair joystick input
+- [x] **Auto-return to center** — per-joystick toggle with configurable delay (1-10ms)
+- [x] **DPI-aware cursor positioning** — QCursor.setPos() instead of Win32 SetCursorPos for correct behavior on scaled displays
+- [x] **Copy sensitivity from dropdown** — per-widget axis settings can copy sensitivity/deadzone/extremity from other widgets
+- [x] **Loading splash screen** — dark-themed splash with logo, version, progress messages
+- [x] **Scrollbars on all settings dialogs** — QML config, Button Settings, Axis Settings
+- [x] **Edit Layout as top-level menu** — dedicated menu bar button for custom layouts
+- [x] **Help menu with Getting Started & Feature Guide** — in-app documentation for all features
+- [x] **Widget Palette title cleanup** — removed duplicate heading
+- [x] **Deprecated legacy settings for custom layouts** — Axis Configuration and Button Modes hidden when custom layout active
 
 ## v1.2.0 New Features
 - [x] **Slider click mode** — "Jump to position" vs "Relative drag" per-slider
@@ -71,14 +78,34 @@
 - [ ] **vJoy auto-detection** — detect and guide vJoy installation on startup
 - [ ] **Portable build** — zipped standalone for advanced users
 
-## Future: VDroid Custom Driver
+## Future: VDroid Custom Driver & Installer Bundling
+- [ ] **Bundle V-Droid driver with installer** — auto-download or include during NSIS install so users don't need separate vJoy setup
 - [ ] **Phase 1**: Multi-device vJoy (16 devices × 8 axes = 128 axes, zero dev needed)
-- [ ] **Phase 2**: UMDF virtual HID driver with 32+ axes, 256+ buttons per device
+- [ ] **Phase 2**: UMDF virtual HID driver with 32+ axes, 256+ buttons per device — support 20+ joysticks
 - [ ] **Phase 3**: XInput compatibility layer for Xbox game support
-- See [docs/VDROID_DRIVER_BRAINSTORM.md](docs/VDROID_DRIVER_BRAINSTORM.md) for full analysis
+- See [docs/architecture/VDROID_DRIVER_BRAINSTORM.md](docs/architecture/VDROID_DRIVER_BRAINSTORM.md) for full analysis
+
+## Future: Voice Control Integration
+- [ ] **Vosk integration** — offline speech recognition for hands-free button activation
+- [ ] **Whisper integration** — OpenAI Whisper for high-accuracy voice commands
+- [ ] **DeepRAM integration** — evaluate for low-latency voice-to-action pipeline
+- [ ] **Voice-to-macro** — speak command names to trigger macro sequences
+- [ ] **Custom wake word** — configurable activation phrase
+
+## Future: Macro Editor
+- [ ] **Visual macro editor** — drag-and-drop sequence builder for button press sequences
+- [ ] **Timing control** — configurable delays between actions (ms precision)
+- [ ] **Loop / repeat** — repeat macros N times or until cancelled
+- [ ] **Conditional macros** — trigger different sequences based on toggle state
+- [ ] **Import/export** — share macro profiles as JSON files
+- [ ] **Voice-triggered macros** — bind macros to voice commands
 
 ## Backlog
-- [ ] **Macro system** — record and playback button sequences (ref: Celtic Magic GCM)
+- [ ] **Macro button widget** — fire a sequence of button presses from the canvas
 - [ ] **Eye-gaze zone widget** — large activation zones for eye-tracking
 - [ ] **Companion app** — phone accelerometer as tilt input via WebSocket
 - [ ] **Toggle panel widget** — cockpit switch panel for sim games
+- [ ] **Dwell Button** — hover-to-activate for users who can't click
+- [ ] **Scan Mode Strip** — sequential highlight for single-switch access
+- [ ] **Pressure Pad** — hold duration → analog value
+- [ ] **Radial Menu** — circular button selector

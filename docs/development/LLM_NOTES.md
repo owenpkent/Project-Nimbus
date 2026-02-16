@@ -114,14 +114,14 @@ The `custom` layout type is the modular controller builder. Key concepts:
 
 ### Widget Schema (stored in profile JSON under `custom_layout.widgets[]`)
 - **Common fields**: `id`, `type`, `x`, `y`, `width`, `height`, `label`
-- **Joystick**: `mapping.axis_x`, `mapping.axis_y` (e.g. `"x"/"y"` or `"rx"/"ry"`), `triple_click_enabled`, `sensitivity`, `dead_zone`, `extremity_dead_zone`
+- **Joystick**: `mapping.axis_x`, `mapping.axis_y` (e.g. `"x"/"y"` or `"rx"/"ry"`), `triple_click_enabled`, `auto_center`, `sensitivity`, `dead_zone`, `extremity_dead_zone`
 - **Button**: `button_id` (1-128), `color`, `shape` (`"circle"/"rounded"/"square"`), `toggle_mode`
 - **Slider**: `orientation` (`"horizontal"`/`"vertical"`), `mapping.axis`, `snap_mode` (`"none"`/`"left"`/`"center"`), `click_mode` (`"jump"`/`"relative"`), `sensitivity`, `dead_zone`, `extremity_dead_zone`
 - **D-Pad**: `mapping.up`, `mapping.down`, `mapping.left`, `mapping.right` (button IDs)
 - **Wheel**: `mapping.axis`, `sensitivity`, `dead_zone`, `extremity_dead_zone`
 
 ### Edit Mode
-- Toggle via "Edit Layout" button (bottom-right)
+- Toggle via Settings → Edit Layout menu item (custom layout only)
 - **Drag** widgets to reposition (snaps to grid)
 - **Corner handle** to resize
 - **×** button to delete
@@ -132,7 +132,7 @@ The `custom` layout type is the modular controller builder. Key concepts:
 ### Widget Config Dialog
 - **All types**: label editing
 - **Button**: button ID, color, shape, toggle/momentary switch
-- **Joystick**: axis pair dropdown, triple-click lock toggle
+- **Joystick**: axis pair dropdown, triple-click lock toggle, auto-return to center toggle
 - **Slider**: axis dropdown, snap mode (3 options), click mode (jump/relative), orientation (read-only, set by palette choice)
 - **Wheel**: axis dropdown
 - **Axis widgets** (joystick/slider/wheel): sensitivity (0-100%), deadzone (0-100%), extremity deadzone (0-100%), live response curve preview
@@ -141,8 +141,35 @@ The `custom` layout type is the modular controller builder. Key concepts:
 ### Mouse Lock (Joystick)
 - **Triple-click** a joystick to lock — mouse controls it from anywhere on the canvas via hover
 - **Triple-click again** to unlock — joystick returns to center (0,0)
-- Implemented via a full-canvas `MouseArea` overlay with `hoverEnabled: true`
+- Implemented via a full-canvas `MouseArea` overlay with `hoverEnabled: true` and `cursorShape: Qt.BlankCursor`
 - `DraggableWidget` exposes `updateJoystickPosition()` and `triggerTripleClick()` for the overlay
+
+#### FPS-Style Delta Tracking (v1.2.1 — Wheelchair Joystick Breakthrough)
+When a joystick is locked, the system uses FPS-style delta tracking instead of absolute position mapping:
+1. **On lock**: cursor hidden (`Qt.BlankCursor`), warped to joystick center via `QCursor.setPos()`, confined to window via `ClipCursor`
+2. **On every mouse move**: compute pixel offset from joystick center, scale by `lockSensitivity` multiplier (1-20x), clamp to -1..1, update joystick, then **warp cursor back to center**
+3. **Warp-back detection**: events where cursor is within 3px of center are treated as our own warp and skipped
+4. **On unlock**: cursor reappears, confinement released
+
+**Why this works for wheelchair joysticks**: A wheelchair joystick controls cursor velocity (not position). Full physical deflection → constant cursor speed → constant pixel delta from center each frame → constant virtual joystick deflection. Releasing the physical joystick → cursor stops → no delta → auto-return timer fires → virtual joystick snaps to center.
+
+**Key DPI fix**: `QCursor.setPos()` (Qt, DPI-aware) must be used instead of `SetCursorPos()` (Win32, physical pixels). Without this, on scaled displays (125%, 150%), the warp target is consistently up-left of the actual center.
+
+#### Per-Widget Lock Settings
+- `auto_center` (bool): enable auto-return to center when mouse stops
+- `auto_center_delay` (1-10ms): how long mouse must be idle before return
+- `lock_sensitivity` (1-10 UI, actual multiplier = value × 2): higher = less physical movement needed for full deflection
+- `tremor_filter` (0-10): EMA smoothing strength. 0 = off (raw input), 10 = heavy smoothing. Alpha = 1.0 - (value/10) × 0.9. Designed for wheelchair joysticks with involuntary tremor.
+- At delay ≤ 0: instant snap to center (no animation). Otherwise: OutCubic easing, duration scales with delay
+
+#### Cursor Confinement
+- `controller.clipCursorToWindow()` / `controller.unclipCursor()` — Windows `ClipCursor` API keeps invisible cursor in app window so hover events keep firing
+- `controller.setCursorPos(x, y)` — `QCursor.setPos()` for DPI-correct cursor warping
+
+### Splash Screen (v1.2.1)
+- `qt_qml_app.py:_create_splash()` paints logo + version + tagline on a dark QPixmap
+- Shown before heavy init (ControllerConfig, ControllerBridge), closed after QML loads
+- Uses `QSplashScreen.showMessage()` for progress updates between init steps
 
 ### Bridge Slots for Custom Layout
 - `getCustomLayout()` → JSON string of widgets
@@ -153,7 +180,7 @@ The `custom` layout type is the modular controller builder. Key concepts:
 ### Hardware Limits
 - **vJoy**: 8 axes (X,Y,Z,RX,RY,RZ,SL0,SL1) → max 4 joysticks, 128 buttons
 - **ViGEm**: 2 sticks + 2 triggers + 14 buttons (Xbox 360 hard limit)
-- See `docs/VDROID_DRIVER_BRAINSTORM.md` for plans to exceed these limits
+- See `docs/architecture/VDROID_DRIVER_BRAINSTORM.md` for plans to exceed these limits
 
 ### Known Bug Fixes (for future reference)
 - **Palette overlap**: Sidebar palette covered canvas widgets → fixed by making it a pop-out `Window` with `Qt.FramelessWindowHint` + custom drag title bar
@@ -185,28 +212,54 @@ The `custom` layout type is the modular controller builder. Key concepts:
 - **Qt Quick (QML) is the primary UI**: The pygame UI is legacy/deprecated
 - **EV signing certificate available**: UIAccess=true manifest is now included in the build
 - **Active branch**: `feature/adaptive-platform-2` for the modular layout system
-- **Version**: 1.2.0 — see `CHANGELOG.md` for history
+- **Version**: 1.2.1 — see `CHANGELOG.md` for history
 
 ## Build & Release
 
+> **Full guide**: See [../setup/PACKAGING.md](../setup/PACKAGING.md) for comprehensive build/release documentation.
+
 ### Quick Build
-```batch
-cd build_tools
-build_exe.bat        # Builds exe + installer (if NSIS available)
-sign_exe.bat         # Signs exe + installer with EV cert
+```powershell
+# 1. Build executable
+venv\Scripts\pyinstaller.exe build_tools\Project-Nimbus.spec --noconfirm
+
+# 2. Build installer
+& "C:\Program Files (x86)\NSIS\makensis.exe" build_tools\installer.nsi
+
+# 3. Sign both
+cmd /c build_tools\sign_exe.bat
 ```
 
-### Release Checklist
-1. Update version in `src/__init__.py`, `build_tools/version_info.txt`, `build_tools/Project-Nimbus.spec`
-2. Update `CHANGELOG.md`
-3. Run `build_tools/build_exe.bat`
-4. Run `build_tools/sign_exe.bat` (hardware token must be connected)
-5. Test on clean Windows machine
-6. Create GitHub release, attach `dist/Project-Nimbus-Setup-X.Y.Z.exe`
-7. Git tag: `git tag v1.2.0`
+### Version Bump Locations
+When releasing a new version, update these files:
+- `src/__init__.py` — `__version__`
+- `build_tools/Project-Nimbus.spec` — `VERSION`
+- `build_tools/installer.nsi` — `PRODUCT_VERSION`
+- `build_tools/sign_exe.bat` — `INSTALLER_PATH`
+- `build_tools/version_info.txt` — `filevers` and `prodvers`
+- `CHANGELOG.md` — Release notes
+
+### Installer Features (v1.2.1)
+- **UAC admin prompt** — `RequestExecutionLevel admin`
+- **Running app detection** — Checks if app is running, offers to close
+- **Previous version detection** — Checks BOTH HKCU and HKLM registries
+- **Shortcut options page** — Custom page with Desktop/Start Menu checkboxes
+- **BringToFront** — Ensures installer visible after UAC elevation
 
 ### UIAccess=true
 The manifest (`build_tools/Project-Nimbus.manifest`) requests `uiAccess="true"` which enables on-screen keyboard parity. Requirements:
 - Executable must be **EV code-signed**
-- Must be installed to a **trusted location** (e.g. `C:\Program Files\` or `%LOCALAPPDATA%\Project Nimbus\`)
+- Must be installed to a **trusted location** (e.g. `C:\Program Files\` or `%LOCALAPPDATA%\Programs\Project Nimbus\`)
 - The NSIS installer handles trusted location placement automatically
+
+## Quick Reference for AI Assistants
+
+| Task | Start Here |
+|------|------------|
+| Understanding the app | `README.md`, then `docs/architecture/architecture.md` |
+| Project structure | `DIRECTORY.md` (root) |
+| Making UI changes | `qml/Main.qml`, `qml/layouts/CustomLayout.qml` |
+| Adding QML↔Python features | `src/bridge.py` (add @Slot methods) |
+| Changing settings/profiles | `src/config.py` |
+| Building releases | `docs/setup/PACKAGING.md` |
+| Adding new widget types | `docs/development/INTEGRATION_GUIDE.md` |

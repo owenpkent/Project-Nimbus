@@ -104,17 +104,6 @@ Rectangle {
         anchors.margins: 8
         spacing: 6
 
-        // Title
-        Text {
-            text: "🛠 Widget Palette"
-            color: "#fff"
-            font.pixelSize: 13
-            font.bold: true
-            Layout.alignment: Qt.AlignHCenter
-        }
-
-        Rectangle { Layout.fillWidth: true; height: 1; color: "#444" }
-
         // Add Joystick
         Rectangle {
             Layout.fillWidth: true

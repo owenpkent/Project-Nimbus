@@ -17,6 +17,10 @@ Item {
     property string clickMode: "jump"      // Slider click: "jump" (teleport to click) or "relative" (drag from current)
     property bool toggleMode: false        // Button: toggle vs momentary (per-widget override)
     property bool tripleClickEnabled: true // Joystick: allow triple-click mouse lock
+    property bool autoCenter: false         // Joystick/Wheel: auto-return to center when mouse stops (locked mode)
+    property int autoCenterDelay: 5          // Joystick: ms to wait before auto-return starts (1-10)
+    property real lockSensitivity: 4.0       // Joystick: lock mode sensitivity (1-10 UI, actual multiplier = value * 2)
+    property real tremorFilter: 0.0          // Joystick: tremor filter strength (0=off, 1-10=increasing smoothing)
     property real sensitivity: 50.0        // Axis sensitivity % (0-100, 50 = linear, matches Settings menu)
     property real deadZone: 0.0            // Axis dead zone % (0-100, matches Settings menu)
     property real extremityDeadZone: 5.0   // Extremity dead zone % (0-100, matches Settings menu)

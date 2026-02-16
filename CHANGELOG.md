@@ -6,7 +6,29 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [1.2.0] — 2026-02-14
+## [1.2.1] — 2025-02-15
+
+### Added
+- **Wheelchair joystick support (FPS-style delta tracking)** — When a joystick is locked, the cursor is hidden and continuously warped back to the joystick center. Each mouse movement is treated as a delta offset, scaled by a configurable sensitivity multiplier. This maps physical wheelchair joystick deflection directly to virtual joystick deflection.
+- **Tremor Filter** — Per-joystick EMA smoothing (0-10) to reduce jittery input from wheelchair joysticks with involuntary tremor
+- **Lock Sensitivity slider** — Per-joystick sensitivity (1-10, default 4) controlling how much physical mouse movement is needed for full virtual deflection
+- **Auto-return to center** — Per-joystick toggle; when locked mode mouse stops, virtual joystick snaps back to center. Configurable delay (1-10ms) for fine-tuning response feel.
+- **Copy sensitivity from dropdown** — Per-widget axis settings can copy sensitivity/deadzone/extremity from other axis widgets
+- **Help menu documentation** — In-app "Getting Started" guide and "Feature Guide" accessible via Help menu with comprehensive wheelchair joystick setup instructions
+- **Loading splash screen** — Dark-themed splash screen with logo, version, and progress messages shown during startup
+- **Scrollbars on all settings dialogs** — QML config dialog, Button Settings, and Axis Settings all have styled scrollbars
+- **DPI-aware cursor positioning** — Uses Qt's `QCursor.setPos()` instead of Windows `SetCursorPos` for correct behavior on scaled displays
+
+### Changed
+- **Edit Layout is a top-level menu** — Dedicated "Edit Layout" menu in the menu bar (custom layouts only), deferred loading to prevent startup flash
+- **Axis Configuration and Button Modes hidden for custom layouts** — These legacy dialogs only appear for non-custom layout profiles; custom layouts use per-widget settings instead
+- **Widget Palette title cleanup** — Removed duplicate "Widget Palette" heading inside the palette content since the window title bar already shows it
+- **Docs folder reorganized** — Documentation now organized into subdirectories: `setup/`, `architecture/`, `development/`, `accessibility/`
+- **Installer improvements** — Optional prompt to remove user data on uninstall; user profiles in `%APPDATA%` preserved by default across reinstalls
+
+---
+
+## [1.2.0] — 2025-02-14
 
 ### Added
 - **Windows Installer (NSIS)** — Full installer with desktop/start menu shortcuts, uninstall support, previous-version detection
