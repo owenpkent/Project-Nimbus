@@ -26,13 +26,18 @@ BrandingText "${PRODUCT_NAME} v${PRODUCT_VERSION}"
 ; Variables for shortcut options
 Var CreateDesktopShortcut
 Var CreateStartMenuShortcut
+Var InstallVJoy
+Var VJoyInstalled
 
 ; ---- MUI Settings ----
 !define MUI_ICON "Project-Nimbus.ico"
 !define MUI_UNICON "Project-Nimbus.ico"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${PRODUCT_NAME} Setup"
-!define MUI_WELCOMEPAGE_TEXT "This wizard will install ${PRODUCT_NAME} v${PRODUCT_VERSION} on your computer.$\r$\n$\r$\n${PRODUCT_NAME} is a virtual controller interface for accessibility.$\r$\n$\r$\nNote: VJoy driver must be installed separately from vjoystick.sourceforge.net$\r$\n$\r$\nClick Next to continue."
+!define MUI_WELCOMEPAGE_TEXT "This wizard will install ${PRODUCT_NAME} v${PRODUCT_VERSION} on your computer.$\r$\n$\r$\n${PRODUCT_NAME} is a virtual controller interface for accessibility.$\r$\n$\r$\nThe vJoy driver will be installed automatically if needed.$\r$\n$\r$\nClick Next to continue."
+
+; vJoy detection registry key
+!define VJOY_UNINST_KEY "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8E31F76F-74C3-47F1-9550-E041EEDC5FBB}_is1"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${PRODUCT_EXE}"
 !define MUI_FINISHPAGE_RUN_TEXT "Launch ${PRODUCT_NAME}"
 
@@ -69,8 +74,50 @@ Function ShortcutOptionsLeave
     ${NSD_GetState} $StartMenuCheckbox $CreateStartMenuShortcut
 FunctionEnd
 
+; ---- Custom Page for vJoy Installation ----
+Var VJoyDialog
+Var VJoyCheckbox
+Var VJoyStatusLabel
+
+Function VJoyOptionsPage
+    !insertmacro MUI_HEADER_TEXT "Virtual Controller Driver" "vJoy is required for controller emulation."
+    
+    nsDialogs::Create 1018
+    Pop $VJoyDialog
+    ${If} $VJoyDialog == error
+        Abort
+    ${EndIf}
+    
+    ; Check if vJoy is already installed
+    ReadRegStr $0 HKLM "${VJOY_UNINST_KEY}" "DisplayVersion"
+    ${If} $0 != ""
+        StrCpy $VJoyInstalled 1
+        ${NSD_CreateLabel} 0 0 100% 30u "vJoy driver v$0 is already installed.$\r$\n$\r$\nNo action needed - your system is ready!"
+        Pop $VJoyStatusLabel
+        StrCpy $InstallVJoy 0
+    ${Else}
+        StrCpy $VJoyInstalled 0
+        ${NSD_CreateLabel} 0 0 100% 40u "vJoy driver is required for ${PRODUCT_NAME} to create virtual controllers.$\r$\n$\r$\nThe installer will download and install vJoy automatically.$\r$\nThis requires an internet connection."
+        Pop $VJoyStatusLabel
+        
+        ${NSD_CreateCheckbox} 20u 50u 100% 12u "Install vJoy driver (recommended)"
+        Pop $VJoyCheckbox
+        ${NSD_Check} $VJoyCheckbox  ; Checked by default
+        StrCpy $InstallVJoy 1
+    ${EndIf}
+    
+    nsDialogs::Show
+FunctionEnd
+
+Function VJoyOptionsLeave
+    ${If} $VJoyInstalled == 0
+        ${NSD_GetState} $VJoyCheckbox $InstallVJoy
+    ${EndIf}
+FunctionEnd
+
 ; ---- Pages ----
 !insertmacro MUI_PAGE_WELCOME
+Page custom VJoyOptionsPage VJoyOptionsLeave
 !insertmacro MUI_PAGE_DIRECTORY
 Page custom ShortcutOptionsPage ShortcutOptionsLeave
 !insertmacro MUI_PAGE_INSTFILES
@@ -163,6 +210,40 @@ Section "Install"
     
     ${If} $CreateDesktopShortcut == 1
         CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}" "" "$INSTDIR\${PRODUCT_EXE}" 0
+    ${EndIf}
+    
+    ; ---- vJoy Driver Installation ----
+    ${If} $InstallVJoy == 1
+        DetailPrint "Downloading vJoy driver..."
+        SetOutPath "$TEMP"
+        
+        ; Download vJoy installer from GitHub releases
+        ; Using njz3's maintained fork
+        NSISdl::download /TIMEOUT=60000 "https://github.com/njz3/vJoy/releases/download/v2.2.1.1/vJoySetup.exe" "$TEMP\vJoySetup.exe"
+        Pop $0
+        ${If} $0 == "success"
+            DetailPrint "Installing vJoy driver (this may take a moment)..."
+            ; Run vJoy installer silently
+            nsExec::ExecToLog '"$TEMP\vJoySetup.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
+            Pop $0
+            ${If} $0 == 0
+                DetailPrint "vJoy driver installed successfully"
+                
+                ; Configure vJoy device 1 with 8 axes and 128 buttons
+                ; vJoyConfig.exe is installed by vJoy to Program Files
+                nsExec::ExecToLog '"$PROGRAMFILES\vJoy\x64\vJoyConfig.exe" 1 -f -a x y z rx ry rz sl0 sl1 -b 128'
+                DetailPrint "vJoy device configured"
+            ${Else}
+                DetailPrint "vJoy installation may require a restart"
+                MessageBox MB_OK|MB_ICONINFORMATION "vJoy driver installation complete.$\r$\n$\r$\nYou may need to restart your computer for the driver to work properly."
+            ${EndIf}
+            
+            ; Clean up
+            Delete "$TEMP\vJoySetup.exe"
+        ${Else}
+            DetailPrint "Failed to download vJoy: $0"
+            MessageBox MB_OK|MB_ICONEXCLAMATION "Could not download vJoy driver.$\r$\n$\r$\nPlease install it manually from:$\r$\nhttps://github.com/njz3/vJoy/releases$\r$\n$\r$\n${PRODUCT_NAME} will not function without vJoy."
+        ${EndIf}
     ${EndIf}
 SectionEnd
 

@@ -114,11 +114,75 @@ The `custom` layout type is the modular controller builder. Key concepts:
 
 ### Widget Schema (stored in profile JSON under `custom_layout.widgets[]`)
 - **Common fields**: `id`, `type`, `x`, `y`, `width`, `height`, `label`
-- **Joystick**: `mapping.axis_x`, `mapping.axis_y` (e.g. `"x"/"y"` or `"rx"/"ry"`), `triple_click_enabled`, `auto_center`, `sensitivity`, `dead_zone`, `extremity_dead_zone`
+- **Joystick**: `mapping.axis_x`, `mapping.axis_y` (e.g. `"x"/"y"` or `"rx"/"ry"`), `triple_click_enabled`, `auto_center`, `sensitivity`, `dead_zone`, `extremity_dead_zone`, `macro_mode`, `macro_config`
 - **Button**: `button_id` (1-128), `color`, `shape` (`"circle"/"rounded"/"square"`), `toggle_mode`
 - **Slider**: `orientation` (`"horizontal"`/`"vertical"`), `mapping.axis`, `snap_mode` (`"none"`/`"left"`/`"center"`), `click_mode` (`"jump"`/`"relative"`), `sensitivity`, `dead_zone`, `extremity_dead_zone`
 - **D-Pad**: `mapping.up`, `mapping.down`, `mapping.left`, `mapping.right` (button IDs)
 - **Wheel**: `mapping.axis`, `sensitivity`, `dead_zone`, `extremity_dead_zone`
+
+### Macro Joystick Mode (v1.3.0)
+Converts a joystick into a macro input device where each direction triggers buttons, axes, or turbo actions instead of analog stick output.
+
+#### Enabling Macro Mode
+1. Double-click joystick widget → Enable "Macro Mode" toggle
+2. Click "Edit Macro Mappings..." to open the visual zone editor
+3. Configure each zone's action and apply
+
+#### Macro Config Schema
+```json
+{
+  "macro_mode": true,
+  "macro_config": {
+    "zones": {
+      "north": { "action": "button", "buttons": [4] },
+      "east": { "action": "multi_button", "buttons": [5, 6] },
+      "south": { "action": "turbo", "buttons": [1], "turbo_hz": 10 },
+      "west": { "action": "axis", "axis": "z", "axis_value": 1.0 },
+      "center": { "action": "button", "buttons": [9] },
+      "northeast": { "action": "none" },
+      "southeast": { "action": "none" },
+      "southwest": { "action": "none" },
+      "northwest": { "action": "none" }
+    },
+    "deadzone_percent": 30,
+    "diagonal_mode": "8-way"
+  }
+}
+```
+
+#### Action Types
+| Action | Description |
+|--------|-------------|
+| `none` | No action (zone disabled) |
+| `button` | Press single button when in zone |
+| `multi_button` | Press multiple buttons simultaneously |
+| `axis` | Set axis to configured value (e.g., full throttle) |
+| `turbo` | Auto-fire button at configurable rate (1-30 Hz) |
+
+#### Zone Detection
+- **Deadzone**: Center area (configurable 10-50%) triggers `center` zone
+- **8-way mode**: 8 directional zones at 45° each (N, NE, E, SE, S, SW, W, NW)
+- **4-way mode**: 4 cardinal zones at 90° each (N, E, S, W)
+- Angle calculated from joystick position using `atan2(-ny, nx)`
+
+#### Visual Indicators
+- Purple border when macro mode enabled
+- "MACRO" label at top of joystick
+- Zone divider lines overlay
+- Current zone arrow indicator (↑, →, ↓, ←, ↗, ↘, ↙, ↖, ●)
+
+#### Quick Presets
+The macro editor includes preset buttons:
+- **ABXY**: Maps N/E/S/W to Y/B/A/X buttons
+- **D-Pad**: Maps to D-pad button IDs (13-16)
+- **Triggers**: Maps N/S to LT/RT axes
+- **Shoulders**: Maps W/E/Center to LB/RB/LS buttons
+- **Clear All**: Resets all zones to "none"
+
+#### Implementation Files
+- `qml/components/MacroEditorDialog.qml` — Visual zone editor dialog
+- `qml/components/DraggableWidget.qml` — Zone detection and action execution
+- `qml/layouts/CustomLayout.qml` — Macro mode UI in config dialog
 
 ### Edit Mode
 - Toggle via Settings → Edit Layout menu item (custom layout only)

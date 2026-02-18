@@ -25,6 +25,14 @@ Item {
     property real deadZone: 0.0            // Axis dead zone % (0-100, matches Settings menu)
     property real extremityDeadZone: 5.0   // Extremity dead zone % (0-100, matches Settings menu)
 
+    // Macro mode properties (joystick only)
+    property bool macroMode: false          // When true, joystick acts as macro input instead of analog stick
+    property var macroConfig: ({            // Configuration for macro zones
+        "zones": {},
+        "deadzone_percent": 30,
+        "diagonal_mode": "8-way"
+    })
+
     // Edit mode toggle (controlled by parent CustomLayout)
     property bool editMode: false
 
@@ -311,9 +319,129 @@ Item {
                 }
             }
 
+            // Macro mode state
+            property string _currentZone: "none"
+            property var _activeButtons: []
+            property bool _turboState: false
+
+            // Turbo timer for repeat button presses
+            Timer {
+                id: turboTimer
+                interval: 100
+                repeat: true
+                running: false
+                onTriggered: {
+                    if (!controller || !root.macroMode) return
+                    var zoneCfg = joyRoot._getZoneConfig(joyRoot._currentZone)
+                    if (zoneCfg && zoneCfg.action === "turbo" && zoneCfg.buttons) {
+                        joyRoot._turboState = !joyRoot._turboState
+                        for (var i = 0; i < zoneCfg.buttons.length; i++) {
+                            controller.setButton(zoneCfg.buttons[i], joyRoot._turboState)
+                        }
+                    }
+                }
+            }
+
+            function _getZoneConfig(zone) {
+                if (!root.macroConfig || !root.macroConfig.zones) return null
+                return root.macroConfig.zones[zone] || null
+            }
+
+            function _detectZone(nx, ny) {
+                var dz = (root.macroConfig.deadzone_percent || 30) / 100.0
+                var mag = Math.sqrt(nx * nx + ny * ny)
+
+                // Center zone (within deadzone)
+                if (mag < dz) return "center"
+
+                // Get angle in degrees (-180 to 180, 0 = right/east)
+                var angle = Math.atan2(-ny, nx) * 180 / Math.PI
+
+                // 8-way mode: 45-degree sectors
+                var is8way = root.macroConfig.diagonal_mode !== "4-way"
+
+                if (is8way) {
+                    // 8 zones, each 45 degrees
+                    if (angle >= -22.5 && angle < 22.5) return "east"
+                    if (angle >= 22.5 && angle < 67.5) return "northeast"
+                    if (angle >= 67.5 && angle < 112.5) return "north"
+                    if (angle >= 112.5 && angle < 157.5) return "northwest"
+                    if (angle >= 157.5 || angle < -157.5) return "west"
+                    if (angle >= -157.5 && angle < -112.5) return "southwest"
+                    if (angle >= -112.5 && angle < -67.5) return "south"
+                    if (angle >= -67.5 && angle < -22.5) return "southeast"
+                } else {
+                    // 4-way mode: 90-degree sectors (cardinal only)
+                    if (angle >= -45 && angle < 45) return "east"
+                    if (angle >= 45 && angle < 135) return "north"
+                    if (angle >= 135 || angle < -135) return "west"
+                    if (angle >= -135 && angle < -45) return "south"
+                }
+
+                return "none"
+            }
+
+            function _executeMacroAction(zone, active) {
+                if (!controller) return
+                var cfg = _getZoneConfig(zone)
+                if (!cfg || cfg.action === "none") return
+
+                if (cfg.action === "button" || cfg.action === "multi_button") {
+                    // Press or release button(s)
+                    if (cfg.buttons) {
+                        for (var i = 0; i < cfg.buttons.length; i++) {
+                            controller.setButton(cfg.buttons[i], active)
+                        }
+                    }
+                } else if (cfg.action === "axis") {
+                    // Set axis to configured value when active, 0 when inactive
+                    var axis = cfg.axis || "x"
+                    var value = active ? (cfg.axis_value !== undefined ? cfg.axis_value : 1.0) : 0.0
+                    controller.setAxis(axis, value)
+                } else if (cfg.action === "turbo") {
+                    if (active) {
+                        // Start turbo
+                        var hz = cfg.turbo_hz || 10
+                        turboTimer.interval = Math.max(16, Math.floor(1000 / (hz * 2)))
+                        turboTimer.start()
+                    } else {
+                        // Stop turbo and release button
+                        turboTimer.stop()
+                        joyRoot._turboState = false
+                        if (cfg.buttons) {
+                            for (var j = 0; j < cfg.buttons.length; j++) {
+                                controller.setButton(cfg.buttons[j], false)
+                            }
+                        }
+                    }
+                }
+            }
+
+            function _updateMacroZone(nx, ny) {
+                var newZone = _detectZone(nx, ny)
+                if (newZone !== _currentZone) {
+                    // Deactivate old zone
+                    if (_currentZone !== "none") {
+                        _executeMacroAction(_currentZone, false)
+                    }
+                    // Activate new zone
+                    _currentZone = newZone
+                    if (newZone !== "none") {
+                        _executeMacroAction(newZone, true)
+                    }
+                }
+            }
+
             function _sendJoystickValues(nx, ny) {
                 if (!controller) return
-                // Apply sensitivity curve
+
+                // Macro mode: convert joystick position to zone actions
+                if (root.macroMode) {
+                    _updateMacroZone(nx, ny)
+                    return
+                }
+
+                // Normal mode: send axis values
                 nx = root._applyCurve(nx)
                 ny = root._applyCurve(ny)
                 var axisX = root.mapping["axis_x"] || ""
@@ -337,8 +465,77 @@ Item {
                 anchors.centerIn: parent
                 radius: width / 2
                 color: "#1e1e1e"
-                border.color: joyRoot.mouseLocked ? "#ff6a00" : "#3d3d3d"
+                border.color: root.macroMode ? "#e040fb" : (joyRoot.mouseLocked ? "#ff6a00" : "#3d3d3d")
                 border.width: joyRoot.borderWidth
+            }
+
+            // Macro mode zone overlay
+            Canvas {
+                id: macroZoneCanvas
+                anchors.centerIn: parent
+                width: joyRoot.joyRadius * 2
+                height: width
+                visible: root.macroMode
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.clearRect(0, 0, width, height)
+                    var cx = width / 2
+                    var cy = height / 2
+                    var r = width / 2 - 2
+                    var dz = (root.macroConfig.deadzone_percent || 30) / 100.0
+
+                    // Draw zone divider lines
+                    ctx.strokeStyle = "#e040fb44"
+                    ctx.lineWidth = 1
+                    var is8way = root.macroConfig.diagonal_mode !== "4-way"
+                    var numZones = is8way ? 8 : 4
+                    var angleStep = 360 / numZones
+                    var startOffset = is8way ? 22.5 : 45
+
+                    for (var i = 0; i < numZones; i++) {
+                        var angle = (i * angleStep + startOffset) * Math.PI / 180
+                        ctx.beginPath()
+                        ctx.moveTo(cx + r * dz * Math.cos(angle), cy - r * dz * Math.sin(angle))
+                        ctx.lineTo(cx + r * Math.cos(angle), cy - r * Math.sin(angle))
+                        ctx.stroke()
+                    }
+
+                    // Draw deadzone circle
+                    ctx.strokeStyle = "#e040fb66"
+                    ctx.beginPath()
+                    ctx.arc(cx, cy, r * dz, 0, Math.PI * 2)
+                    ctx.stroke()
+                }
+            }
+
+            // Macro mode indicator
+            Text {
+                anchors.top: parent.top
+                anchors.topMargin: 4
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "MACRO"
+                color: "#e040fb"
+                font.pixelSize: 9
+                font.bold: true
+                visible: root.macroMode && !joyRoot.mouseLocked
+            }
+
+            // Current zone indicator (when active)
+            Text {
+                anchors.centerIn: parent
+                text: {
+                    var labels = {
+                        "north": "↑", "northeast": "↗", "east": "→", "southeast": "↘",
+                        "south": "↓", "southwest": "↙", "west": "←", "northwest": "↖",
+                        "center": "●", "none": ""
+                    }
+                    return labels[joyRoot._currentZone] || ""
+                }
+                color: "#e040fb"
+                font.pixelSize: Math.min(joyRoot.width, joyRoot.height) * 0.25
+                font.bold: true
+                visible: root.macroMode && joyRoot._currentZone !== "none"
+                opacity: 0.7
             }
 
             // Thumb

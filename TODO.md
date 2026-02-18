@@ -93,6 +93,10 @@
 - [ ] **Custom wake word** — configurable activation phrase
 
 ## Future: Macro Editor
+- [x] **Macro Joystick Mode** — convert joystick directions into button/axis/turbo actions (v1.3.0)
+- [x] **Visual zone editor** — 8-zone + center joystick diagram with per-zone action config
+- [x] **Quick presets** — ABXY, D-Pad, Triggers, Shoulders presets
+- [x] **Turbo mode** — auto-fire buttons at configurable rate (1-30 Hz)
 - [ ] **Visual macro editor** — drag-and-drop sequence builder for button press sequences
 - [ ] **Timing control** — configurable delays between actions (ms precision)
 - [ ] **Loop / repeat** — repeat macros N times or until cancelled

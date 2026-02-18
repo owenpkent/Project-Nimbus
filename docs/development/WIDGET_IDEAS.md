@@ -80,6 +80,14 @@ A brainstorm of widget types for the modular controller builder, with a focus on
 - **Properties**: `sequence[]` (array of `{button_id, pressed, delay_ms}`), `label`
 - **Accessibility benefit**: Reduces complex multi-button inputs to a single action. Critical for users who cannot perform rapid sequential inputs (e.g. fighting game combos, QTE sequences).
 
+### ✅ Macro Joystick Mode (IMPLEMENTED v1.3.0)
+- **Type**: Enhancement to existing `joystick` widget
+- **Description**: Converts a joystick into a directional macro input. Each of 8 zones (N, NE, E, SE, S, SW, W, NW) + center can trigger buttons, multiple buttons, axis values, or turbo (auto-fire).
+- **Properties**: `macro_mode` (bool), `macro_config` (zones object with action configs)
+- **Action types**: `none`, `button`, `multi_button`, `axis`, `turbo`
+- **Accessibility benefit**: Users who can only control one joystick can now access ABXY buttons, D-pad, triggers, shoulders, and turbo functions — all from directional input. Inspired by the GCM (Game Controller Mixer) joystick modes.
+- **Implementation**: `MacroEditorDialog.qml` (visual zone editor), `DraggableWidget.qml` (zone detection + execution)
+
 ### Mouse Lock Joystick (Triple-Click Lock)
 - **Type**: Enhancement to existing joystick
 - **Description**: Triple-click on a joystick to lock the mouse to it — the mouse is captured and all movement controls the joystick until triple-click again. Eliminates the need to stay within the joystick circle.

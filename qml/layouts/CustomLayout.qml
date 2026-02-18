@@ -132,6 +132,8 @@ Item {
                 sensitivity: wData.sensitivity !== undefined ? wData.sensitivity : 50.0
                 deadZone: wData.dead_zone !== undefined ? wData.dead_zone : 0.0
                 extremityDeadZone: wData.extremity_dead_zone !== undefined ? wData.extremity_dead_zone : 5.0
+                macroMode: wData.macro_mode || false
+                macroConfig: wData.macro_config || { "zones": {}, "deadzone_percent": 30, "diagonal_mode": "8-way" }
 
                 editMode: root.editMode
                 gridSnap: root.gridSnap
@@ -445,6 +447,7 @@ Item {
 
         property string targetWidgetId: ""
         property var targetWidget: null
+        property var _currentMacroConfig: ({ "zones": {}, "deadzone_percent": 30, "diagonal_mode": "8-way" })
 
         function openForWidget(wid) {
             for (var i = 0; i < root.widgetModel.length; i++) {
@@ -473,6 +476,8 @@ Item {
                         autoCenterDelaySlider.value = targetWidget.auto_center_delay !== undefined ? Math.max(1, Math.min(10, targetWidget.auto_center_delay)) : 5
                         lockSensSlider.value = targetWidget.lock_sensitivity !== undefined ? targetWidget.lock_sensitivity : 4
                         tremorFilterSlider.value = targetWidget.tremor_filter !== undefined ? targetWidget.tremor_filter : 0
+                        macroModeSwitch.checked = targetWidget.macro_mode || false
+                        configDialog._currentMacroConfig = targetWidget.macro_config || { "zones": {}, "deadzone_percent": 30, "diagonal_mode": "8-way" }
                     }
                     if (targetWidget.type === "slider" || targetWidget.type === "wheel") {
                         var slAxis = targetWidget.mapping.axis || "z"
@@ -823,6 +828,77 @@ Item {
                         handle: Rectangle { x: autoCenterDelaySlider.leftPadding + autoCenterDelaySlider.visualPosition * (autoCenterDelaySlider.availableWidth - width); y: autoCenterDelaySlider.topPadding + autoCenterDelaySlider.availableHeight / 2 - height / 2; width: 16; height: 16; radius: 8; color: "#fff" }
                     }
                     Text { text: autoCenterDelaySlider.value.toFixed(0) + "ms"; color: "#0078d4"; font.pixelSize: 11; width: 40; verticalAlignment: Text.AlignVCenter; height: 30 }
+                }
+
+                // Macro mode section
+                Rectangle { width: parent.width; height: 1; color: "#444"; visible: !macroModeSwitch.checked }
+
+                Row {
+                    spacing: 8
+                    Text { text: "Macro:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
+                    Rectangle {
+                        width: 200; height: 30; radius: 4; color: "transparent"
+                        Row {
+                            spacing: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            Rectangle {
+                                id: macroModeSwitch
+                                property bool checked: false
+                                width: 44; height: 22; radius: 11
+                                color: checked ? "#e040fb" : "#555"
+                                Rectangle {
+                                    width: 18; height: 18; radius: 9; color: "white"
+                                    x: parent.checked ? parent.width - width - 2 : 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Behavior on x { NumberAnimation { duration: 120 } }
+                                }
+                                MouseArea { anchors.fill: parent; onClicked: parent.checked = !parent.checked }
+                            }
+                            Text {
+                                text: macroModeSwitch.checked ? "Macro Mode ON" : "Macro Mode OFF"
+                                color: macroModeSwitch.checked ? "#e040fb" : "#aaa"
+                                font.pixelSize: 11
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                    }
+                }
+
+                // Edit Macro Mappings button (only visible when macro mode is on)
+                Rectangle {
+                    visible: macroModeSwitch.checked
+                    width: 200; height: 32; radius: 6
+                    color: editMacroMa.containsMouse ? "#9c27b0" : "#7b1fa2"
+                    anchors.horizontalCenter: parent.horizontalCenter
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Edit Macro Mappings..."
+                        color: "white"
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
+
+                    MouseArea {
+                        id: editMacroMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            // Load current macro config into editor
+                            var cfg = configDialog.targetWidget ? configDialog.targetWidget.macro_config : null
+                            macroEditorDialog.loadConfig(cfg || { "zones": {}, "deadzone_percent": 30, "diagonal_mode": "8-way" })
+                            macroEditorDialog.visible = true
+                        }
+                    }
+                }
+
+                Text {
+                    visible: macroModeSwitch.checked
+                    text: "Macro mode converts joystick directions into button presses, axis outputs, or turbo actions."
+                    color: "#888"
+                    font.pixelSize: 9
+                    wrapMode: Text.WordWrap
+                    width: parent.width - 20
                 }
             }
 
@@ -1210,6 +1286,8 @@ Item {
                             _updateWidgetProp(wid, "auto_center_delay", autoCenterDelaySlider.value)
                             _updateWidgetProp(wid, "lock_sensitivity", lockSensSlider.value)
                             _updateWidgetProp(wid, "tremor_filter", tremorFilterSlider.value)
+                            _updateWidgetProp(wid, "macro_mode", macroModeSwitch.checked)
+                            _updateWidgetProp(wid, "macro_config", configDialog._currentMacroConfig)
                         }
 
                         if (wType === "slider" || wType === "wheel") {
@@ -1324,6 +1402,33 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // ==================== MACRO EDITOR DIALOG ====================
+    Rectangle {
+        id: macroEditorOverlay
+        parent: root
+        anchors.fill: parent
+        color: "#000000aa"
+        visible: macroEditorDialog.visible
+        z: 599
+        MouseArea { anchors.fill: parent; onClicked: {} }
+    }
+
+    Comp.MacroEditorDialog {
+        id: macroEditorDialog
+        anchors.centerIn: parent
+        visible: false
+        z: 600
+
+        onApplyRequested: function(config) {
+            configDialog._currentMacroConfig = JSON.parse(JSON.stringify(config))
+            macroEditorDialog.visible = false
+        }
+
+        onCancelRequested: {
+            macroEditorDialog.visible = false
         }
     }
 
