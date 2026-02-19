@@ -25,6 +25,14 @@ Project Nimbus is a virtual controller application that allows users to control 
 |----------|-------------|
 | [uiAccess & Signing Strategy](roadmap/uiaccess-signing-strategy.md) | Comprehensive plan for Windows uiAccess, code signing, and releases |
 | [uiAccess Implementation Checklist](roadmap/uiaccess-signing-checklist.md) | Phased TODO list for uiAccess implementation |
+| [AI Game Player Proposal](ai-game-player/proposal.md) | Full RL architecture, hardware costs, training pipeline, Copilot/Spectator+ mode |
+
+### 🔗 Related: Distribution & Feature Concepts
+
+| Document | Description |
+|----------|-------------|
+| [Spectator+ Concept](../docs/distribution/SPECTATOR_PLUS.md) | Accessibility-first framing of the AI game player; integration with current Nimbus architecture |
+| [Voice Command Integration](../docs/distribution/VOICE_COMMAND.md) | Speech recognition engine comparison, DeepGram/Whisper/Vosk analysis, GitConnect foundation |
 
 ---
 

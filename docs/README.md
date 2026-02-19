@@ -20,6 +20,14 @@
 ## Accessibility
 - [Accessibility Spotlight Nomination](accessibility/ACCESSIBILITY_SPOTLIGHT_NOMINATION.md)
 
+## Distribution & Sustainability
+- [Business Model](distribution/BUSINESS_MODEL.md) — freemium tiers, market research, pricing, revenue scenarios
+- [Open Core Playbook](distribution/OPEN_CORE_PLAYBOOK.md) — dual-repo strategy, license gating, CLA, real-world precedents
+- [Release Strategy](distribution/RELEASE_STRATEGY.md) — open source philosophy, funding models, sponsorship tiers, grant sources
+- [Sponsorship Outreach](distribution/SPONSORSHIP_OUTREACH.md) — email templates, pitch deck outline, partnership guidance
+- [Voice Command Integration](distribution/VOICE_COMMAND.md) — speech recognition options, latency analysis, architecture
+- [Spectator+ AI Agent](distribution/SPECTATOR_PLUS.md) — AI-assisted play concept, hardware requirements, RL architecture
+
 ## Media
 - [Screenshots](screenshots/) — application UI screenshots
 - [Video](video/) — demo videos
