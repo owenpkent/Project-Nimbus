@@ -20,6 +20,13 @@
 ## Accessibility
 - [Accessibility Spotlight Nomination](accessibility/ACCESSIBILITY_SPOTLIGHT_NOMINATION.md)
 
+## Vision & Expansion
+- [Research Platform](vision/RESEARCH_PLATFORM.md) — Nimbus as a disability gaming research tool; telemetry, IRB, university partnerships
+- [AAC Integration](vision/AAC_INTEGRATION.md) — Augmentative & Alternative Communication; phrase buttons, scanning, TTS output
+- [Modular Control Surface](vision/MODULAR_CONTROL_SURFACE.md) — beyond gaming: video editing, drawing, DAW, streaming, any application
+- [Hardware Integration](vision/HARDWARE_INTEGRATION.md) — wrapping XAC, QuadStick, and other adaptive hardware through vJoy; input pipeline architecture
+- [Keyboard Output](vision/KEYBOARD_OUTPUT.md) — native keystroke/shortcut emission via SendInput; no external dependencies; bundled in installer
+
 ## Distribution & Sustainability
 - [Business Model](distribution/BUSINESS_MODEL.md) — freemium tiers, market research, pricing, revenue scenarios
 - [Open Core Playbook](distribution/OPEN_CORE_PLAYBOOK.md) — dual-repo strategy, license gating, CLA, real-world precedents

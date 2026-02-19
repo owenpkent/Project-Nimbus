@@ -120,6 +120,36 @@ When playing games that pause or lose input when unfocused, enable **Game Focus 
 
 **Note:** This feature is only available on Windows. On other platforms, the menu option will be disabled.
 
+## Roadmap & Vision
+
+Project Nimbus is evolving beyond a virtual controller into a broader **adaptive input platform**. The following directions are actively being explored and documented.
+
+### 🎙️ Voice Command Integration
+Speak to control. Buttons, axes, and macros can be triggered by voice — using offline engines (Faster-Whisper, Vosk) for low latency and privacy, or cloud engines (DeepGram Nova-3) for higher accuracy. A working DeepGram streaming implementation already exists in a companion project and is being ported to Python/PySide6. The goal: act on interim results for time-critical commands, confirm on final transcript. → [`docs/distribution/VOICE_COMMAND.md`](docs/distribution/VOICE_COMMAND.md)
+
+### 🤖 Spectator+ — AI-Assisted Play
+*"You direct. The AI executes."* Spectator+ is an accessibility-first AI copilot: the user provides high-level intent (via voice, click, or switch), and a trained agent handles precise execution through the existing vJoy/ViGEm bridge. Designed for users who have the cognitive engagement to play but not the fine motor precision. Runs inference-only on modest hardware (GTX 1060 class). → [`docs/distribution/SPECTATOR_PLUS.md`](docs/distribution/SPECTATOR_PLUS.md)
+
+### ⌨️ Keyboard Output Mode
+Any Nimbus button or slider can emit native keyboard shortcuts to any application — Photoshop, DaVinci Resolve, OBS, a browser — with no external software. Implemented via Windows `SendInput` (same `user32.dll` already used by Nimbus), fully bundled in the installer, no driver install required. Enables Nimbus as a **Stream Deck replacement**, a **drawing tablet express key surface**, or a **DAW controller**. → [`docs/vision/KEYBOARD_OUTPUT.md`](docs/vision/KEYBOARD_OUTPUT.md)
+
+### 🎮 Physical Hardware Integration
+Nimbus can wrap existing adaptive hardware — **Xbox Adaptive Controller**, **QuadStick**, foot pedals, head trackers — reading their input via XInput/DirectInput and re-emitting through vJoy with Nimbus's sensitivity curves, macros, and voice layer applied on top. The XAC appears as a standard XInput device; no special SDK needed. → [`docs/vision/HARDWARE_INTEGRATION.md`](docs/vision/HARDWARE_INTEGRATION.md)
+
+### 🗣️ AAC — Augmentative & Alternative Communication
+The same customizable button surface that controls a game can output spoken phrases via text-to-speech, navigate AAC vocabulary pages, or trigger keyboard shortcuts in dedicated AAC software. Switch access (single/dual switch scanning) and eye gaze (Windows Eye Control already works with Nimbus today) are natural extensions. A gaming + AAC hybrid on one screen — something no commercial product currently offers. → [`docs/vision/AAC_INTEGRATION.md`](docs/vision/AAC_INTEGRATION.md)
+
+### 📊 Research Platform
+Every Nimbus session generates behavioral data — axis configurations, input frequency, profile choices, fatigue patterns — that the disability gaming research community doesn't have at scale. With opt-in, IRB-appropriate telemetry, Nimbus could become a research instrument for understanding how people with disabilities actually play, in partnership with AbleGamers, Shirley Ryan AbilityLab, CMU HCII, and others. → [`docs/vision/RESEARCH_PLATFORM.md`](docs/vision/RESEARCH_PLATFORM.md)
+
+### 🔧 Modular Control Surface
+Beyond gaming: Nimbus as a universal adaptive input layer for video editing, music production, streaming, and any Windows application. Pre-built profiles for DaVinci Resolve, Photoshop, Ableton, OBS. Auto-switch profiles by active window. One device, one learned interface, works everywhere. → [`docs/vision/MODULAR_CONTROL_SURFACE.md`](docs/vision/MODULAR_CONTROL_SURFACE.md)
+
+### 💼 Sustainability
+Project Nimbus is and will remain **free for all accessibility use**. A freemium model is being designed where advanced features (voice, macros, AI, cloud sync) are available via optional subscription, while the core — all layouts, vJoy/ViGEm, profiles, custom builder — stays MIT-licensed and free forever. Corporate sponsorships, institutional licenses (hospitals, rehab centers, VA), and research grants are the primary sustainability path. → [`docs/distribution/BUSINESS_MODEL.md`](docs/distribution/BUSINESS_MODEL.md)
+
+---
+
 ## Installation
 
 ### Option 1: Standalone Executable (Recommended for End Users)
