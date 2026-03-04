@@ -1,7 +1,23 @@
-Requirement already satisfied: pyinstaller in c:\users\owen\dev\project-nimbus\venv\lib\site-packages (6.16.0)
-Requirement already satisfied: altgraph in c:\users\owen\dev\project-nimbus\venv\lib\site-packages (from pyinstaller) (0.17.4)
-Requirement already satisfied: packaging>=22.0 in c:\users\owen\dev\project-nimbus\venv\lib\site-packages (from pyinstaller) (25.0)
-Requirement already satisfied: pefile!=2024.8.26,>=2022.5.30 in c:\users\owen\dev\project-nimbus\venv\lib\site-packages (from pyinstaller) (2023.2.7)
-Requirement already satisfied: pyinstaller-hooks-contrib>=2025.8 in c:\users\owen\dev\project-nimbus\venv\lib\site-packages (from pyinstaller) (2025.9)
-Requirement already satisfied: pywin32-ctypes>=0.2.1 in c:\users\owen\dev\project-nimbus\venv\lib\site-packages (from pyinstaller) (0.2.3)
-Requirement already satisfied: setuptools>=42.0.0 in c:\users\owen\dev\project-nimbus\venv\lib\site-packages (from pyinstaller) (80.9.0)
+Collecting pyinstaller
+  Downloading pyinstaller-6.19.0-py3-none-win_amd64.whl.metadata (8.5 kB)
+Collecting altgraph (from pyinstaller)
+  Downloading altgraph-0.17.5-py2.py3-none-any.whl.metadata (7.5 kB)
+Collecting packaging>=22.0 (from pyinstaller)
+  Using cached packaging-26.0-py3-none-any.whl.metadata (3.3 kB)
+Collecting pefile>=2022.5.30 (from pyinstaller)
+  Downloading pefile-2024.8.26-py3-none-any.whl.metadata (1.4 kB)
+Collecting pyinstaller-hooks-contrib>=2026.0 (from pyinstaller)
+  Downloading pyinstaller_hooks_contrib-2026.2-py3-none-any.whl.metadata (16 kB)
+Collecting pywin32-ctypes>=0.2.1 (from pyinstaller)
+  Downloading pywin32_ctypes-0.2.3-py3-none-any.whl.metadata (3.9 kB)
+Requirement already satisfied: setuptools>=42.0.0 in c:\users\owen\dev\project-nimbus\venv\lib\site-packages (from pyinstaller) (65.5.0)
+Downloading pyinstaller-6.19.0-py3-none-win_amd64.whl (1.4 MB)
+   ---------------------------------------- 1.4/1.4 MB 74.8 MB/s  0:00:00
+Using cached packaging-26.0-py3-none-any.whl (74 kB)
+Downloading pefile-2024.8.26-py3-none-any.whl (74 kB)
+Downloading pyinstaller_hooks_contrib-2026.2-py3-none-any.whl (453 kB)
+Downloading pywin32_ctypes-0.2.3-py3-none-any.whl (30 kB)
+Downloading altgraph-0.17.5-py2.py3-none-any.whl (21 kB)
+Installing collected packages: altgraph, pywin32-ctypes, pefile, packaging, pyinstaller-hooks-contrib, pyinstaller
+
+Successfully installed altgraph-0.17.5 packaging-26.0 pefile-2024.8.26 pyinstaller-6.19.0 pyinstaller-hooks-contrib-2026.2 pywin32-ctypes-0.2.3
