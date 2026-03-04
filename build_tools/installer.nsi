@@ -9,9 +9,9 @@
 
 ; ---- General ----
 !define PRODUCT_NAME "Project Nimbus"
-!define PRODUCT_EXE "Project-Nimbus.exe"
+!define PRODUCT_EXE "Project-Nimbus-1.3.1.exe"
 !define PRODUCT_PUBLISHER "Owen Kent"
-!define PRODUCT_VERSION "1.2.1"
+!define PRODUCT_VERSION "1.3.1"
 !define PRODUCT_GUID "project-nimbus-virtual-controller"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_GUID}"
 
@@ -181,7 +181,7 @@ Section "Install"
     SetOutPath "$INSTDIR"
 
     ; Install main executable
-    File "..\dist\${PRODUCT_EXE}"
+    File "..\dist\${PRODUCT_EXE}"  ; PyInstaller output: Project-Nimbus-1.3.1.exe
 
     ; Create uninstaller
     WriteUninstaller "$INSTDIR\Uninstall.exe"

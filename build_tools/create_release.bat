@@ -1,4 +1,4 @@
 @echo off
-REM Create GitHub release v1.0.0 with executable
+REM Create GitHub release v1.3.1 with executable
 
-gh release create v1.0.0 --title "Version 1.0.0" --notes "Initial release of the project." "dist\Project-Nimbus.exe"
+gh release create v1.3.1 --title "Version 1.3.1" --notes "See CHANGELOG.md for details." "dist\Project-Nimbus-1.3.1.exe" "dist\Project-Nimbus-Setup-1.3.1.exe"

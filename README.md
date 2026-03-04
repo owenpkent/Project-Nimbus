@@ -156,7 +156,7 @@ Project Nimbus is and will remain **free for all accessibility use**. A freemium
 
 1. **Download the latest release**:
    - Go to [Releases](https://github.com/owenpkent/Project-Nimbus/releases)
-   - Download `Project-Nimbus.exe` from the latest release
+   - Download `Project-Nimbus-1.3.1.exe` from the latest release
 
 2. **Install VJoy Driver**:
    - Download and install from [VJoy Official Site](http://vjoystick.sourceforge.net/)
@@ -530,6 +530,10 @@ See [docs/WIDGET_IDEAS.md](docs/WIDGET_IDEAS.md) for planned accessibility widge
 See [docs/architecture.md](docs/architecture.md) for detailed technical documentation of the custom layout system.
 
 ## Changelog (recent)
+
+### v1.3.1 - Versioned Distribution Filenames
+- **Versioned exe/installer filenames**: Distribution files now include the version number (`Project-Nimbus-1.3.1.exe`, `Project-Nimbus-Setup-1.3.1.exe`) for clearer release management
+- **Code-signed release**: EV certificate signed with SHA-256 timestamping
 
 ### v3.1 - Widget Palette Pop-Out, Mouse Lock Fix, Enhanced Axis Config
 - **Pop-Out Widget Palette**: Palette is now a separate floating window with custom draggable title bar — never overlaps the canvas

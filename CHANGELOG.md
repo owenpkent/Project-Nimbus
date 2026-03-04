@@ -6,6 +6,14 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.3.1] — 2026-03-03
+
+### Changed
+- **Versioned distribution filenames** — Executable and installer now include the version number in their filename (`Project-Nimbus-1.3.1.exe`, `Project-Nimbus-Setup-1.3.1.exe`) for clearer release management
+- **Code-signed release** — EV certificate signed with SHA-256 timestamping via DigiCert
+
+---
+
 ## [1.2.1] — 2025-02-15
 
 ### Added
