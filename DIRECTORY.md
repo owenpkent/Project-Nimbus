@@ -1,7 +1,7 @@
 # Project Nimbus — Directory Structure
 
 > **Purpose**: Quick reference for developers and AI assistants to understand the codebase layout.  
-> **Last updated**: February 2026 (v1.2.1)
+> **Last updated**: March 2026 (v1.3.2)
 
 ---
 
@@ -36,6 +36,8 @@ Python backend — Qt/QML bridge, configuration, hardware interfaces.
 | `vigem_interface.py` | ViGEm Xbox controller emulation (optional) |
 | `qt_dialogs.py` | Native Qt dialogs — Joystick Settings, Button Settings, Axis Mapping |
 | `qt_widgets.py` | Custom Qt widget components |
+| `borderless.py` | Borderless window mode + ClipCursor release (Windows) |
+| `window_utils.py` | Game Focus Mode — save/restore foreground window (Windows) |
 | `qt_main.py` | Legacy Qt Widgets main (not used in QML UI) |
 | `legacy/` | Old pygame-based UI (deprecated, kept for reference) |
 
@@ -57,12 +59,14 @@ qml/
 ├── components/              # Reusable UI components
 │   ├── DraggableWidget.qml  # Universal drag/resize/config wrapper for all widgets
 │   ├── WidgetPalette.qml    # Floating toolbar for adding widgets (edit mode)
+│   ├── BorderlessGamingDialog.qml  # Borderless gaming & cursor release UI
+│   ├── MacroEditorDialog.qml       # Macro joystick zone editor
 │   └── ...
 └── layouts/                 # Layout implementations
-    ├── CustomLayout.qml     # Drag-and-drop canvas with widget system
-    ├── FlightSimLayout.qml  # Fixed dual-joystick flight sim layout
-    ├── XboxLayout.qml       # Xbox gamepad layout
-    └── AdaptiveLayout.qml   # Accessibility-focused fixed layout
+    ├── CustomLayout.qml     # ★ Default — drag-and-drop canvas with widget system
+    ├── FlightSimLayout.qml  # Fixed dual-joystick layout (legacy, not default)
+    ├── XboxLayout.qml       # Xbox gamepad layout (legacy, not default)
+    └── AdaptiveLayout.qml   # Accessibility fixed layout (legacy, not default)
 ```
 
 ### Key QML Components
@@ -89,10 +93,7 @@ JSON profile files — copied to `%APPDATA%\ProjectNimbus\profiles\` on first ru
 
 | File | Layout Type |
 |------|-------------|
-| `flight_simulator.json` | `flight_sim` — Dual joysticks + throttle/rudder |
-| `xbox.json` | `xbox` — Standard Xbox gamepad |
-| `adaptive_platform.json` | `adaptive` — Accessibility-focused fixed layout |
-| `adaptive_platform_2.json` | `custom` — Drag-and-drop canvas |
+| `adaptive_platform_2.json` | `custom` — Default drag-and-drop canvas (opens on first launch) |
 
 ### Profile JSON Structure
 
@@ -148,6 +149,7 @@ cmd /c build_tools\sign_exe.bat
 ```
 docs/
 ├── README.md                    # Docs index
+├── GAME_COMPATIBILITY.md        # Borderless gaming game compatibility list
 ├── setup/                       # Installation & configuration
 │   ├── INSTALLATION.md          # Install guide, vJoy setup
 │   ├── PROFILES.md              # Profile system, save locations

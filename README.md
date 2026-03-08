@@ -4,17 +4,17 @@
 
 # Project Nimbus
 
-Project Nimbus is a Python-based virtual controller interface that transforms mouse input into virtual joystick commands via the vJoy driver. It provides multiple controller layouts including a comprehensive dual-joystick Flight Simulator layout, Xbox-style gamepad layout, and an accessibility-focused Adaptive Platform layout.
+Project Nimbus is a Python-based modular virtual controller interface that transforms mouse input into virtual joystick commands via vJoy (DirectInput) or ViGEm (Xbox XInput emulation). Users build their own controller layout by dragging, dropping, and resizing widgets — joysticks, buttons, sliders, D-pads, and steering wheels — onto a customizable canvas.
 
 It is designed with accessibility in mind, offering a practical solution for individuals with mobility limitations who may not be able to use traditional physical controllers. By providing a mouse-first input model, it enables users to interact with systems that expect joystick input.
 
 At the same time, Project Nimbus is versatile enough for anyone interested in alternative control schemes. Whether for adaptive gaming, connecting to Mission Planner for UAV and rover control, or playing games via Steam Input, Nimbus makes joystick input more flexible and inclusive.
 
-## Adaptive Platform Profile
+## Adaptive Platform 2 — Custom Layout Builder
 
 <div align="center">
-  <img src="docs/screenshots/adaptive-platform-layout.png" alt="Adaptive Platform Layout" width="800"/>
-  <p><em>Adaptive Platform 1 profile with accessibility-focused design: larger buttons, Greek symbols (α, Ω, β), and prominent L3/R3 stick click buttons</em></p>
+  <img src="docs/screenshots/adaptive-platform-layout.png" alt="Adaptive Platform 2 Layout" width="800"/>
+  <p><em>Adaptive Platform 2 — modular drag-and-drop canvas: place joysticks, buttons, sliders, and D-pads anywhere on a fully customizable layout</em></p>
 </div>
 
 ## Screenshots
@@ -37,12 +37,14 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 ## Features
 
 ### Core Functionality
-- **Multiple Controller Layouts**: Flight Simulator (dual joysticks + throttle/rudder), Xbox (gamepad), and Adaptive Platform (accessibility-focused)
-- **Dual Virtual Joysticks**: Left and right joystick controls with independent axis mapping
-- **Throttle & Rudder Controls**: Dedicated vertical throttle slider and horizontal rudder slider
-- **Button Support**: Configurable buttons (A, B, X, Y, LB, RB, LT, RT, L3, R3, D-Pad, View, Menu, Guide) with VJoy integration
+- **Modular Layout Builder**: Drag-and-drop canvas to place joysticks, buttons, sliders, D-pads, and steering wheels anywhere
+- **Dual Virtual Joysticks**: Independent axis mapping with FPS-style delta tracking and tremor filtering for wheelchair joysticks
+- **Trigger/Slider Controls**: Horizontal and vertical sliders with 3 snap modes (hold, snap-to-zero, spring-to-center)
+- **Button Support**: Up to 128 configurable buttons with toggle/momentary modes, color and shape options
+- **Macro Joystick Mode**: Convert any joystick into a macro pad — map directions to buttons, axes, or turbo actions
 - **Real-time Control**: Low-latency input processing with 60 FPS update rate
-- **VJoy Integration**: Direct communication with vJoy driver for seamless compatibility
+- **vJoy Integration**: DirectInput with 8 axes (X,Y,Z,RX,RY,RZ,SL0,SL1) and 128 buttons
+- **ViGEm Integration**: Xbox 360 XInput emulation for games that require XInput (No Man's Sky, etc.)
 - **Steam Input Support**: Works with Steam Input for XInput-compatible games
 
 ### Advanced Configuration
@@ -55,21 +57,21 @@ At the same time, Project Nimbus is versatile enough for anyone interested in al
 - **JSON Configuration**: Persistent settings stored in `controller_config.json`
 
 ### Profile System
-- **Multiple Profiles**: Switch between different controller layouts (Flight Simulator, Xbox Controller, Adaptive Platform, custom)
-- **Per-Profile Settings**: Each profile stores its own joystick sensitivity, rudder sensitivity, and button toggle modes
-- **Automatic Save**: Changes made in settings dialogs are automatically saved to the current profile
-- **Save Profile As**: Create new profiles with custom names and descriptions
-- **Reset to Defaults**: Restore built-in profiles to original settings
+- **Default Profile**: Adaptive Platform 2 (modular canvas) opens on first launch
+- **Per-Profile Settings**: Each profile stores its own joystick sensitivity, trigger sensitivity, button toggle modes, and full widget layout
+- **Automatic Save**: Changes are automatically saved on every widget move, resize, or config change
+- **Save Profile As**: Create new profiles with custom names and descriptions from the Widget Palette
 - **Portable Profiles**: JSON-based profiles stored in user data directory for easy backup
-- **Layout Types**: Each profile specifies its layout type (`flight_sim`, `xbox`, `adaptive`, or `custom`)
+- **Custom Layout Type**: The `custom` layout type drives the modular canvas builder
 
 ### User Interface
 - **Qt Quick (PySide6 QML) UI**: Dark-themed, resizable interface with smooth animations
-- **Menu System**: File menu for configuration dialogs; View menu with Size presets and Debug Borders
+- **Menu System**: File menu for profiles/settings; View menu with Size presets, Game Focus Mode, and Borderless Gaming
 - **Proportional Scaling**: All UI elements scale via `controller.scaled()` and View > Size presets; preference persists
-- **Status Display**: VJoy connection status and real-time value monitoring
+- **Status Display**: vJoy/ViGEm connection status and real-time value monitoring
 - **Keyboard Shortcuts**: ESC to exit, SPACE to center
 - **Game Focus Mode**: Prevents Project Nimbus from stealing focus from games (Windows only)
+- **Borderless Gaming**: Auto-detect games, strip window borders, and continuously release cursor lock (View → Borderless Gaming)
 
 ## Accessibility
 
@@ -91,18 +93,22 @@ This makes it especially valuable for:
 
 ## Borderless Gaming Integration
 
-Project Nimbus works seamlessly in conjunction with **borderless gaming mode**. When your game runs in borderless fullscreen, you can position Project Nimbus alongside it to achieve:
+Project Nimbus includes **built-in borderless gaming integration** — no external tools needed.
 
-- **Simultaneous Mouse & Joystick Control**: Use your mouse for in-game interactions (menus, cursor control) while your joysticks handle flight/movement controls
-- **Seamless Multitasking**: Alt-Tab between your game and Project Nimbus without losing input control
-- **Flight Simulator Integration**: Perfect for Microsoft Flight Simulator 24 and similar titles where you need mouse control for cockpit interactions and joysticks for flight control
-- **Driving Game Support**: Control steering with joysticks while using the mouse for menus, map navigation, or other UI elements
+**How to use**:
+1. Go to **View → Borderless Gaming...**
+2. Click **"Scan for Games"** — it auto-detects known games from the compatibility database
+3. Select your game window, then click **"Apply Borderless + Free Cursor"** (the green button)
+4. Your game fills the screen borderless, and your cursor is continuously freed so you can reach Nimbus
+5. Click **"Restore Window & Stop"** when done
 
-**How to Use**:
-- Launch your game in borderless fullscreen mode
-- Run Project Nimbus as a separate window
-- Position the windows side-by-side or use Alt+Tab to switch between them
-- All controls remain fully functional with full mouse freedom across both windows
+**What it does**:
+- **Strips window decorations** and resizes the game to fill your monitor (borderless windowed mode)
+- **Continuously releases ClipCursor** confinement so the game cannot lock your mouse to its window
+- **Auto-detects 30+ games** from a built-in compatibility database (see Compatibility tab in the dialog)
+- **Adjustable release speed** — tune the cursor release interval from 16ms (aggressive) to 200ms (gentle)
+
+**Game compatibility**: Verified with Minecraft, Stardew Valley, Terraria, Skyrim and many others. See [`docs/GAME_COMPATIBILITY.md`](docs/GAME_COMPATIBILITY.md) for the full list.
 
 ## Game Focus Mode (Windows)
 
@@ -217,13 +223,15 @@ See [build_tools/BUILD_EXECUTABLE.md](build_tools/BUILD_EXECUTABLE.md) for detai
 - **RTH Button**: Configurable Return to Home button (button 10) with toggle/momentary mode
 
 ### Menu System
-- **File > Profile**: Switch between profiles (Flight Simulator, Adaptive Platform, custom)
+- **File > Profile**: Switch between profiles or create new ones
 - **File > Save Profile / Save Profile As...**: Save current settings to profile
 - **File > Settings**: Consolidated settings submenu
   - **Joystick Sensitivity**: Configure sensitivity curves for joysticks
-  - **Throttle/Rudder or Trigger Sensitivity**: Profile-aware slider/trigger settings
-  - **Axis Mapping**: Assign UI controls to VJoy axes (labels adapt to profile)
+  - **Trigger Sensitivity**: Sensitivity curves for trigger/slider controls
+  - **Axis Mapping**: Assign UI controls to vJoy axes
   - **Button Modes**: Configure toggle/momentary modes for buttons
+- **View > Game Focus Mode**: Keep game focused while using Nimbus (Windows)
+- **View > Borderless Gaming...**: Strip game window borders and continuously release cursor lock
 
 ### Keyboard Shortcuts
 - **ESC**: Exit application (or close open dialogs)
@@ -271,15 +279,12 @@ To back up your profiles:
 2. Copy the `.json` files to your backup location
 3. To restore, copy them back to the profiles folder
 
-### Built-in Profiles
+### Built-in Profile
 
-Four profiles are included by default:
-- **Flight Simulator**: Optimized for flight sims with throttle/rudder layout
-- **Xbox Controller**: Standard Xbox gamepad layout with ABXY buttons and triggers
-- **Adaptive Platform 1**: Accessibility-focused fixed layout with larger buttons, Greek symbols (α, Ω, β), and mode switching
-- **Adaptive Platform 2**: Modular drag-and-drop controller builder — place joysticks, buttons, and sliders anywhere on a customizable canvas
+One profile is included by default:
+- **Adaptive Platform 2**: Modular drag-and-drop controller builder — place joysticks, buttons, and sliders anywhere on a customizable canvas. Opens automatically on first launch.
 
-Built-in profiles can be customized and saved, then reset to defaults at any time using **File > Reset Profile to Defaults**.
+You can create unlimited custom profiles using **File > Save Profile As...** from the Widget Palette, and open the profiles folder via **File > Open Profiles Folder...**.
 
 ## Configuration
 
@@ -369,7 +374,9 @@ Project-Nimbus/
 │       ├── WidgetPalette.qml          # Sidebar toolbar for adding widgets
 │       ├── SliderVertical.qml         # Throttle slider
 │       ├── SliderHorizontal.qml       # Rudder slider
-│       └── NumberPad.qml              # Button grid
+│       ├── NumberPad.qml              # Button grid
+│       ├── BorderlessGamingDialog.qml # Borderless gaming & cursor release UI
+│       └── MacroEditorDialog.qml      # Macro joystick zone editor
 ├── src/
 │   ├── qt_qml_app.py                  # QML application entry
 │   ├── bridge.py                      # Python↔QML bridge (ControllerBridge)
@@ -378,16 +385,16 @@ Project-Nimbus/
 │   ├── vjoy_interface.py              # vJoy driver interface (8 axes, 128 buttons)
 │   ├── vigem_interface.py             # ViGEm Xbox 360 controller emulation
 │   ├── window_utils.py                # Game Focus Mode (Windows API)
+│   ├── borderless.py                  # Borderless gaming & cursor release
 │   └── legacy/                        # Legacy pygame UI (reference only)
 ├── profiles/                          # Bundled profile JSON files
-│   ├── flight_simulator.json
-│   ├── xbox_controller.json
-│   ├── adaptive_platform_1.json
-│   └── adaptive_platform_2.json       # Modular custom layout
+│   └── adaptive_platform_2.json       # Default modular custom layout
 ├── docs/                              # Documentation
-│   ├── architecture.md                # System architecture
-│   ├── WIDGET_IDEAS.md                # Widget brainstorm for accessibility
-│   └── ACCESSIBILITY_SPOTLIGHT_NOMINATION.md
+│   ├── GAME_COMPATIBILITY.md          # Borderless gaming game list
+│   ├── architecture/                  # Technical architecture docs
+│   ├── development/                   # Developer & AI assistant notes
+│   ├── setup/                         # Installation & packaging guides
+│   └── accessibility/
 ├── build_tools/                       # PyInstaller build system
 ├── research/                          # Research notes
 ├── run.py                             # Launcher with venv + dependency checks
@@ -503,7 +510,7 @@ Legacy pygame-based UI and dialogs are kept under `src/legacy/` for reference on
 The **Adaptive Platform 2** profile introduces a modular controller builder where users can design their own controller layout:
 
 ### How It Works
-1. Switch to **File > Profile > Adaptive Platform 2**
+1. Open Adaptive Platform 2 (loads automatically on first launch)
 2. Click **"Edit Layout"** (bottom-right corner) to enter edit mode
 3. **Drag** widgets to reposition, **corner handle** to resize, **×** to delete
 4. **Double-click** any widget to configure (label, axis mapping, button ID, color)
@@ -530,6 +537,15 @@ See [docs/WIDGET_IDEAS.md](docs/WIDGET_IDEAS.md) for planned accessibility widge
 See [docs/architecture.md](docs/architecture.md) for detailed technical documentation of the custom layout system.
 
 ## Changelog (recent)
+
+### v1.3.2 - Borderless Gaming & Mouse Capture
+- **Borderless Gaming Integration**: Built-in borderless window mode + continuous ClipCursor release (no external tools needed)
+- **Auto-detect games**: Identifies 30+ known games from a built-in compatibility database
+- **One-click workflow**: Green button applies borderless mode AND starts cursor release simultaneously
+- **Adjustable release speed**: Tune polling interval from 16ms (aggressive) to 200ms (gentle)
+- **Compatibility browser**: In-app Compatibility tab with verified/likely/partial/incompatible game lists
+- **Single default profile**: Removed Flight Simulator, Xbox Controller, and Adaptive Platform 1 profiles — Adaptive Platform 2 is now the only bundled profile and opens on first launch
+- **Game compatibility docs**: [`docs/GAME_COMPATIBILITY.md`](docs/GAME_COMPATIBILITY.md) with setup tips and genre guidance
 
 ### v1.3.1 - Versioned Distribution Filenames
 - **Versioned exe/installer filenames**: Distribution files now include the version number (`Project-Nimbus-1.3.1.exe`, `Project-Nimbus-Setup-1.3.1.exe`) for clearer release management
