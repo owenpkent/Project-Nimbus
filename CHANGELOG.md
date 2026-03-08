@@ -6,6 +6,24 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.3.2] — 2026-03-08
+
+### Added
+- **Borderless Gaming Integration** — Built-in borderless window mode + continuous `ClipCursor(NULL)` release. No external tools needed. Access via **View → Borderless Gaming...**
+- **Auto-detect games** — Identifies 30+ known games from a built-in compatibility database (`src/borderless.py`)
+- **One-click workflow** — Green "Apply Borderless + Free Cursor" button applies both simultaneously
+- **Adjustable release speed** — Tune polling interval from 16ms (aggressive) to 200ms (gentle)
+- **Compatibility browser** — In-app tab showing verified/likely/partial/incompatible games with filter buttons
+- **`src/borderless.py`** — Pure `ctypes` module: window enumeration, borderless conversion, cursor release polling, game compat database, auto-detect
+- **`qml/components/BorderlessGamingDialog.qml`** — Full-featured game setup + compatibility dialog
+- **`docs/GAME_COMPATIBILITY.md`** — Documented game list with genre tips and setup guidance
+
+### Changed
+- **Single default profile** — Removed `flight_simulator`, `xbox_controller`, and `adaptive_platform_1` bundled profiles. `adaptive_platform_2` (Custom Layout Builder) is now the only bundled profile and opens on first launch
+- **Default fallback** — `config.py` now falls back to `adaptive_platform_2` instead of `flight_simulator` everywhere
+
+---
+
 ## [1.3.1] — 2026-03-03
 
 ### Changed

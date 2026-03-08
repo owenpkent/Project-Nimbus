@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 # Version info - keep in sync with src/__init__.py
-VERSION = "1.3.1"
-VERSION_TUPLE = (1, 3, 1, 0)
+VERSION = "1.3.2"
+VERSION_TUPLE = (1, 3, 2, 0)
 
 block_cipher = None
 
