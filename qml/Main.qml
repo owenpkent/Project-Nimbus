@@ -436,6 +436,14 @@ ApplicationWindow {
                     })
                 }
             }
+            MenuItem {
+                text: qsTr("Borderless Gaming...")
+                enabled: controller ? controller.isBorderlessAvailable() : false
+                onTriggered: {
+                    viewMenu.close()
+                    Qt.callLater(function(){ borderlessGamingDialog.open(); })
+                }
+            }
             MenuSeparator {}
             MenuItem {
                 id: debugBordersItem
@@ -610,6 +618,9 @@ ApplicationWindow {
 
                 Label { text: "5. Game Focus Mode"; color: "#ff8833"; font.pixelSize: 13; font.bold: true }
                 Label { text: "Enable via View → Game Focus Mode. When active, clicking Project Nimbus won't steal focus from your game — the game window stays in the foreground."; color: "#ccc"; font.pixelSize: 12; wrapMode: Text.WordWrap; width: parent.width }
+
+                Label { text: "6. Borderless Gaming"; color: "#ff8833"; font.pixelSize: 13; font.bold: true }
+                Label { text: "Go to View → Borderless Gaming to free your cursor from games that lock it.\n\n• Auto-detects running games from our compatibility database\n• Converts windowed games to borderless fullscreen\n• Continuously releases cursor lock so you can reach Nimbus\n• Works with most indie, strategy, and older games\n• See the Compatibility tab for a full list of tested games"; color: "#ccc"; font.pixelSize: 12; wrapMode: Text.WordWrap; width: parent.width }
             }
         }
 
@@ -673,6 +684,11 @@ ApplicationWindow {
             }
             background: Rectangle { color: "#333" }
         }
+    }
+
+    // Borderless Gaming Dialog
+    Comp.BorderlessGamingDialog {
+        id: borderlessGamingDialog
     }
 
     // Layout loader - switches between Flight Sim, Xbox, Adaptive, and Custom layouts

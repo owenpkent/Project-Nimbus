@@ -31,6 +31,14 @@ try:
 except ImportError:
     WINDOW_UTILS_AVAILABLE = False
 
+# Import borderless window management (Windows only)
+try:
+    from . import borderless as _borderless
+    BORDERLESS_AVAILABLE = True
+except ImportError:
+    BORDERLESS_AVAILABLE = False
+    _borderless = None
+
 
 class ControllerBridge(QObject):
     """
@@ -47,12 +55,16 @@ class ControllerBridge(QObject):
     profilesListChanged = Signal()  # Emits when profile list changes (add/delete)
     profileSaved = Signal(bool)  # Emits save result
     noFocusModeChanged = Signal(bool)  # Emits when no-focus mode changes
+    cursorReleaseChanged = Signal(bool)  # Emits when cursor release polling starts/stops
+    borderlessModeChanged = Signal(int, bool)  # Emits (hwnd, is_borderless)
 
     def __init__(self, config: ControllerConfig, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self._config = config
         self._window: Optional[QWindow] = None
         self._no_focus_mode = False
+        self._cursor_release_active = False
+        self._borderless_game_hwnd: int = 0
         
         # Determine which controller interface to use based on profile layout type
         # ViGEm (Xbox emulation) is preferred for xbox/adaptive profiles as it works with XInput games
@@ -674,3 +686,262 @@ class ControllerBridge(QObject):
             subprocess.Popen(["open", path])
         else:
             subprocess.Popen(["xdg-open", path])
+
+    # ----- Borderless gaming integration -----
+    @Slot(result=bool)
+    def isBorderlessAvailable(self) -> bool:  # noqa: N802
+        """Check if borderless gaming features are available."""
+        return BORDERLESS_AVAILABLE and sys.platform == "win32"
+
+    @Slot(result=str)
+    def getRunningWindows(self) -> str:  # noqa: N802
+        """Get list of running windows as JSON for QML game picker.
+        
+        Returns JSON array of objects with: hwnd, title, className, pid,
+        x, y, width, height, isBorderless.
+        """
+        import json
+        if not BORDERLESS_AVAILABLE:
+            return "[]"
+        try:
+            windows = _borderless.enumerate_windows()
+            result = []
+            for w in windows:
+                result.append({
+                    "hwnd": w.hwnd,
+                    "title": w.title,
+                    "className": w.class_name,
+                    "pid": w.pid,
+                    "x": w.x,
+                    "y": w.y,
+                    "width": w.width,
+                    "height": w.height,
+                    "isBorderless": w.is_borderless,
+                })
+            return json.dumps(result)
+        except Exception as e:
+            print(f"getRunningWindows failed: {e}")
+            return "[]"
+
+    @Slot(result=str)
+    def getGameCompatibility(self) -> str:  # noqa: N802
+        """Get game compatibility database as JSON for QML.
+        
+        Returns JSON array of objects with: name, status, inputMethod,
+        notes, needsBorderless, needsCursorRelease, recommendedIntervalMs.
+        """
+        import json
+        if not BORDERLESS_AVAILABLE:
+            return "[]"
+        try:
+            games = _borderless.get_compatible_games()
+            result = []
+            for g in games:
+                result.append({
+                    "name": g.name,
+                    "status": g.status,
+                    "inputMethod": g.input_method,
+                    "notes": g.notes,
+                    "windowTitleHint": g.window_title_hint,
+                    "needsBorderless": g.needs_borderless,
+                    "needsCursorRelease": g.needs_cursor_release,
+                    "recommendedIntervalMs": g.recommended_interval_ms,
+                })
+            return json.dumps(result)
+        except Exception as e:
+            print(f"getGameCompatibility failed: {e}")
+            return "[]"
+
+    @Slot(result=str)
+    def autoDetectGame(self) -> str:  # noqa: N802
+        """Auto-detect a running game from the compatibility database.
+        
+        Returns JSON object with window info and game compat data, or empty string.
+        """
+        import json
+        if not BORDERLESS_AVAILABLE:
+            return ""
+        try:
+            result = _borderless.auto_detect_game()
+            if result:
+                w, g = result
+                return json.dumps({
+                    "window": {
+                        "hwnd": w.hwnd,
+                        "title": w.title,
+                        "className": w.class_name,
+                    },
+                    "game": {
+                        "name": g.name,
+                        "status": g.status,
+                        "inputMethod": g.input_method,
+                        "notes": g.notes,
+                        "needsBorderless": g.needs_borderless,
+                        "needsCursorRelease": g.needs_cursor_release,
+                        "recommendedIntervalMs": g.recommended_interval_ms,
+                    },
+                })
+        except Exception as e:
+            print(f"autoDetectGame failed: {e}")
+        return ""
+
+    @Slot(int, result=bool)
+    def makeGameBorderless(self, hwnd: int) -> bool:  # noqa: N802
+        """Make a game window borderless fullscreen.
+        
+        Args:
+            hwnd: Window handle of the game.
+        
+        Returns:
+            True on success.
+        """
+        if not BORDERLESS_AVAILABLE:
+            return False
+        try:
+            success = _borderless.make_borderless(hwnd)
+            if success:
+                self._borderless_game_hwnd = hwnd
+                self.borderlessModeChanged.emit(hwnd, True)
+            return success
+        except Exception as e:
+            print(f"makeGameBorderless failed: {e}")
+            return False
+
+    @Slot(int, result=bool)
+    def restoreGameWindow(self, hwnd: int) -> bool:  # noqa: N802
+        """Restore a game window's original decorations.
+        
+        Args:
+            hwnd: Window handle previously passed to makeGameBorderless().
+        
+        Returns:
+            True on success.
+        """
+        if not BORDERLESS_AVAILABLE:
+            return False
+        try:
+            success = _borderless.restore_window(hwnd)
+            if success:
+                if self._borderless_game_hwnd == hwnd:
+                    self._borderless_game_hwnd = 0
+                self.borderlessModeChanged.emit(hwnd, False)
+            return success
+        except Exception as e:
+            print(f"restoreGameWindow failed: {e}")
+            return False
+
+    @Slot(int, result=bool)
+    def isGameBorderless(self, hwnd: int) -> bool:  # noqa: N802
+        """Check if a game window has been made borderless by us."""
+        if not BORDERLESS_AVAILABLE:
+            return False
+        return _borderless.is_borderless(hwnd)
+
+    @Slot(int)
+    def startCursorRelease(self, interval_ms: int = 50) -> None:  # noqa: N802
+        """Start continuous ClipCursor release polling.
+        
+        This fights games that re-apply ClipCursor every frame.
+        
+        Args:
+            interval_ms: Release interval in milliseconds (default 50).
+        """
+        if not BORDERLESS_AVAILABLE:
+            return
+        try:
+            def _on_change(active: bool):
+                self._cursor_release_active = active
+                self.cursorReleaseChanged.emit(active)
+            
+            _borderless.start_cursor_release(interval_ms, _on_change)
+        except Exception as e:
+            print(f"startCursorRelease failed: {e}")
+
+    @Slot()
+    def stopCursorRelease(self) -> None:  # noqa: N802
+        """Stop the continuous ClipCursor release."""
+        if not BORDERLESS_AVAILABLE:
+            return
+        try:
+            _borderless.stop_cursor_release()
+            self._cursor_release_active = False
+            self.cursorReleaseChanged.emit(False)
+        except Exception as e:
+            print(f"stopCursorRelease failed: {e}")
+
+    @Slot(result=bool)
+    def isCursorReleaseActive(self) -> bool:  # noqa: N802
+        """Check if cursor release polling is currently active."""
+        if not BORDERLESS_AVAILABLE:
+            return False
+        return _borderless.is_cursor_release_active()
+
+    @Slot(result=str)
+    def getClipCursorRect(self) -> str:  # noqa: N802
+        """Get the current ClipCursor rectangle as JSON.
+        
+        Returns JSON string like '{"left":0,"top":0,"right":1920,"bottom":1080}'
+        or empty string if no clip is active.
+        """
+        import json
+        if not BORDERLESS_AVAILABLE:
+            return ""
+        try:
+            rect = _borderless.get_clip_cursor_rect()
+            if rect:
+                return json.dumps({
+                    "left": rect[0], "top": rect[1],
+                    "right": rect[2], "bottom": rect[3],
+                })
+        except Exception as e:
+            print(f"getClipCursorRect failed: {e}")
+        return ""
+
+    @Slot(int, int, result=bool)
+    def applyBorderlessAndRelease(self, hwnd: int, interval_ms: int = 50) -> bool:  # noqa: N802
+        """One-call: make game borderless AND start cursor release.
+        
+        This is the recommended approach for most games.
+        
+        Args:
+            hwnd: Game window handle.
+            interval_ms: Cursor release interval.
+        
+        Returns:
+            True if borderless was applied successfully.
+        """
+        if not BORDERLESS_AVAILABLE:
+            return False
+        try:
+            success = _borderless.make_borderless(hwnd)
+            if success:
+                self._borderless_game_hwnd = hwnd
+                self.borderlessModeChanged.emit(hwnd, True)
+                
+                def _on_change(active: bool):
+                    self._cursor_release_active = active
+                    self.cursorReleaseChanged.emit(active)
+                
+                _borderless.start_cursor_release(interval_ms, _on_change)
+            return success
+        except Exception as e:
+            print(f"applyBorderlessAndRelease failed: {e}")
+            return False
+
+    @Slot(int)
+    def restoreAndStopRelease(self, hwnd: int) -> None:  # noqa: N802
+        """Restore game window and stop cursor release."""
+        if not BORDERLESS_AVAILABLE:
+            return
+        try:
+            _borderless.stop_cursor_release()
+            self._cursor_release_active = False
+            self.cursorReleaseChanged.emit(False)
+            
+            success = _borderless.restore_window(hwnd)
+            if success:
+                if self._borderless_game_hwnd == hwnd:
+                    self._borderless_game_hwnd = 0
+                self.borderlessModeChanged.emit(hwnd, False)
+        except Exception as e:
+            print(f"restoreAndStopRelease failed: {e}")

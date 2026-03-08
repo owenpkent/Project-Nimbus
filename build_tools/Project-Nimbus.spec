@@ -70,6 +70,7 @@ hiddenimports = [
     'src.vigem_interface',
     'src.qt_dialogs',
     'src.qt_widgets',
+    'src.borderless',
 ]
 
 a = Analysis(
