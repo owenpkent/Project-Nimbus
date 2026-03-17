@@ -17,9 +17,9 @@
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "..\dist\Project-Nimbus-Setup-${PRODUCT_VERSION}.exe"
-InstallDir "$LOCALAPPDATA\Programs\${PRODUCT_NAME}"
-InstallDirRegKey HKCU "${PRODUCT_UNINST_KEY}" "InstallLocation"
-RequestExecutionLevel user   ; Per-user install: $LOCALAPPDATA and $SMPROGRAMS resolve correctly
+InstallDir "$PROGRAMFILES64\${PRODUCT_NAME}"
+InstallDirRegKey HKLM "${PRODUCT_UNINST_KEY}" "InstallLocation"
+RequestExecutionLevel admin  ; Required for Program Files install
 SetCompressor /SOLID lzma
 BrandingText "${PRODUCT_NAME} v${PRODUCT_VERSION}"
 
@@ -187,19 +187,19 @@ Section "Install"
     WriteUninstaller "$INSTDIR\Uninstall.exe"
 
     ; Registry entries for Add/Remove Programs (HKCU for per-user)
-    WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "DisplayName" "${PRODUCT_NAME}"
-    WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
-    WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
-    WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "UninstallString" "$INSTDIR\Uninstall.exe"
-    WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "InstallLocation" "$INSTDIR"
-    WriteRegStr HKCU "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\${PRODUCT_EXE}"
-    WriteRegDWORD HKCU "${PRODUCT_UNINST_KEY}" "NoModify" 1
-    WriteRegDWORD HKCU "${PRODUCT_UNINST_KEY}" "NoRepair" 1
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayName" "${PRODUCT_NAME}"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "UninstallString" "$INSTDIR\Uninstall.exe"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "InstallLocation" "$INSTDIR"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\${PRODUCT_EXE}"
+    WriteRegDWORD HKLM "${PRODUCT_UNINST_KEY}" "NoModify" 1
+    WriteRegDWORD HKLM "${PRODUCT_UNINST_KEY}" "NoRepair" 1
 
     ; Estimate installed size
     ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
     IntFmt $0 "0x%08X" $0
-    WriteRegDWORD HKCU "${PRODUCT_UNINST_KEY}" "EstimatedSize" $0
+    WriteRegDWORD HKLM "${PRODUCT_UNINST_KEY}" "EstimatedSize" $0
 
     ; Create shortcuts based on user selection
     ${If} $CreateStartMenuShortcut == 1
@@ -263,7 +263,6 @@ Section "Uninstall"
     RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
 
     ; Remove registry entries
-    DeleteRegKey HKCU "${PRODUCT_UNINST_KEY}"
     DeleteRegKey HKLM "${PRODUCT_UNINST_KEY}"
 
     ; Optionally remove user data (profiles, settings) from %APPDATA%
