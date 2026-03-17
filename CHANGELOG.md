@@ -9,18 +9,24 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [1.4.0] — 2026-03-17
 
 ### Added
-- **QML/PySide6 UI** — Complete rewrite of the user interface using Qt Quick (QML) with a dark-themed, scalable layout that replaces the legacy Pygame canvas
-- **Game Focus Mode** — View menu toggle that prevents Project Nimbus from stealing focus from games; automatically restores focus to the game after each interaction using Windows thread-input attachment
-- **Cursor management for wheelchair joystick** — `ClipCursor` locking to constrain the physical cursor to the joystick widget area during locked mode, with `unclipCursor` on release
-- **ViGEm auto-selection** — Automatically uses Xbox 360 (ViGEm/XInput) emulation for xbox/adaptive/custom profiles and vJoy (DirectInput) for flight sim; falls back gracefully if ViGEm is unavailable
-- **Smooth axis interpolation** — Configurable EMA-based smoothing timer applies per-axis target tracking at the vJoy update rate (default 60 Hz, configurable up to 240 Hz)
-- **Profile system overhaul** — Profiles stored in `%APPDATA%\ProjectNimbus`; full create, save, save-as, duplicate, delete, reset-to-defaults, and open-folder actions accessible from the File menu
-- **About dialog** — Version, description, copyright, and license info accessible from Help menu
-- **Loading splash screen** — Dark-themed splash with logo, version, and progress messages on startup (previously undocumented)
+- **Borderless Gaming Integration** — Built-in borderless window mode + continuous `ClipCursor(NULL)` release. No external tools needed. Access via **View → Borderless Gaming...**
+- **Auto-detect games** — Identifies 30+ known games from a built-in compatibility database (`src/borderless.py`)
+- **One-click workflow** — Green "Apply Borderless + Free Cursor" button applies both simultaneously
+- **Adjustable release speed** — Tune polling interval from 16ms (aggressive) to 200ms (gentle)
+- **Compatibility browser** — In-app tab showing verified/likely/partial/incompatible games with filter buttons
+- **`src/borderless.py`** — Pure `ctypes` module: window enumeration, borderless conversion, cursor release polling, game compat database, auto-detect
+- **`qml/components/BorderlessGamingDialog.qml`** — Full-featured game setup + compatibility dialog
+- **`docs/GAME_COMPATIBILITY.md`** — Documented game list with genre tips and setup guidance
+- **QML/PySide6 UI** — Complete rewrite of the user interface using Qt Quick (QML) with a dark-themed, scalable layout
+- **Game Focus Mode** — View menu toggle that restores focus to the game after each interaction using Windows thread-input attachment
+- **ViGEm auto-selection** — Automatically uses Xbox 360 (XInput) for xbox/adaptive/custom profiles and vJoy (DirectInput) for flight sim
+- **Smooth axis interpolation** — EMA-based smoothing timer at the vJoy update rate (default 60 Hz, configurable up to 240 Hz)
+- **Profile system overhaul** — Full create, save, save-as, duplicate, delete, reset-to-defaults from File menu; stored in `%APPDATA%\ProjectNimbus`
+- **About dialog** — Dynamic version, description, copyright, and license info in Help menu
 
 ### Changed
-- **Default profiles refined** — Flight Simulator, Xbox Controller, Adaptive Platform 1, and Adaptive Platform 2 profiles cleaned up with consistent axis mappings, button labels, and accessibility options
-- **PyInstaller build tooling** — Updated to PyInstaller 6.19 with versioned distribution filenames (`Project-Nimbus-1.4.0.exe`, `Project-Nimbus-Setup-1.4.0.exe`)
+- **Single default profile** — Removed `flight_simulator`, `xbox_controller`, and `adaptive_platform_1` bundled profiles. `adaptive_platform_2` (Custom Layout Builder) is now the only bundled profile and opens on first launch
+- **Default fallback** — `config.py` now falls back to `adaptive_platform_2` instead of `flight_simulator` everywhere
 
 ---
 

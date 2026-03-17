@@ -7,8 +7,11 @@
 - [Profile System](setup/PROFILES.md) — profile storage, JSON structure, custom layout widget properties
 - [Packaging Guide](setup/PACKAGING.md) — **build & distribute** — PyInstaller, NSIS, code signing, release checklist
 
+## Borderless Gaming
+- [Game Compatibility](GAME_COMPATIBILITY.md) — verified/likely/partial/incompatible games, tips by genre, how ClipCursor release works
+
 ## Architecture
-- [Architecture Overview](architecture/architecture.md) — codebase structure, QML/Python bridge, widget system
+- [Architecture Overview](architecture/architecture.md) — codebase structure, QML/Python bridge, widget system, borderless module
 - [V-Droid Driver Brainstorm](architecture/VDROID_DRIVER_BRAINSTORM.md) — custom virtual HID driver plans (future)
 
 ## Development

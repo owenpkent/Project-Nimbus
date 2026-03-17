@@ -19,7 +19,7 @@ Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "..\dist\Project-Nimbus-Setup-${PRODUCT_VERSION}.exe"
 InstallDir "$LOCALAPPDATA\Programs\${PRODUCT_NAME}"
 InstallDirRegKey HKCU "${PRODUCT_UNINST_KEY}" "InstallLocation"
-RequestExecutionLevel admin  ; Request admin but can install per-user too
+RequestExecutionLevel user   ; Per-user install: $LOCALAPPDATA and $SMPROGRAMS resolve correctly
 SetCompressor /SOLID lzma
 BrandingText "${PRODUCT_NAME} v${PRODUCT_VERSION}"
 

@@ -37,16 +37,16 @@ User (mouse) → QML UI → ControllerBridge (Python) → ControllerConfig (curv
 
 | Layout Type | QML Component | Description |
 |-------------|---------------|-------------|
-| `flight_sim` | `FlightSimLayout.qml` | Fixed dual joysticks + throttle/rudder |
-| `xbox` | `XboxLayout.qml` | Fixed Xbox gamepad layout |
-| `adaptive` | `AdaptiveLayout.qml` | Fixed accessibility-focused layout |
-| `custom` | `CustomLayout.qml` | **Modular drag-and-drop canvas** |
+| `custom` | `CustomLayout.qml` | **★ Default — modular drag-and-drop canvas** |
+| `flight_sim` | `FlightSimLayout.qml` | Fixed dual joysticks + throttle/rudder (legacy) |
+| `xbox` | `XboxLayout.qml` | Fixed Xbox gamepad layout (legacy) |
+| `adaptive` | `AdaptiveLayout.qml` | Fixed accessibility-focused layout (legacy) |
 
 ### 4. Controller Interface Selection
 
 The bridge auto-selects the controller backend based on profile layout type:
-- **ViGEm** (preferred for `xbox`, `adaptive`, `custom`) — Xbox 360 emulation for XInput games
-- **vJoy** (preferred for `flight_sim`, or fallback) — DirectInput with 8 axes + 128 buttons
+- **ViGEm** (preferred for `custom`) — Xbox 360 emulation for XInput games
+- **vJoy** (fallback) — DirectInput with 8 axes + 128 buttons
 
 ---
 
@@ -195,6 +195,7 @@ Qt `QObject` exposed to QML as `controller`:
 - **Profile slots**: `switchProfile`, `saveCurrentProfile`, `createProfileAs`, `deleteProfile`
 - **Custom layout slots**: `getCustomLayout`, `saveCustomLayout`, `getCustomLayoutGridSnap`, `getCustomLayoutShowGrid`
 - **Settings dialog openers**: `openAxisSettings`, `openButtonSettings`, `openSliderSettings`
+- **Borderless gaming slots**: `isBorderlessAvailable`, `getRunningWindows`, `getGameCompatibility`, `autoDetectGame`, `makeGameBorderless`, `restoreGameWindow`, `startCursorRelease`, `stopCursorRelease`, `applyBorderlessAndRelease`, `restoreAndStopRelease`
 - **Axis smoothing**: QTimer-based interpolation toward target values before sending to vJoy
 
 ### `WindowUtils` (`src/window_utils.py`)
@@ -203,6 +204,19 @@ Windows-specific utilities for Game Focus Mode:
 - Saves foreground window on mouse press, restores on release
 - Uses Windows API: `GetForegroundWindow`, `SetForegroundWindow`, `AttachThreadInput`
 - Only available on Windows; gracefully disabled on other platforms
+
+### `Borderless` (`src/borderless.py`)
+
+Borderless gaming and mouse capture (Windows only, pure ctypes):
+- **`enumerate_windows()`** — lists all visible top-level windows with size/position/state
+- **`make_borderless(hwnd)`** — strips WS_CAPTION/WS_THICKFRAME, resizes to fill monitor
+- **`restore_window(hwnd)`** — restores original window style and size
+- **`start_cursor_release(interval_ms)`** — background thread polling `ClipCursor(NULL)` to fight games that re-apply cursor confinement every frame
+- **`stop_cursor_release()`** — stops polling
+- **`auto_detect_game()`** — matches running windows against 30+ game compatibility entries
+- **`GAME_COMPATIBILITY`** — built-in database of verified/likely/partial/incompatible games
+- Exposed via 12 `ControllerBridge` slots (see bridge section above)
+- UI: `qml/components/BorderlessGamingDialog.qml` — game picker, auto-detect, one-click apply, compatibility browser
 
 ---
 
@@ -230,20 +244,19 @@ Profiles are JSON files stored in the user data directory:
 | macOS | `~/Library/Application Support/ProjectNimbus/profiles/` |
 | Linux | `~/.local/share/ProjectNimbus/profiles/` |
 
-### Bundled Profiles
+### Bundled Profile
 
 | Profile | Layout Type | Description |
 |---------|-------------|-------------|
-| `flight_simulator` | `flight_sim` | Dual joysticks + throttle/rudder |
-| `xbox_controller` | `xbox` | Standard Xbox gamepad |
-| `adaptive_platform_1` | `adaptive` | Fixed accessibility layout with mode switching |
-| `adaptive_platform_2` | `custom` | **Modular drag-and-drop canvas** |
+| `adaptive_platform_2` | `custom` | **Default — modular drag-and-drop canvas** |
+
+This is the only bundled profile. It opens automatically on first launch. Users create additional profiles via **File > Save Profile As...** or the Widget Palette's Save As button.
 
 ### Profile Lifecycle
 
-1. Bundled profiles copied to user directory on first run (if not already present)
+1. `adaptive_platform_2` copied to user directory on first run
 2. User can modify, save, duplicate, or create new profiles
-3. Built-in profiles can be reset to defaults
+3. The bundled profile can be reset to defaults
 4. Switching profiles reloads settings and swaps the QML layout
 
 ---

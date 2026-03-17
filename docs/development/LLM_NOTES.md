@@ -36,10 +36,11 @@ Quick reference for AI assistants working on Project Nimbus.
 | `src/vjoy_interface.py` | vJoy driver communication (8 axes: X,Y,Z,RX,RY,RZ,SL0,SL1) |
 | `src/vigem_interface.py` | ViGEm Xbox 360 controller emulation |
 | `src/window_utils.py` | Game Focus Mode (Windows API) |
+| `src/borderless.py` | Borderless gaming + ClipCursor release (Windows, pure ctypes) |
 | `qml/Main.qml` | Main window, menus, layout loader |
-| `qml/layouts/` | Layout QML files (FlightSim, Xbox, Adaptive, **Custom**) |
-| `qml/components/` | Reusable QML controls (Joystick, Sliders, DraggableWidget, WidgetPalette) |
-| `profiles/` | Bundled profile JSON files |
+| `qml/layouts/` | Layout QML files (CustomLayout is default; FlightSim/Xbox/Adaptive are legacy) |
+| `qml/components/` | Reusable QML controls (Joystick, Sliders, DraggableWidget, WidgetPalette, BorderlessGamingDialog) |
+| `profiles/` | Bundled profile JSON files (only `adaptive_platform_2.json` now) |
 
 ## Project Structure
 
@@ -75,10 +76,7 @@ Project-Nimbus/
 │   ├── qt_widgets.py             # Qt Widgets UI components
 │   └── legacy/                   # Old pygame UI (reference only)
 ├── profiles/
-│   ├── flight_simulator.json
-│   ├── xbox_controller.json
-│   ├── adaptive_platform_1.json
-│   └── adaptive_platform_2.json  # ★ Modular custom layout profile
+│   └── adaptive_platform_2.json  # ★ Only bundled profile (default, custom layout)
 ├── docs/                         # Documentation + screenshots + video
 │   ├── architecture.md
 │   ├── LLM_NOTES.md             # ★ This file
@@ -103,10 +101,10 @@ Project-Nimbus/
 
 | Layout | QML File | Use Case |
 |--------|----------|----------|
-| `flight_sim` | `FlightSimLayout.qml` | Dual joysticks + throttle/rudder |
-| `xbox` | `XboxLayout.qml` | Standard Xbox gamepad |
-| `adaptive` | `AdaptiveLayout.qml` | Accessibility-focused, fixed layout |
-| `custom` | `CustomLayout.qml` | **★ Modular drag-and-drop canvas** |
+| `custom` | `CustomLayout.qml` | **★ Default — modular drag-and-drop canvas** |
+| `flight_sim` | `FlightSimLayout.qml` | Dual joysticks + throttle/rudder (legacy) |
+| `xbox` | `XboxLayout.qml` | Standard Xbox gamepad (legacy) |
+| `adaptive` | `AdaptiveLayout.qml` | Accessibility-focused fixed layout (legacy) |
 
 ## Custom Layout System (Adaptive Platform 2)
 
@@ -253,12 +251,42 @@ When a joystick is locked, the system uses FPS-style delta tracking instead of a
 - **Joystick not returning to center on unlock**: `onMouseLockedChanged` now resets `xValue`/`yValue` to 0 and sends zero to controller
 - **Sensitivity curve mismatch**: Widget `_applyCurve()` used different formula than Settings menu → aligned to use identical `apply_joystick_dialog_curve()` math with percentage-based params
 
+## Borderless Gaming System
+
+`src/borderless.py` — pure `ctypes`, zero extra dependencies:
+
+- **`enumerate_windows(include_invisible=False)`** → `list[WindowInfo]` — all visible top-level windows (filters system/Nimbus windows)
+- **`make_borderless(hwnd, x, y, width, height)`** → `bool` — strips `WS_CAPTION`, `WS_THICKFRAME`, `WS_BORDER`, `WS_DLGFRAME`; saves original style; resizes to `GetMonitorInfo` work area
+- **`restore_window(hwnd)`** → `bool` — restores saved style + original rect
+- **`is_borderless(hwnd)`** → `bool` — checks if hwnd has been made borderless by us
+- **`start_cursor_release(interval_ms, callback)`** — starts a daemon thread that calls `ClipCursor(NULL)` every `interval_ms`
+- **`stop_cursor_release()`** — stops the thread
+- **`is_cursor_release_active()`** → `bool`
+- **`get_clip_cursor_rect()`** → `tuple[int,int,int,int] | None` — current ClipCursor rect
+- **`auto_detect_game()`** → `tuple[WindowInfo, GameCompatEntry] | None` — finds a running window matching the compat database
+- **`get_compatible_games()`** → `list[GameCompatEntry]` — full compat database
+- **`GameCompatEntry`** dataclass fields: `name`, `status` (verified/likely/partial/incompatible), `input_method`, `notes`, `window_title_hint`, `needs_borderless`, `needs_cursor_release`, `recommended_interval_ms`
+
+**Bridge slots** (all in `src/bridge.py`):
+`isBorderlessAvailable`, `getRunningWindows`, `getGameCompatibility`, `autoDetectGame`, `makeGameBorderless`, `restoreGameWindow`, `isGameBorderless`, `startCursorRelease`, `stopCursorRelease`, `isCursorReleaseActive`, `getClipCursorRect`, `applyBorderlessAndRelease`, `restoreAndStopRelease`
+
+**Signals**: `cursorReleaseChanged(bool)`, `borderlessModeChanged(int, bool)`
+
+**UI**: `qml/components/BorderlessGamingDialog.qml` — opened via **View → Borderless Gaming...**
+- Tab 0: Game Setup — auto-detect, window picker, one-click apply, release speed slider
+- Tab 1: Compatibility — filterable list by status with notes
+
+**Game compatibility docs**: `docs/GAME_COMPATIBILITY.md`
+
+---
+
 ## Conventions
 
 - **UI Scaling**: Use `controller.scaled(value)` for DPI-aware sizing in fixed layouts
 - **Code Style**: PEP 8 with type hints
 - **Settings**: All persist to JSON; per-profile for sensitivity/buttons/layout
 - **Profiles**: JSON files in user data directory (`%APPDATA%\ProjectNimbus\profiles\`)
+- **Default profile**: `adaptive_platform_2` (custom layout) — only bundled profile
 - **Controller Interface**: Bridge auto-selects vJoy or ViGEm based on profile layout type
 
 ## Things to Avoid
@@ -275,8 +303,8 @@ When a joystick is locked, the system uses FPS-style delta tracking instead of a
 - **Free & open**: Goal is a modular software Xbox Adaptive Controller where everything is free
 - **Qt Quick (QML) is the primary UI**: The pygame UI is legacy/deprecated
 - **EV signing certificate available**: UIAccess=true manifest is now included in the build
-- **Active branch**: `feature/adaptive-platform-2` for the modular layout system
-- **Version**: 1.2.1 — see `CHANGELOG.md` for history
+- **Active branch**: `feature/borderless-mouse-integration` (borderless gaming & mouse capture)
+- **Version**: 1.3.2 — see `CHANGELOG.md` for history
 
 ## Build & Release
 

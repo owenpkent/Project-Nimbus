@@ -525,7 +525,7 @@ class ControllerConfig:
 
     def get_current_profile(self) -> str:
         """Get the current profile ID."""
-        return self._current_profile or "flight_simulator"
+        return self._current_profile or "adaptive_platform_2"
 
     def get_current_profile_data(self) -> Optional[Dict[str, Any]]:
         """Load and return the current profile's full data."""
@@ -903,7 +903,7 @@ class ControllerConfig:
             
             # If we deleted the current profile, switch to default
             if profile_id == self._current_profile:
-                self.switch_profile("flight_simulator")
+                self.switch_profile("adaptive_platform_2")
             
             return True
         except IOError:
