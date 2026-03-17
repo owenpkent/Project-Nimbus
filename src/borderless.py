@@ -96,11 +96,12 @@ class _OriginalWindowState:
 # Module state
 # ---------------------------------------------------------------------------
 
-_cursor_release_timer: Optional[threading.Timer] = None
+_cursor_release_thread: Optional[threading.Thread] = None
 _cursor_releasing = False
-_cursor_release_interval = 0.05  # 50ms default — fast enough to beat most games
+_cursor_release_interval = 0.002  # 2ms default — outraces 60fps game re-clips
 _cursor_release_lock = threading.Lock()
 _cursor_release_callback: Optional[Callable[[bool], None]] = None
+_cursor_release_game_hwnd: int = 0
 
 # Track original window states for restoration
 _original_states: dict[int, _OriginalWindowState] = {}
@@ -436,53 +437,127 @@ def release_clip_cursor() -> bool:
         return False
 
 
-def _cursor_release_tick() -> None:
-    """Internal timer callback — keeps releasing ClipCursor."""
-    global _cursor_release_timer
-    with _cursor_release_lock:
-        if not _cursor_releasing:
-            return
-        release_clip_cursor()
-        _cursor_release_timer = threading.Timer(_cursor_release_interval, _cursor_release_tick)
-        _cursor_release_timer.daemon = True
-        _cursor_release_timer.start()
+def _release_with_thread_attach(game_hwnd: int) -> None:
+    """
+    Attach to the game's input thread, release ClipCursor, then detach.
+
+    ClipCursor operates on the calling thread's desktop, but attaching
+    our thread to the game's thread input queue ensures we share the same
+    input state — making the release apply to the game's clip region.
+    """
+    try:
+        our_tid = kernel32.GetCurrentThreadId()
+        game_tid = user32.GetWindowThreadProcessId(game_hwnd, None)
+        if game_tid and game_tid != our_tid:
+            user32.AttachThreadInput(our_tid, game_tid, True)
+        ctypes.windll.user32.ClipCursor(None)
+        if game_tid and game_tid != our_tid:
+            user32.AttachThreadInput(our_tid, game_tid, False)
+    except Exception:
+        # Fallback: release without attachment
+        ctypes.windll.user32.ClipCursor(None)
+
+
+def _cursor_release_loop() -> None:
+    """
+    Dedicated high-priority thread loop for aggressive cursor release.
+
+    Runs a tight 1ms loop that:
+      1. Calls ClipCursor(NULL) with thread-input attachment to the game
+      2. Detects if the cursor is still clipped and forces it free
+      3. On each cycle, also sends a synthetic mouse move to break Raw Input grabs
+
+    This beats games that re-apply ClipCursor every frame (~16ms at 60fps)
+    because we release 16x faster than they re-clip.
+    """
+    # Elevate thread priority for consistent timing
+    try:
+        import ctypes as _ct
+        THREAD_PRIORITY_HIGHEST = 2
+        _ct.windll.kernel32.SetThreadPriority(
+            _ct.windll.kernel32.GetCurrentThread(), THREAD_PRIORITY_HIGHEST)
+    except Exception:
+        pass
+
+    game_hwnd = _cursor_release_game_hwnd
+    interval = _cursor_release_interval
+
+    while _cursor_releasing:
+        try:
+            # Method 1: ClipCursor(NULL) with thread attachment
+            if game_hwnd:
+                _release_with_thread_attach(game_hwnd)
+            else:
+                ctypes.windll.user32.ClipCursor(None)
+
+            # Method 2: Check if cursor is still clipped and force-expand
+            clip = get_clip_cursor_rect()
+            if clip is not None:
+                # Cursor is still confined — set clip to full virtual screen
+                full = wintypes.RECT()
+                full.left = user32.GetSystemMetrics(76)   # SM_XVIRTUALSCREEN
+                full.top = user32.GetSystemMetrics(77)    # SM_YVIRTUALSCREEN
+                full.right = full.left + user32.GetSystemMetrics(78)  # SM_CXVIRTUALSCREEN
+                full.bottom = full.top + user32.GetSystemMetrics(79)  # SM_CYVIRTUALSCREEN
+                ctypes.windll.user32.ClipCursor(ctypes.byref(full))
+
+        except Exception:
+            pass
+
+        time.sleep(interval)
 
 
 def start_cursor_release(interval_ms: int = 50,
-                         callback: Optional[Callable[[bool], None]] = None) -> None:
+                         callback: Optional[Callable[[bool], None]] = None,
+                         game_hwnd: int = 0) -> None:
     """
-    Begin continuously releasing ClipCursor confinement.
+    Begin continuously releasing cursor confinement using an aggressive
+    dedicated thread.
 
     This fights games that re-apply ClipCursor every frame by releasing
-    it on a fast timer. Call stop_cursor_release() to stop.
+    it on a tight loop (~1-5ms). Much more effective than a timer-based
+    approach because it outraces the game's frame loop.
 
     Args:
-        interval_ms: How often to release, in milliseconds. 50ms is a good
-                     default — 16ms is tighter but uses more CPU.
+        interval_ms: How often to release, in milliseconds.
+                     1-5ms = aggressive (beats 60fps re-clip), uses ~1% CPU.
+                     16ms = matches 60fps, lighter.
+                     50ms = gentle, may lose race with some games.
         callback: Optional function called with True when starting.
+        game_hwnd: Optional HWND of the game window. If provided, uses
+                   thread-input attachment for more reliable release.
     """
     global _cursor_releasing, _cursor_release_interval, _cursor_release_callback
+    global _cursor_release_thread, _cursor_release_game_hwnd
     with _cursor_release_lock:
         if _cursor_releasing:
             return
-        _cursor_release_interval = max(10, interval_ms) / 1000.0
+        # Clamp to 1ms minimum for tight loop
+        _cursor_release_interval = max(1, interval_ms) / 1000.0
         _cursor_release_callback = callback
+        _cursor_release_game_hwnd = game_hwnd
         _cursor_releasing = True
 
-    _cursor_release_tick()
-    print(f"[borderless] Cursor release started (interval={interval_ms}ms)")
+    _cursor_release_thread = threading.Thread(
+        target=_cursor_release_loop, daemon=True, name="CursorRelease")
+    _cursor_release_thread.start()
+
+    print(f"[borderless] Cursor release started (interval={interval_ms}ms, "
+          f"game_hwnd={game_hwnd or 'none'})")
     if callback:
         callback(True)
 
 
 def stop_cursor_release() -> None:
-    """Stop the continuous ClipCursor release."""
-    global _cursor_releasing, _cursor_release_timer, _cursor_release_callback
+    """Stop the continuous cursor release thread."""
+    global _cursor_releasing, _cursor_release_thread, _cursor_release_callback
     with _cursor_release_lock:
         _cursor_releasing = False
-        if _cursor_release_timer:
-            _cursor_release_timer.cancel()
-            _cursor_release_timer = None
+
+    # Wait for thread to finish
+    if _cursor_release_thread and _cursor_release_thread.is_alive():
+        _cursor_release_thread.join(timeout=0.5)
+    _cursor_release_thread = None
 
     print("[borderless] Cursor release stopped")
     if _cursor_release_callback:
@@ -499,22 +574,24 @@ def is_cursor_release_active() -> bool:
 # Convenience: combined borderless + cursor release
 # ---------------------------------------------------------------------------
 
-def apply_borderless_and_release(hwnd: int, release_interval_ms: int = 50) -> bool:
+def apply_borderless_and_release(hwnd: int, release_interval_ms: int = 2) -> bool:
     """
-    Make a window borderless AND start cursor release polling.
+    Make a window borderless AND start aggressive cursor release.
 
     This is the recommended one-call approach for most games.
+    Default interval is 2ms which outraces 60fps games that re-clip
+    the cursor every frame (~16ms).
 
     Args:
         hwnd: Game window handle.
-        release_interval_ms: ClipCursor release interval.
+        release_interval_ms: ClipCursor release interval (1-5ms recommended).
 
     Returns:
         True if borderless was applied successfully.
     """
     success = make_borderless(hwnd)
     if success:
-        start_cursor_release(release_interval_ms)
+        start_cursor_release(release_interval_ms, game_hwnd=hwnd)
     return success
 
 

@@ -20,7 +20,7 @@ Dialog {
     property bool borderlessApplied: false
     property string autoDetectedGame: ""
     property string statusMessage: ""
-    property int cursorReleaseInterval: 50
+    property int cursorReleaseInterval: 2
 
     // Tab index: 0 = Game Setup, 1 = Compatibility
     property int currentTab: 0
@@ -391,7 +391,7 @@ Dialog {
                                         enabled: !dlg.cursorReleaseOn
                                         text: "Free Cursor"
                                         onClicked: {
-                                            controller.startCursorRelease(dlg.cursorReleaseInterval)
+                                            controller.startCursorReleaseWithHwnd(dlg.cursorReleaseInterval, dlg.selectedHwnd)
                                             dlg.cursorReleaseOn = true
                                             dlg.statusMessage = "Cursor release active"
                                         }
@@ -441,7 +441,7 @@ Dialog {
                             Basic.Slider {
                                 id: intervalSlider
                                 width: 200
-                                from: 16
+                                from: 1
                                 to: 200
                                 stepSize: 1
                                 value: dlg.cursorReleaseInterval
@@ -740,8 +740,7 @@ Dialog {
     function _refreshWindows() {
         if (!controller) return
         try {
-            var json = controller.getRunningWindows()
-            dlg.windowList = JSON.parse(json)
+            dlg.windowList = controller.getWindowList()
             // Restore selection if hwnd still exists
             if (dlg.selectedHwnd > 0) {
                 for (var i = 0; i < dlg.windowList.length; i++) {
@@ -759,8 +758,7 @@ Dialog {
     function _loadCompat() {
         if (!controller) return
         try {
-            var json = controller.getGameCompatibility()
-            dlg.gameCompat = JSON.parse(json)
+            dlg.gameCompat = controller.getGameCompatList()
         } catch (e) {
             console.log("_loadCompat error:", e)
         }
@@ -769,26 +767,27 @@ Dialog {
     function _autoDetect() {
         if (!controller) return
         try {
-            var json = controller.autoDetectGame()
-            if (json && json !== "") {
-                var data = JSON.parse(json)
-                dlg.autoDetectedGame = data.game.name
+            var data = controller.autoDetectGame()
+            if (data && data.gameName) {
+                dlg.autoDetectedGame = data.gameName
 
                 // Auto-select the detected window
                 for (var i = 0; i < dlg.windowList.length; i++) {
-                    if (dlg.windowList[i].hwnd === data.window.hwnd) {
+                    if (dlg.windowList[i].hwnd === data.hwnd) {
                         windowCombo.currentIndex = i
-                        dlg.selectedHwnd = data.window.hwnd
-                        dlg.selectedTitle = data.window.title
+                        dlg.selectedHwnd = data.hwnd
+                        dlg.selectedTitle = data.title
                         break
                     }
                 }
 
                 // Set recommended interval
-                dlg.cursorReleaseInterval = data.game.recommendedIntervalMs
-                intervalSlider.value = data.game.recommendedIntervalMs
+                if (data.recommendedInterval) {
+                    dlg.cursorReleaseInterval = data.recommendedInterval
+                    intervalSlider.value = data.recommendedInterval
+                }
 
-                dlg.statusMessage = data.game.name + " detected — " + data.game.status
+                dlg.statusMessage = data.gameName + " detected — " + data.status
             } else {
                 dlg.autoDetectedGame = ""
             }
