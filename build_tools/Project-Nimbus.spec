@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 # Version info - keep in sync with src/__init__.py
-VERSION = "1.3.1"
-VERSION_TUPLE = (1, 3, 1, 0)
+VERSION = "1.4.0"
+VERSION_TUPLE = (1, 4, 0, 0)
 
 block_cipher = None
 
@@ -97,7 +97,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Project-Nimbus-1.3.1',
+    name='Project-Nimbus-1.4.0',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
