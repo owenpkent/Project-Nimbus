@@ -1266,8 +1266,9 @@ class ControllerBridge(QObject):
     def startFullGameMode(self, game_hwnd: int, pulse_hz: int = 30) -> bool:  # noqa: N802
         """Start the full game integration: borderless + cursor release + controller mode.
         
-        This is the recommended one-call approach that combines all three
+        This is the recommended one-call approach that combines all
         mechanisms for maximum compatibility:
+          0. Enable Game Focus Mode (WS_EX_NOACTIVATE — clicks don't steal focus)
           1. Make game borderless (if not already)
           2. Start ClipCursor release polling (fights cursor confinement)
           3. Start Controller Mode (makes game voluntarily release mouse)
@@ -1280,6 +1281,19 @@ class ControllerBridge(QObject):
             True if at least one mechanism started successfully.
         """
         success = False
+        
+        # Step 0: Enable Game Focus Mode so clicking Nimbus doesn't steal focus
+        if WINDOW_UTILS_AVAILABLE and self._window and not self._no_focus_mode:
+            try:
+                hwnd = get_qt_window_handle(self._window)
+                if make_window_no_activate(hwnd):
+                    self._no_focus_mode = True
+                    self._config.set("ui.no_focus_mode", True)
+                    self._config.save_config()
+                    self.noFocusModeChanged.emit(True)
+                    print("[bridge] Full Game Mode: Game Focus Mode auto-enabled")
+            except Exception as e:
+                print(f"[bridge] Full Game Mode: focus mode failed ({e}), continuing...")
         
         # Step 1: Borderless (optional — some games have native borderless)
         if BORDERLESS_AVAILABLE:
