@@ -529,7 +529,7 @@ ApplicationWindow {
             }
             
             Label {
-                text: "Version 2.1"
+                text: "Version " + (controller ? controller.getVersion() : "1.4.0")
                 color: "#aaa"
                 font.pixelSize: 14
                 anchors.horizontalCenter: parent.horizontalCenter

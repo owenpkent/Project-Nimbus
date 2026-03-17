@@ -495,6 +495,15 @@ class ControllerBridge(QObject):
             pass
 
     # ----- Expose some status -----
+    @Slot(result=str)
+    def getVersion(self) -> str:  # noqa: N802
+        """Get the application version string."""
+        try:
+            from . import __version__
+            return __version__
+        except Exception:
+            return "1.4.0"
+
     @Slot(result=bool)
     def isVJoyConnected(self) -> bool:  # noqa: N802
         return self._is_controller_connected()

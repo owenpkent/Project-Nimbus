@@ -6,11 +6,40 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.4.0] — 2026-03-17
+
+### Added
+- **QML/PySide6 UI** — Complete rewrite of the user interface using Qt Quick (QML) with a dark-themed, scalable layout that replaces the legacy Pygame canvas
+- **Game Focus Mode** — View menu toggle that prevents Project Nimbus from stealing focus from games; automatically restores focus to the game after each interaction using Windows thread-input attachment
+- **Cursor management for wheelchair joystick** — `ClipCursor` locking to constrain the physical cursor to the joystick widget area during locked mode, with `unclipCursor` on release
+- **ViGEm auto-selection** — Automatically uses Xbox 360 (ViGEm/XInput) emulation for xbox/adaptive/custom profiles and vJoy (DirectInput) for flight sim; falls back gracefully if ViGEm is unavailable
+- **Smooth axis interpolation** — Configurable EMA-based smoothing timer applies per-axis target tracking at the vJoy update rate (default 60 Hz, configurable up to 240 Hz)
+- **Profile system overhaul** — Profiles stored in `%APPDATA%\ProjectNimbus`; full create, save, save-as, duplicate, delete, reset-to-defaults, and open-folder actions accessible from the File menu
+- **About dialog** — Version, description, copyright, and license info accessible from Help menu
+- **Loading splash screen** — Dark-themed splash with logo, version, and progress messages on startup (previously undocumented)
+
+### Changed
+- **Default profiles refined** — Flight Simulator, Xbox Controller, Adaptive Platform 1, and Adaptive Platform 2 profiles cleaned up with consistent axis mappings, button labels, and accessibility options
+- **PyInstaller build tooling** — Updated to PyInstaller 6.19 with versioned distribution filenames (`Project-Nimbus-1.4.0.exe`, `Project-Nimbus-Setup-1.4.0.exe`)
+
+---
+
 ## [1.3.1] — 2026-03-03
 
 ### Changed
 - **Versioned distribution filenames** — Executable and installer now include the version number in their filename (`Project-Nimbus-1.3.1.exe`, `Project-Nimbus-Setup-1.3.1.exe`) for clearer release management
 - **Code-signed release** — EV certificate signed with SHA-256 timestamping via DigiCert
+
+---
+
+## [1.3.0] — 2026-01-20
+
+### Added
+- **Macro Joystick Mode** — Convert any joystick widget into a macro trigger: each of 8 directional zones (plus center) maps to a configurable button press, axis value, or turbo action
+- **Visual zone editor** — 8-zone + center joystick diagram in the per-widget config dialog for visually assigning actions to each direction
+- **Quick presets** — One-click presets in the macro editor: ABXY face buttons, D-Pad directions, Triggers, and Shoulder buttons
+- **Turbo mode** — Auto-fire any button at a configurable rate (1–30 Hz) from within the macro zone editor
+- **vJoy auto-detection** — Detects whether vJoy is installed at startup and shows a guided prompt if it is missing
 
 ---
 
