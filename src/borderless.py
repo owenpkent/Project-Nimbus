@@ -282,19 +282,22 @@ def get_monitor_rect_for_window(hwnd: int) -> tuple[int, int, int, int]:
 # ---------------------------------------------------------------------------
 
 def make_borderless(hwnd: int, x: int = -1, y: int = -1,
-                    width: int = -1, height: int = -1) -> bool:
+                    width: int = -1, height: int = -1,
+                    fill_monitor: bool = False) -> bool:
     """
-    Strip window decorations and optionally resize to fill a monitor.
+    Strip window decorations and optionally reposition/resize.
 
-    If x/y/width/height are -1, auto-detects the monitor the window is on
-    and fills it completely (borderless fullscreen effect).
+    By default, the window keeps its current position and size — only the
+    title bar and borders are removed. Pass explicit x/y/width/height to
+    reposition, or set fill_monitor=True to fill the entire monitor.
 
     The original window state is saved for later restoration.
 
     Args:
         hwnd: Window handle.
-        x, y: Top-left position (use -1 for auto).
-        width, height: Target size (use -1 for auto).
+        x, y: Top-left position (-1 = keep current).
+        width, height: Target size (-1 = keep current).
+        fill_monitor: If True AND no explicit dims given, fill the monitor.
 
     Returns:
         True on success.
@@ -319,17 +322,20 @@ def make_borderless(hwnd: int, x: int = -1, y: int = -1,
             height=rect.bottom - rect.top,
         )
 
-        # Auto-detect monitor if no explicit dimensions
-        if x == -1 or y == -1 or width == -1 or height == -1:
-            mx, my, mw, mh = get_monitor_rect_for_window(hwnd)
+        # Decide target geometry
+        if fill_monitor and x == -1 and y == -1 and width == -1 and height == -1:
+            # Fill the monitor the window is on
+            x, y, width, height = get_monitor_rect_for_window(hwnd)
+        else:
+            # Keep current position/size for any dimension set to -1
             if x == -1:
-                x = mx
+                x = rect.left
             if y == -1:
-                y = my
+                y = rect.top
             if width == -1:
-                width = mw
+                width = rect.right - rect.left
             if height == -1:
-                height = mh
+                height = rect.bottom - rect.top
 
         # Strip decorations
         style = orig_style
@@ -352,6 +358,32 @@ def make_borderless(hwnd: int, x: int = -1, y: int = -1,
 
     except Exception as e:
         print(f"[borderless] make_borderless failed: {e}")
+        return False
+
+
+def resize_window(hwnd: int, x: int, y: int, width: int, height: int) -> bool:
+    """
+    Reposition/resize a window (borderless or not) to explicit coordinates.
+
+    Args:
+        hwnd: Window handle.
+        x, y: Top-left position.
+        width, height: Target size.
+
+    Returns:
+        True on success.
+    """
+    if sys.platform != "win32":
+        return False
+    try:
+        user32.SetWindowPos(
+            hwnd, HWND_TOP, x, y, width, height,
+            SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW
+        )
+        print(f"[borderless] Resized HWND {hwnd} to ({x},{y}) {width}x{height}")
+        return True
+    except Exception as e:
+        print(f"[borderless] resize_window failed: {e}")
         return False
 
 

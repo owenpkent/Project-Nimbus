@@ -263,6 +263,92 @@ Dialog {
                             }
                         }
 
+                        // Window Position & Size
+                        Rectangle {
+                            width: parent.width
+                            height: geomCol.implicitHeight + 20
+                            color: "#252525"
+                            border.color: "#444"
+                            border.width: 1
+                            radius: 6
+
+                            Column {
+                                id: geomCol
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                spacing: 8
+
+                                Row {
+                                    spacing: 8
+                                    Label {
+                                        text: "Window Position & Size"
+                                        color: "#ccc"
+                                        font.pixelSize: 14
+                                        font.bold: true
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    Basic.Button {
+                                        text: "Use Current"
+                                        enabled: dlg.selectedHwnd > 0
+                                        onClicked: {
+                                            // Pre-fill from selected window's current geometry
+                                            for (var i = 0; i < dlg.windowList.length; i++) {
+                                                if (dlg.windowList[i].hwnd === dlg.selectedHwnd) {
+                                                    winX.text = "" + dlg.windowList[i].x
+                                                    winY.text = "" + dlg.windowList[i].y
+                                                    winW.text = "" + dlg.windowList[i].width
+                                                    winH.text = "" + dlg.windowList[i].height
+                                                    break
+                                                }
+                                            }
+                                        }
+                                        contentItem: Label {
+                                            text: parent.text; color: parent.enabled ? "#4a9eff" : "#666"
+                                            font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                        }
+                                        background: Rectangle {
+                                            implicitWidth: 80; implicitHeight: 24
+                                            color: parent.down ? "#333" : "transparent"
+                                            border.color: parent.enabled ? "#4a9eff" : "#555"; border.width: 1; radius: 4
+                                        }
+                                    }
+                                }
+
+                                // X, Y row
+                                Row {
+                                    spacing: 12
+                                    Label { text: "X:"; color: "#aaa"; font.pixelSize: 12; width: 14; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField {
+                                        id: winX; width: 70; text: "0"
+                                        color: "white"; font.pixelSize: 12
+                                        validator: IntValidator { bottom: -9999; top: 99999 }
+                                        background: Rectangle { color: "#1e1e1e"; border.color: winX.activeFocus ? "#4a9eff" : "#555"; border.width: 1; radius: 3 }
+                                    }
+                                    Label { text: "Y:"; color: "#aaa"; font.pixelSize: 12; width: 14; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField {
+                                        id: winY; width: 70; text: "0"
+                                        color: "white"; font.pixelSize: 12
+                                        validator: IntValidator { bottom: -9999; top: 99999 }
+                                        background: Rectangle { color: "#1e1e1e"; border.color: winY.activeFocus ? "#4a9eff" : "#555"; border.width: 1; radius: 3 }
+                                    }
+                                    Label { text: "W:"; color: "#aaa"; font.pixelSize: 12; width: 18; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField {
+                                        id: winW; width: 70; text: "1280"
+                                        color: "white"; font.pixelSize: 12
+                                        validator: IntValidator { bottom: 100; top: 99999 }
+                                        background: Rectangle { color: "#1e1e1e"; border.color: winW.activeFocus ? "#4a9eff" : "#555"; border.width: 1; radius: 3 }
+                                    }
+                                    Label { text: "H:"; color: "#aaa"; font.pixelSize: 12; width: 14; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField {
+                                        id: winH; width: 70; text: "720"
+                                        color: "white"; font.pixelSize: 12
+                                        validator: IntValidator { bottom: 100; top: 99999 }
+                                        background: Rectangle { color: "#1e1e1e"; border.color: winH.activeFocus ? "#4a9eff" : "#555"; border.width: 1; radius: 3 }
+                                    }
+                                }
+                            }
+                        }
+
                         // Actions
                         Rectangle {
                             width: parent.width
@@ -285,70 +371,57 @@ Dialog {
                                     font.bold: true
                                 }
 
-                                // Recommended one-click action
+                                // Main action: borderless at custom size + free cursor
                                 Basic.Button {
                                     width: parent.width
-                                    enabled: dlg.selectedHwnd > 0
-                                    text: dlg.borderlessApplied ? "Restore Window & Stop" : "Apply Borderless + Free Cursor (Recommended)"
+                                    enabled: dlg.selectedHwnd > 0 && !dlg.borderlessApplied
+                                    text: "Apply Borderless at Custom Size + Free Cursor"
                                     onClicked: {
-                                        if (dlg.borderlessApplied) {
-                                            controller.restoreAndStopRelease(dlg.selectedHwnd)
-                                            dlg.borderlessApplied = false
-                                            dlg.cursorReleaseOn = false
-                                            dlg.statusMessage = "Window restored and cursor release stopped"
+                                        var px = parseInt(winX.text) || 0
+                                        var py = parseInt(winY.text) || 0
+                                        var pw = parseInt(winW.text) || 1280
+                                        var ph = parseInt(winH.text) || 720
+                                        var ok = controller.makeGameBorderlessAt(dlg.selectedHwnd, px, py, pw, ph)
+                                        if (ok) {
+                                            controller.startCursorReleaseWithHwnd(dlg.cursorReleaseInterval, dlg.selectedHwnd)
+                                            dlg.borderlessApplied = true
+                                            dlg.cursorReleaseOn = true
+                                            dlg.statusMessage = "Borderless at " + pw + "x" + ph + " + cursor free"
                                         } else {
-                                            var ok = controller.applyBorderlessAndRelease(dlg.selectedHwnd, dlg.cursorReleaseInterval)
-                                            if (ok) {
-                                                dlg.borderlessApplied = true
-                                                dlg.cursorReleaseOn = true
-                                                dlg.statusMessage = "Borderless applied + cursor release active"
-                                            } else {
-                                                dlg.statusMessage = "Failed to apply borderless mode"
-                                            }
+                                            dlg.statusMessage = "Failed to apply borderless mode"
                                         }
                                     }
                                     contentItem: Label {
-                                        text: parent.text
-                                        color: parent.enabled ? "white" : "#666"
-                                        font.pixelSize: 13
-                                        font.bold: true
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
+                                        text: parent.text; color: parent.enabled ? "white" : "#666"
+                                        font.pixelSize: 13; font.bold: true
+                                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                     }
                                     background: Rectangle {
                                         implicitHeight: 40
-                                        color: {
-                                            if (!parent.enabled) return "#333"
-                                            if (dlg.borderlessApplied)
-                                                return parent.down ? "#7a2020" : (parent.hovered ? "#a03030" : "#8b2020")
-                                            return parent.down ? "#15803d" : (parent.hovered ? "#22a050" : "#16a34a")
-                                        }
+                                        color: parent.enabled ? (parent.down ? "#15803d" : (parent.hovered ? "#22a050" : "#16a34a")) : "#333"
                                         radius: 6
                                     }
-                                }
-
-                                // Separator
-                                Rectangle { width: parent.width; height: 1; color: "#444" }
-
-                                // Individual controls
-                                Label {
-                                    text: "Individual Controls"
-                                    color: "#999"
-                                    font.pixelSize: 11
                                 }
 
                                 Row {
                                     spacing: 8
                                     width: parent.width
 
+                                    // Fill Screen variant
                                     Basic.Button {
-                                        width: (parent.width - 8) / 2
+                                        width: (parent.width - 16) / 3
                                         enabled: dlg.selectedHwnd > 0 && !dlg.borderlessApplied
-                                        text: "Make Borderless"
+                                        text: "Fill Screen"
                                         onClicked: {
-                                            var ok = controller.makeGameBorderless(dlg.selectedHwnd)
-                                            dlg.borderlessApplied = ok
-                                            dlg.statusMessage = ok ? "Borderless mode applied" : "Failed"
+                                            var ok = controller.makeGameBorderlessFill(dlg.selectedHwnd)
+                                            if (ok) {
+                                                controller.startCursorReleaseWithHwnd(dlg.cursorReleaseInterval, dlg.selectedHwnd)
+                                                dlg.borderlessApplied = true
+                                                dlg.cursorReleaseOn = true
+                                                dlg.statusMessage = "Borderless fullscreen + cursor free"
+                                            } else {
+                                                dlg.statusMessage = "Failed"
+                                            }
                                         }
                                         contentItem: Label {
                                             text: parent.text; color: parent.enabled ? "white" : "#666"
@@ -361,14 +434,40 @@ Dialog {
                                         }
                                     }
 
+                                    // Resize only (no borderless toggle)
                                     Basic.Button {
-                                        width: (parent.width - 8) / 2
-                                        enabled: dlg.selectedHwnd > 0 && dlg.borderlessApplied
-                                        text: "Restore Window"
+                                        width: (parent.width - 16) / 3
+                                        enabled: dlg.selectedHwnd > 0
+                                        text: "Move/Resize Only"
                                         onClicked: {
-                                            var ok = controller.restoreGameWindow(dlg.selectedHwnd)
-                                            if (ok) dlg.borderlessApplied = false
-                                            dlg.statusMessage = ok ? "Window restored" : "Failed"
+                                            var px = parseInt(winX.text) || 0
+                                            var py = parseInt(winY.text) || 0
+                                            var pw = parseInt(winW.text) || 1280
+                                            var ph = parseInt(winH.text) || 720
+                                            var ok = controller.resizeGameWindow(dlg.selectedHwnd, px, py, pw, ph)
+                                            dlg.statusMessage = ok ? "Window moved to " + pw + "x" + ph : "Failed"
+                                        }
+                                        contentItem: Label {
+                                            text: parent.text; color: parent.enabled ? "white" : "#666"
+                                            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; font.pixelSize: 12
+                                        }
+                                        background: Rectangle {
+                                            implicitHeight: 32
+                                            color: parent.enabled ? (parent.down ? "#444" : "#333") : "#2a2a2a"
+                                            border.color: "#555"; border.width: 1; radius: 4
+                                        }
+                                    }
+
+                                    // Restore
+                                    Basic.Button {
+                                        width: (parent.width - 16) / 3
+                                        enabled: dlg.selectedHwnd > 0 && dlg.borderlessApplied
+                                        text: "Restore & Stop"
+                                        onClicked: {
+                                            controller.restoreAndStopRelease(dlg.selectedHwnd)
+                                            dlg.borderlessApplied = false
+                                            dlg.cursorReleaseOn = false
+                                            dlg.statusMessage = "Window restored"
                                         }
                                         contentItem: Label {
                                             text: parent.text; color: parent.enabled ? "white" : "#666"
@@ -381,6 +480,9 @@ Dialog {
                                         }
                                     }
                                 }
+
+                                // Separator
+                                Rectangle { width: parent.width; height: 1; color: "#444" }
 
                                 Row {
                                     spacing: 8

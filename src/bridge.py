@@ -552,6 +552,8 @@ class ControllerBridge(QObject):
                     "title": w.title,
                     "className": w.class_name,
                     "pid": w.pid,
+                    "x": w.x,
+                    "y": w.y,
                     "width": w.width,
                     "height": w.height,
                     "isBorderless": w.is_borderless,
@@ -585,13 +587,46 @@ class ControllerBridge(QObject):
 
     @Slot(int, result=bool)
     def makeGameBorderless(self, hwnd: int) -> bool:  # noqa: N802
-        """Make a game window borderless."""
+        """Make a game window borderless (keep current position/size)."""
         if not BORDERLESS_AVAILABLE:
             return False
         try:
             return _borderless.make_borderless(hwnd)
         except Exception as e:
             print(f"[bridge] makeGameBorderless error: {e}")
+            return False
+
+    @Slot(int, int, int, int, int, result=bool)
+    def makeGameBorderlessAt(self, hwnd: int, x: int, y: int, w: int, h: int) -> bool:  # noqa: N802
+        """Make a game window borderless at a specific position and size."""
+        if not BORDERLESS_AVAILABLE:
+            return False
+        try:
+            return _borderless.make_borderless(hwnd, x, y, w, h)
+        except Exception as e:
+            print(f"[bridge] makeGameBorderlessAt error: {e}")
+            return False
+
+    @Slot(int, result=bool)
+    def makeGameBorderlessFill(self, hwnd: int) -> bool:  # noqa: N802
+        """Make a game window borderless and fill the entire monitor."""
+        if not BORDERLESS_AVAILABLE:
+            return False
+        try:
+            return _borderless.make_borderless(hwnd, fill_monitor=True)
+        except Exception as e:
+            print(f"[bridge] makeGameBorderlessFill error: {e}")
+            return False
+
+    @Slot(int, int, int, int, int, result=bool)
+    def resizeGameWindow(self, hwnd: int, x: int, y: int, w: int, h: int) -> bool:  # noqa: N802
+        """Reposition/resize a game window to specific coordinates."""
+        if not BORDERLESS_AVAILABLE:
+            return False
+        try:
+            return _borderless.resize_window(hwnd, x, y, w, h)
+        except Exception as e:
+            print(f"[bridge] resizeGameWindow error: {e}")
             return False
 
     @Slot(int, result=bool)
