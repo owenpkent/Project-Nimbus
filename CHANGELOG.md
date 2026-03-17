@@ -6,6 +6,31 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.4.1] — 2026-03-17
+
+### Added
+- **Controller Mode Enforcement** — New approach to mouse capture that makes games *voluntarily* release the cursor. Instead of fighting `ClipCursor` in a race condition, Nimbus sends continuous controller keep-alive signals through ViGEm so the game thinks only a gamepad is connected and stops capturing the mouse.
+- **`src/mouse_hider.py`** — Pure `ctypes` module implementing:
+  - Controller keep-alive pulse (configurable 5–120 Hz) with sub-deadzone stick oscillations
+  - Initial controller burst to force games into controller mode on startup
+  - `WH_MOUSE_LL` hook that detects mouse-over-game and immediately counters with controller input
+  - Integrated `ClipCursor(NULL)` release alongside controller pulse
+- **`startControllerMode()` / `stopControllerMode()`** — New bridge slots for QML
+- **`sendControllerBurst()`** — One-shot burst to force controller mode without continuous keep-alive
+- **`startFullGameMode()` / `stopFullGameMode()`** — Recommended one-call approach combining borderless + cursor release + controller mode enforcement
+- **Controller mode statistics** — Track pulses sent, mouse events detected, bursts fired
+- **Research doc** — `research/in-progress/controller-mode-enforcement.md` documenting the dual-input-detection exploit
+
+### Changed
+- **Mouse capture strategy** — Shifted from pure `ClipCursor(NULL)` racing to a combined approach: controller mode enforcement (primary) + cursor release (fallback). Games that detect Xbox input will voluntarily release the mouse, eliminating the race condition entirely.
+
+### Technical Notes
+- Controller keep-alive sends tiny stick oscillations (amplitude 0.02) that are below any game's deadzone (typically 0.1–0.3) but register as "controller input changed" in `XInputGetState()`
+- The `WH_MOUSE_LL` hook does NOT suppress mouse events (that would freeze the cursor) — it detects mouse-over-game and immediately counters with controller input bursts
+- Requires ViGEm (Xbox 360 emulation) — not available with vJoy-only profiles
+
+---
+
 ## [1.4.0] — 2026-03-17
 
 ### Added

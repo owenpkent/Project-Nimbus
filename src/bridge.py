@@ -39,6 +39,14 @@ except Exception:
     BORDERLESS_AVAILABLE = False
     _borderless = None
 
+# Import controller mode enforcement module (Windows only)
+try:
+    from . import mouse_hider as _mouse_hider
+    MOUSE_HIDER_AVAILABLE = True
+except Exception:
+    MOUSE_HIDER_AVAILABLE = False
+    _mouse_hider = None
+
 
 class ControllerBridge(QObject):
     """
@@ -57,6 +65,7 @@ class ControllerBridge(QObject):
     noFocusModeChanged = Signal(bool)  # Emits when no-focus mode changes
     cursorReleaseChanged = Signal(bool)  # Emits when cursor release polling starts/stops
     borderlessModeChanged = Signal(int, bool)  # Emits (hwnd, is_borderless)
+    controllerModeChanged = Signal(bool)  # Emits when controller mode enforcement starts/stops
 
     def __init__(self, config: ControllerConfig, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -65,6 +74,7 @@ class ControllerBridge(QObject):
         self._no_focus_mode = False
         self._cursor_release_active = False
         self._borderless_game_hwnd: int = 0
+        self._controller_mode_active = False
         
         # Determine which controller interface to use based on profile layout type
         # ViGEm (Xbox emulation) is preferred for xbox/adaptive profiles as it works with XInput games
@@ -1145,3 +1155,216 @@ class ControllerBridge(QObject):
                 self.borderlessModeChanged.emit(hwnd, False)
         except Exception as e:
             print(f"restoreAndStopRelease failed: {e}")
+
+    # ----- Controller Mode Enforcement (v1.4.1) -----
+    @Slot(result=bool)
+    def isControllerModeAvailable(self) -> bool:  # noqa: N802
+        """Check if controller mode enforcement is available.
+        
+        Requires ViGEm (virtual Xbox controller) and mouse_hider module.
+        """
+        return (MOUSE_HIDER_AVAILABLE and self._use_vigem and
+                self._vigem is not None and self._vigem.is_connected)
+
+    @Slot(int, int, result=bool)
+    def startControllerMode(self, game_hwnd: int, pulse_hz: int = 30) -> bool:  # noqa: N802
+        """Start Controller Mode Enforcement.
+        
+        Makes the game think only a controller is connected by sending
+        a constant stream of ViGEm keep-alive signals. The game switches
+        to controller mode and voluntarily releases the mouse cursor.
+        
+        This is fundamentally different from ClipCursor release — instead
+        of fighting the game's mouse capture, we make the game STOP capturing.
+        
+        Args:
+            game_hwnd: HWND of the game window.
+            pulse_hz: Keep-alive frequency (10-60 Hz recommended).
+        
+        Returns:
+            True if started successfully.
+        """
+        if not MOUSE_HIDER_AVAILABLE or not _mouse_hider:
+            print("[bridge] mouse_hider module not available")
+            return False
+        if not self._use_vigem or not self._vigem or not self._vigem.gamepad:
+            print("[bridge] ViGEm not available — controller mode requires Xbox emulation")
+            return False
+        
+        try:
+            # Get Nimbus window handle for mouse passthrough
+            nimbus_hwnd = 0
+            if self._window:
+                nimbus_hwnd = int(self._window.winId())
+            
+            def _on_change(active: bool):
+                self._controller_mode_active = active
+                self.controllerModeChanged.emit(active)
+            
+            success = _mouse_hider.start_controller_mode(
+                gamepad=self._vigem.gamepad,
+                game_hwnd=game_hwnd,
+                nimbus_hwnd=nimbus_hwnd,
+                pulse_hz=max(5, min(120, pulse_hz)),
+                use_mouse_hook=bool(game_hwnd),
+                callback=_on_change,
+            )
+            return success
+        except Exception as e:
+            print(f"[bridge] startControllerMode failed: {e}")
+            return False
+
+    @Slot()
+    def stopControllerMode(self) -> None:  # noqa: N802
+        """Stop Controller Mode Enforcement."""
+        if not MOUSE_HIDER_AVAILABLE or not _mouse_hider:
+            return
+        try:
+            _mouse_hider.stop_controller_mode()
+            self._controller_mode_active = False
+            self.controllerModeChanged.emit(False)
+        except Exception as e:
+            print(f"[bridge] stopControllerMode failed: {e}")
+
+    @Slot(result=bool)
+    def isControllerModeActive(self) -> bool:  # noqa: N802
+        """Check if controller mode enforcement is currently running."""
+        if not MOUSE_HIDER_AVAILABLE or not _mouse_hider:
+            return False
+        return _mouse_hider.is_controller_mode_active()
+
+    @Slot()
+    def sendControllerBurst(self) -> None:  # noqa: N802
+        """Send a one-shot burst of controller signals.
+        
+        Forces the game into controller mode without enabling the
+        continuous keep-alive. Useful as a quick fix or test.
+        """
+        if not MOUSE_HIDER_AVAILABLE or not _mouse_hider:
+            return
+        if not self._use_vigem or not self._vigem or not self._vigem.gamepad:
+            print("[bridge] ViGEm not available for controller burst")
+            return
+        try:
+            _mouse_hider.send_controller_burst(self._vigem.gamepad)
+        except Exception as e:
+            print(f"[bridge] sendControllerBurst failed: {e}")
+
+    @Slot(result=str)
+    def getControllerModeStats(self) -> str:  # noqa: N802
+        """Get controller mode statistics as JSON string."""
+        import json
+        if not MOUSE_HIDER_AVAILABLE or not _mouse_hider:
+            return "{}"
+        try:
+            return json.dumps(_mouse_hider.get_controller_mode_stats())
+        except Exception as e:
+            print(f"[bridge] getControllerModeStats failed: {e}")
+            return "{}"
+
+    @Slot(int, int, result=bool)
+    def startFullGameMode(self, game_hwnd: int, pulse_hz: int = 30) -> bool:  # noqa: N802
+        """Start the full game integration: borderless + cursor release + controller mode.
+        
+        This is the recommended one-call approach that combines all three
+        mechanisms for maximum compatibility:
+          1. Make game borderless (if not already)
+          2. Start ClipCursor release polling (fights cursor confinement)
+          3. Start Controller Mode (makes game voluntarily release mouse)
+        
+        Args:
+            game_hwnd: HWND of the game window.
+            pulse_hz: Controller keep-alive frequency.
+        
+        Returns:
+            True if at least one mechanism started successfully.
+        """
+        success = False
+        
+        # Step 1: Borderless (optional — some games have native borderless)
+        if BORDERLESS_AVAILABLE:
+            try:
+                if _borderless.make_borderless(game_hwnd):
+                    self._borderless_game_hwnd = game_hwnd
+                    self.borderlessModeChanged.emit(game_hwnd, True)
+                    success = True
+                    print("[bridge] Full Game Mode: borderless applied")
+            except Exception as e:
+                print(f"[bridge] Full Game Mode: borderless failed ({e}), continuing...")
+        
+        # Step 2: ClipCursor release
+        if BORDERLESS_AVAILABLE:
+            try:
+                def _on_release_change(active: bool):
+                    self._cursor_release_active = active
+                    self.cursorReleaseChanged.emit(active)
+                _borderless.start_cursor_release(2, _on_release_change, game_hwnd=game_hwnd)
+                success = True
+                print("[bridge] Full Game Mode: cursor release started")
+            except Exception as e:
+                print(f"[bridge] Full Game Mode: cursor release failed ({e}), continuing...")
+        
+        # Step 3: Controller Mode (the key new feature)
+        if MOUSE_HIDER_AVAILABLE and self._use_vigem and self._vigem and self._vigem.gamepad:
+            try:
+                nimbus_hwnd = int(self._window.winId()) if self._window else 0
+                def _on_ctrl_change(active: bool):
+                    self._controller_mode_active = active
+                    self.controllerModeChanged.emit(active)
+                _mouse_hider.start_controller_mode(
+                    gamepad=self._vigem.gamepad,
+                    game_hwnd=game_hwnd,
+                    nimbus_hwnd=nimbus_hwnd,
+                    pulse_hz=pulse_hz,
+                    use_mouse_hook=True,
+                    callback=_on_ctrl_change,
+                )
+                success = True
+                print("[bridge] Full Game Mode: controller mode started")
+            except Exception as e:
+                print(f"[bridge] Full Game Mode: controller mode failed ({e})")
+        
+        if success:
+            print("[bridge] Full Game Mode ACTIVE")
+        else:
+            print("[bridge] Full Game Mode: no mechanisms could be started")
+        
+        return success
+
+    @Slot(int)
+    def stopFullGameMode(self, game_hwnd: int) -> None:  # noqa: N802
+        """Stop all game integration mechanisms.
+        
+        Reverses startFullGameMode: stops controller mode, cursor release,
+        and restores the game window.
+        """
+        # Stop controller mode
+        if MOUSE_HIDER_AVAILABLE and _mouse_hider:
+            try:
+                _mouse_hider.stop_controller_mode()
+                self._controller_mode_active = False
+                self.controllerModeChanged.emit(False)
+            except Exception:
+                pass
+        
+        # Stop cursor release
+        if BORDERLESS_AVAILABLE:
+            try:
+                _borderless.stop_cursor_release()
+                self._cursor_release_active = False
+                self.cursorReleaseChanged.emit(False)
+            except Exception:
+                pass
+        
+        # Restore window
+        if BORDERLESS_AVAILABLE and game_hwnd:
+            try:
+                success = _borderless.restore_window(game_hwnd)
+                if success:
+                    if self._borderless_game_hwnd == game_hwnd:
+                        self._borderless_game_hwnd = 0
+                    self.borderlessModeChanged.emit(game_hwnd, False)
+            except Exception:
+                pass
+        
+        print("[bridge] Full Game Mode stopped")

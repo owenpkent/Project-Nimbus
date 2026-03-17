@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 # Version info - keep in sync with src/__init__.py
-VERSION = "1.4.0"
-VERSION_TUPLE = (1, 4, 0, 0)
+VERSION = "1.4.1"
+VERSION_TUPLE = (1, 4, 1, 0)
 
 block_cipher = None
 
@@ -71,6 +71,8 @@ hiddenimports = [
     'src.qt_dialogs',
     'src.qt_widgets',
     'src.borderless',
+    'src.mouse_hider',
+    'src.window_utils',
 ]
 
 a = Analysis(
@@ -98,7 +100,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Project-Nimbus-1.4.0',
+    name='Project-Nimbus-1.4.1',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

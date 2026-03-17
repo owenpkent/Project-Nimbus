@@ -104,6 +104,18 @@
 - [ ] **Import/export** — share macro profiles as JSON files
 - [ ] **Voice-triggered macros** — bind macros to voice commands
 
+## v1.4.1 Mouse Capture & Controller Mode
+- [x] **Controller Mode Enforcement** — keep-alive pulse via ViGEm forces games to stay in controller mode and voluntarily release mouse
+- [x] **`src/mouse_hider.py`** — sub-deadzone stick oscillations, initial burst, WH_MOUSE_LL hook, integrated ClipCursor release
+- [x] **`startFullGameMode()` / `stopFullGameMode()`** — one-call combined borderless + cursor release + controller mode
+- [x] **Controller burst** — one-shot burst to force controller mode without continuous keep-alive
+- [ ] **QML UI for Controller Mode** — add toggle in Borderless Gaming dialog for controller mode enforcement
+- [ ] **Test with Minecraft** — verify controller mode prevents cursor re-capture
+- [ ] **Test with Elden Ring** — verify game switches to gamepad prompts and releases mouse
+- [ ] **Test with No Man's Sky** — verify ViGEm + controller mode works end-to-end
+- [ ] **Keyboard suppression (optional)** — extend mouse hook to also suppress keyboard events reaching the game
+- [ ] **Auto-detect input mode switch** — detect when game switches back to M/KB and automatically re-burst
+
 ## Backlog
 - [ ] **Macro button widget** — fire a sequence of button presses from the canvas
 - [ ] **Eye-gaze zone widget** — large activation zones for eye-tracking

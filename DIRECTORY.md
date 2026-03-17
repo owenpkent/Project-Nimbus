@@ -1,7 +1,7 @@
 # Project Nimbus — Directory Structure
 
 > **Purpose**: Quick reference for developers and AI assistants to understand the codebase layout.  
-> **Last updated**: March 2026 (v1.3.2)
+> **Last updated**: March 2026 (v1.4.1)
 
 ---
 
@@ -37,6 +37,7 @@ Python backend — Qt/QML bridge, configuration, hardware interfaces.
 | `qt_dialogs.py` | Native Qt dialogs — Joystick Settings, Button Settings, Axis Mapping |
 | `qt_widgets.py` | Custom Qt widget components |
 | `borderless.py` | Borderless window mode + ClipCursor release (Windows) |
+| `mouse_hider.py` | Controller Mode Enforcement — keep-alive pulse + mouse hook (Windows) |
 | `window_utils.py` | Game Focus Mode — save/restore foreground window (Windows) |
 | `qt_main.py` | Legacy Qt Widgets main (not used in QML UI) |
 | `legacy/` | Old pygame-based UI (deprecated, kept for reference) |

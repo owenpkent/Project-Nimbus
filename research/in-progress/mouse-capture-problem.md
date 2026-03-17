@@ -1,6 +1,6 @@
 # Mouse Capture Problem
 
-**Status:** 🔴 Open Problem — High Priority Accessibility Barrier
+**Status:** � In Progress — Controller Mode Enforcement implemented (v1.4.1), needs testing
 
 ## The Problem
 
@@ -83,6 +83,33 @@ This requires assistance and defeats the goal of independent use.
 - Touch input is treated the same as mouse clicks
 - Some games have "background input" options that help, but many don't
 - Controller input (XInput/DirectInput) typically requires window focus unless app specifically handles background input
+
+## v1.4.1 Solution: Controller Mode Enforcement
+
+**Key insight:** Instead of fighting the game's mouse capture (`ClipCursor` race condition), make the game **voluntarily release the mouse** by keeping it in controller mode.
+
+Most games have dual input detection — when they see XInput controller input, they switch to "controller mode," show gamepad prompts, and **stop capturing the mouse**. Since Nimbus already creates a virtual Xbox 360 controller via ViGEm, we can exploit this by sending continuous keep-alive signals.
+
+### How it works
+1. ViGEm virtual Xbox controller already exists
+2. `mouse_hider.py` sends tiny sub-deadzone stick oscillations at 30Hz
+3. Game's `XInputGetState()` sees packet changes → "controller is active"
+4. Game switches to controller mode → stops calling `ClipCursor`
+5. Mouse is free → user interacts with Nimbus
+6. Nimbus sends real controller input → game stays in controller mode
+
+### Implementation
+- **Module:** `src/mouse_hider.py`
+- **Bridge slots:** `startControllerMode()`, `stopControllerMode()`, `startFullGameMode()`
+- **Combined approach:** `startFullGameMode()` runs borderless + cursor release + controller mode
+- **See:** `research/in-progress/controller-mode-enforcement.md` for full technical details
+
+### What still needs testing
+- [ ] Verify with Minecraft (Java Edition) — ClipCursor game
+- [ ] Verify with Elden Ring — dual input game
+- [ ] Verify with No Man's Sky — ViGEm + controller mode end-to-end
+- [ ] Measure CPU impact of 30Hz pulse thread
+- [ ] Test with games that have no controller support (edge case)
 
 ## Priority
 
