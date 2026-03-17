@@ -9,9 +9,9 @@
 
 ; ---- General ----
 !define PRODUCT_NAME "Project Nimbus"
-!define PRODUCT_EXE "Project-Nimbus-1.3.2.exe"
+!define PRODUCT_EXE "Project-Nimbus-1.4.0.exe"
 !define PRODUCT_PUBLISHER "Owen Kent"
-!define PRODUCT_VERSION "1.3.2"
+!define PRODUCT_VERSION "1.4.0"
 !define PRODUCT_GUID "project-nimbus-virtual-controller"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_GUID}"
 
@@ -19,7 +19,7 @@ Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "..\dist\Project-Nimbus-Setup-${PRODUCT_VERSION}.exe"
 InstallDir "$LOCALAPPDATA\Programs\${PRODUCT_NAME}"
 InstallDirRegKey HKCU "${PRODUCT_UNINST_KEY}" "InstallLocation"
-RequestExecutionLevel admin  ; Request admin but can install per-user too
+RequestExecutionLevel user   ; Per-user install: $LOCALAPPDATA and $SMPROGRAMS resolve correctly
 SetCompressor /SOLID lzma
 BrandingText "${PRODUCT_NAME} v${PRODUCT_VERSION}"
 

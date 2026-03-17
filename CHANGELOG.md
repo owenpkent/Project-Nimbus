@@ -6,7 +6,7 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [1.3.2] — 2026-03-08
+## [1.4.0] — 2026-03-17
 
 ### Added
 - **Borderless Gaming Integration** — Built-in borderless window mode + continuous `ClipCursor(NULL)` release. No external tools needed. Access via **View → Borderless Gaming...**
