@@ -1295,18 +1295,7 @@ class ControllerBridge(QObject):
             except Exception as e:
                 print(f"[bridge] Full Game Mode: focus mode failed ({e}), continuing...")
         
-        # Step 1: Borderless (optional — some games have native borderless)
-        if BORDERLESS_AVAILABLE:
-            try:
-                if _borderless.make_borderless(game_hwnd):
-                    self._borderless_game_hwnd = game_hwnd
-                    self.borderlessModeChanged.emit(game_hwnd, True)
-                    success = True
-                    print("[bridge] Full Game Mode: borderless applied")
-            except Exception as e:
-                print(f"[bridge] Full Game Mode: borderless failed ({e}), continuing...")
-        
-        # Step 2: ClipCursor release
+        # Step 1: ClipCursor release (fights mouse confinement)
         if BORDERLESS_AVAILABLE:
             try:
                 def _on_release_change(active: bool):
@@ -1318,15 +1307,41 @@ class ControllerBridge(QObject):
             except Exception as e:
                 print(f"[bridge] Full Game Mode: cursor release failed ({e}), continuing...")
         
-        # Step 3: Controller Mode (the key new feature)
-        if MOUSE_HIDER_AVAILABLE and self._use_vigem and self._vigem and self._vigem.gamepad:
+        # Step 2: Controller Mode — ALWAYS try to get a ViGEm gamepad
+        # Even if the profile normally uses vJoy, Game Mode needs ViGEm for
+        # controller-mode-enforcement (XInput signals to trick the game).
+        gamepad = None
+        if self._vigem and self._vigem.gamepad:
+            gamepad = self._vigem.gamepad
+            print("[bridge] Full Game Mode: using existing ViGEm gamepad")
+        elif VIGEM_AVAILABLE:
+            # Create a ViGEm gamepad on demand for Game Mode
+            try:
+                print("[bridge] Full Game Mode: profile doesn't use ViGEm, creating one for Game Mode...")
+                if self._vigem is None:
+                    self._vigem = ViGEmInterface(self._config)
+                if self._vigem.is_connected and self._vigem.gamepad:
+                    gamepad = self._vigem.gamepad
+                    print("[bridge] Full Game Mode: on-demand ViGEm gamepad created!")
+                else:
+                    print("[bridge] Full Game Mode: ViGEm gamepad creation failed")
+                    print("[bridge]   -> Is ViGEmBus driver installed? Run: pip install vgamepad")
+            except Exception as e:
+                print(f"[bridge] Full Game Mode: ViGEm init error: {e}")
+        else:
+            print("[bridge] Full Game Mode: ViGEm NOT available")
+            print("[bridge]   -> vgamepad package or ViGEmBus driver not installed")
+            print("[bridge]   -> Controller mode enforcement requires ViGEm")
+            print("[bridge]   -> Install: pip install vgamepad")
+        
+        if MOUSE_HIDER_AVAILABLE and gamepad:
             try:
                 nimbus_hwnd = int(self._window.winId()) if self._window else 0
                 def _on_ctrl_change(active: bool):
                     self._controller_mode_active = active
                     self.controllerModeChanged.emit(active)
                 _mouse_hider.start_controller_mode(
-                    gamepad=self._vigem.gamepad,
+                    gamepad=gamepad,
                     game_hwnd=game_hwnd,
                     nimbus_hwnd=nimbus_hwnd,
                     pulse_hz=pulse_hz,
@@ -1334,9 +1349,13 @@ class ControllerBridge(QObject):
                     callback=_on_ctrl_change,
                 )
                 success = True
-                print("[bridge] Full Game Mode: controller mode started")
+                print("[bridge] Full Game Mode: controller mode STARTED")
             except Exception as e:
                 print(f"[bridge] Full Game Mode: controller mode failed ({e})")
+        elif not MOUSE_HIDER_AVAILABLE:
+            print("[bridge] Full Game Mode: mouse_hider module not available")
+        elif not gamepad:
+            print("[bridge] Full Game Mode: no ViGEm gamepad — controller mode SKIPPED")
         
         if success:
             print("[bridge] Full Game Mode ACTIVE")
@@ -1382,3 +1401,34 @@ class ControllerBridge(QObject):
                 pass
         
         print("[bridge] Full Game Mode stopped")
+
+    @Slot(result="QVariantMap")
+    def getGameModeDiagnostics(self) -> dict:  # noqa: N802
+        """Return diagnostic info about Game Mode readiness for the UI."""
+        import sys as _sys
+        result = {
+            "vigem_package": VIGEM_AVAILABLE,
+            "vigem_gamepad": bool(self._vigem and self._vigem.gamepad),
+            "vigem_connected": bool(self._vigem and self._vigem.is_connected),
+            "mouse_hider": MOUSE_HIDER_AVAILABLE,
+            "borderless": BORDERLESS_AVAILABLE,
+            "window_utils": WINDOW_UTILS_AVAILABLE,
+            "profile": str(self._config.get_layout_type()),
+            "use_vigem": self._use_vigem,
+            "controller_mode_active": self._controller_mode_active,
+            "driver_installed": False,
+        }
+        # Check if ViGEmBus driver is installed on Windows
+        if _sys.platform == "win32":
+            try:
+                import subprocess
+                r = subprocess.run(
+                    ["sc", "query", "ViGEmBus"],
+                    capture_output=True, text=True, timeout=3
+                )
+                result["driver_installed"] = "RUNNING" in r.stdout
+                result["driver_query"] = r.stdout.strip()[:200]
+            except Exception:
+                result["driver_installed"] = False
+                result["driver_query"] = "query failed"
+        return result

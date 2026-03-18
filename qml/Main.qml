@@ -703,8 +703,12 @@ ApplicationWindow {
 
     // Filtered window list for picker
     property var _gameModeWindowList: []
+    property var _gameModeDiag: ({})
+    property string _gameModeStatus: ""
 
     function _refreshGameWindows() {
+        // Also fetch diagnostics
+        if (controller) root._gameModeDiag = controller.getGameModeDiagnostics() || {}
         var skipTitles = [
             "nimbus", "edge", "chrome", "firefox", "opera", "brave",
             "internet explorer", "microsoft store", "windows security",
@@ -771,6 +775,49 @@ ApplicationWindow {
                     color: "#4a9eff"
                     font.pixelSize: 12
                     font.bold: true
+                    bottomPadding: 4
+                }
+
+                // ViGEm status warning
+                Rectangle {
+                    visible: root._gameModeDiag.vigem_package !== true || root._gameModeDiag.driver_installed !== true
+                    width: pickerCol.width
+                    height: vigemWarnCol.implicitHeight + 10
+                    radius: 4
+                    color: "#3a2020"
+                    border.color: "#aa4444"
+                    border.width: 1
+
+                    Column {
+                        id: vigemWarnCol
+                        anchors.fill: parent
+                        anchors.margins: 5
+                        spacing: 2
+                        Label {
+                            text: "ViGEmBus driver not detected"
+                            color: "#ff6666"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                        Label {
+                            text: "Controller mode requires ViGEmBus.\nInstall: pip install vgamepad\n(accepts driver prompt, then restart)"
+                            color: "#cc8888"
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            width: pickerCol.width - 10
+                        }
+                    }
+                }
+
+                // Status after starting
+                Label {
+                    visible: root._gameModeStatus !== ""
+                    text: root._gameModeStatus
+                    color: root._gameModeStatus.indexOf("FAIL") >= 0 ? "#ff4444" : "#00cc44"
+                    font.pixelSize: 11
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                    width: pickerCol.width
                     bottomPadding: 4
                 }
 
