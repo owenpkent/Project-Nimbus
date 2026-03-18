@@ -17,25 +17,35 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - Integrated `ClipCursor(NULL)` release alongside controller pulse
 - **`startControllerMode()` / `stopControllerMode()`** — New bridge slots for QML
 - **`sendControllerBurst()`** — One-shot burst to force controller mode without continuous keep-alive
-- **`startFullGameMode()` / `stopFullGameMode()`** — Recommended one-call approach combining borderless + cursor release + controller mode enforcement
+- **`startFullGameMode()` / `stopFullGameMode()`** — Recommended one-call approach combining focus mode + cursor release + controller mode enforcement
+- **One-click "Start Game Mode" button** — Visible in bottom-right corner of main window. Opens a window picker (filtered to hide browsers/system apps), click your game, everything starts automatically.
+- **ViGEm diagnostics** — Picker popup shows red warning if ViGEmBus driver is not installed
 - **Controller mode statistics** — Track pulses sent, mouse events detected, bursts fired
+- **ViGEmBus driver in installer** — NSIS installer now detects and offers to download/install the ViGEmBus driver alongside vJoy
 - **Research doc** — `research/in-progress/controller-mode-enforcement.md` documenting the dual-input-detection exploit
 
 ### Changed
 - **Mouse capture strategy** — Shifted from pure `ClipCursor(NULL)` racing to a combined approach: controller mode enforcement (primary) + cursor release (fallback). Games that detect Xbox input will voluntarily release the mouse, eliminating the race condition entirely.
 - **Game Focus Mode rewritten** — Now uses true `WS_EX_NOACTIVATE` window style instead of save/restore approach. Clicking Project Nimbus **never** steals focus from the game — no more pause menus triggering on click.
 - **`startFullGameMode()` auto-enables Game Focus Mode** — No need to enable separately from View menu.
+- **`startFullGameMode()` no longer calls `make_borderless()`** — This was reshaping/minimizing games. Game Mode now only starts focus mode + cursor release + controller mode enforcement; leave the game window as-is.
+- **ViGEm gamepad created on demand** — Game Mode now creates a ViGEm gamepad regardless of profile type, so controller mode enforcement works even with flight_sim profiles.
+- **Installer updated** — Driver page now shows both vJoy and ViGEmBus with detection and silent installation.
 
 ### Fixed
 - **Clicking Nimbus caused game to pause** — The old Game Focus Mode briefly transferred focus to Nimbus before restoring it. Games like Minecraft detected the focus loss and opened the pause menu. Fixed by using `WS_EX_NOACTIVATE` + `WM_MOUSEACTIVATE` native event filter so focus never leaves the game at all.
 - **Raw Input mouse still moved game camera** — Games using Raw Input (Satisfactory, Unreal Engine titles) received mouse delta movement even when the cursor was outside the game window. The `WH_MOUSE_LL` hook now **suppresses** mouse-move events when the cursor is over the game window, blocking Raw Input from seeing them.
 - **Games not switching to controller mode** — Controller burst amplitude was too small (0.05) to exceed Unreal Engine's deadzone (0.25). Increased burst amplitude to 0.5 and added A-button press during burst for unambiguous controller detection.
+- **Game Mode picked wrong window** — Auto-detect fallback picked Microsoft Edge instead of the game. Replaced with a filtered window picker popup.
+- **Game Mode minimized the game** — `make_borderless()` reshaped the game window, causing it to disappear. Removed from Game Mode flow.
+- **Controller mode silently skipped** — If profile didn't use ViGEm (e.g., flight_sim), no gamepad existed and controller mode was silently not started. Fixed: ViGEm gamepad is now created on demand.
 
 ### Technical Notes
 - Controller keep-alive sends stick oscillations (amplitude 0.08) that are below most games' deadzones (0.15–0.3) but large enough that UE/Unity input detection registers them
 - The `WH_MOUSE_LL` hook now suppresses mouse-move events over the game window (returns 1 to block) while passing through events over Nimbus — this prevents Raw Input camera movement
 - `WS_EX_NOACTIVATE` + `QAbstractNativeEventFilter` for `WM_MOUSEACTIVATE` → `MA_NOACTIVATE` keeps Qt mouse handling working while preventing window activation
-- Requires ViGEm (Xbox 360 emulation) — not available with vJoy-only profiles
+- Requires ViGEmBus driver — installer now handles installation automatically
+- **Status: Work in progress** — Controller mode enforcement may not work with all games yet
 
 ---
 

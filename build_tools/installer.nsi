@@ -28,13 +28,15 @@ Var CreateDesktopShortcut
 Var CreateStartMenuShortcut
 Var InstallVJoy
 Var VJoyInstalled
+Var InstallViGEm
+Var ViGEmInstalled
 
 ; ---- MUI Settings ----
 !define MUI_ICON "Project-Nimbus.ico"
 !define MUI_UNICON "Project-Nimbus.ico"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${PRODUCT_NAME} Setup"
-!define MUI_WELCOMEPAGE_TEXT "This wizard will install ${PRODUCT_NAME} v${PRODUCT_VERSION} on your computer.$\r$\n$\r$\n${PRODUCT_NAME} is a virtual controller interface for accessibility.$\r$\n$\r$\nThe vJoy driver will be installed automatically if needed.$\r$\n$\r$\nClick Next to continue."
+!define MUI_WELCOMEPAGE_TEXT "This wizard will install ${PRODUCT_NAME} v${PRODUCT_VERSION} on your computer.$\r$\n$\r$\n${PRODUCT_NAME} is a virtual controller interface for accessibility.$\r$\n$\r$\nRequired drivers (vJoy and ViGEmBus) will be installed automatically if needed.$\r$\n$\r$\nClick Next to continue."
 
 ; vJoy detection registry key
 !define VJOY_UNINST_KEY "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8E31F76F-74C3-47F1-9550-E041EEDC5FBB}_is1"
@@ -74,13 +76,15 @@ Function ShortcutOptionsLeave
     ${NSD_GetState} $StartMenuCheckbox $CreateStartMenuShortcut
 FunctionEnd
 
-; ---- Custom Page for vJoy Installation ----
+; ---- Custom Page for Driver Installation (vJoy + ViGEmBus) ----
 Var VJoyDialog
 Var VJoyCheckbox
 Var VJoyStatusLabel
+Var ViGEmCheckbox
+Var ViGEmStatusLabel
 
 Function VJoyOptionsPage
-    !insertmacro MUI_HEADER_TEXT "Virtual Controller Driver" "vJoy is required for controller emulation."
+    !insertmacro MUI_HEADER_TEXT "Virtual Controller Drivers" "vJoy and ViGEmBus are required for controller emulation."
     
     nsDialogs::Create 1018
     Pop $VJoyDialog
@@ -88,23 +92,56 @@ Function VJoyOptionsPage
         Abort
     ${EndIf}
     
-    ; Check if vJoy is already installed
+    ; Title
+    ${NSD_CreateLabel} 0 0 100% 14u "These drivers let ${PRODUCT_NAME} create virtual game controllers:"
+    Pop $0
+    
+    ; ---- vJoy Section ----
+    ${NSD_CreateGroupBox} 0 18u 100% 52u "vJoy (DirectInput controller)"
+    Pop $0
+    
     ReadRegStr $0 HKLM "${VJOY_UNINST_KEY}" "DisplayVersion"
     ${If} $0 != ""
         StrCpy $VJoyInstalled 1
-        ${NSD_CreateLabel} 0 0 100% 30u "vJoy driver v$0 is already installed.$\r$\n$\r$\nNo action needed - your system is ready!"
-        Pop $VJoyStatusLabel
         StrCpy $InstallVJoy 0
+        ${NSD_CreateLabel} 10u 32u 90% 12u "Installed (v$0)"
+        Pop $VJoyStatusLabel
     ${Else}
         StrCpy $VJoyInstalled 0
-        ${NSD_CreateLabel} 0 0 100% 40u "vJoy driver is required for ${PRODUCT_NAME} to create virtual controllers.$\r$\n$\r$\nThe installer will download and install vJoy automatically.$\r$\nThis requires an internet connection."
-        Pop $VJoyStatusLabel
-        
-        ${NSD_CreateCheckbox} 20u 50u 100% 12u "Install vJoy driver (recommended)"
-        Pop $VJoyCheckbox
-        ${NSD_Check} $VJoyCheckbox  ; Checked by default
         StrCpy $InstallVJoy 1
+        ${NSD_CreateCheckbox} 10u 32u 90% 12u "Install vJoy driver (recommended)"
+        Pop $VJoyCheckbox
+        ${NSD_Check} $VJoyCheckbox
+        ${NSD_CreateLabel} 10u 48u 90% 12u "Required for flight sim and legacy game profiles"
+        Pop $VJoyStatusLabel
     ${EndIf}
+    
+    ; ---- ViGEmBus Section ----
+    ${NSD_CreateGroupBox} 0 76u 100% 52u "ViGEmBus (Xbox 360 controller emulation)"
+    Pop $0
+    
+    ; Check if ViGEmBus is installed via service query
+    nsExec::ExecToStack 'sc query ViGEmBus'
+    Pop $0
+    Pop $1
+    ${If} $0 == 0
+        StrCpy $ViGEmInstalled 1
+        StrCpy $InstallViGEm 0
+        ${NSD_CreateLabel} 10u 90u 90% 12u "Installed and running"
+        Pop $ViGEmStatusLabel
+    ${Else}
+        StrCpy $ViGEmInstalled 0
+        StrCpy $InstallViGEm 1
+        ${NSD_CreateCheckbox} 10u 90u 90% 12u "Install ViGEmBus driver (recommended)"
+        Pop $ViGEmCheckbox
+        ${NSD_Check} $ViGEmCheckbox
+        ${NSD_CreateLabel} 10u 106u 90% 12u "Required for Game Mode and Xbox controller profiles"
+        Pop $ViGEmStatusLabel
+    ${EndIf}
+    
+    ; Info text
+    ${NSD_CreateLabel} 0 136u 100% 20u "Both drivers are safe, open-source, and used by DS4Windows, Steam, etc.$\r$\nAn internet connection is required to download them."
+    Pop $0
     
     nsDialogs::Show
 FunctionEnd
@@ -112,6 +149,9 @@ FunctionEnd
 Function VJoyOptionsLeave
     ${If} $VJoyInstalled == 0
         ${NSD_GetState} $VJoyCheckbox $InstallVJoy
+    ${EndIf}
+    ${If} $ViGEmInstalled == 0
+        ${NSD_GetState} $ViGEmCheckbox $InstallViGEm
     ${EndIf}
 FunctionEnd
 
@@ -243,6 +283,41 @@ Section "Install"
         ${Else}
             DetailPrint "Failed to download vJoy: $0"
             MessageBox MB_OK|MB_ICONEXCLAMATION "Could not download vJoy driver.$\r$\n$\r$\nPlease install it manually from:$\r$\nhttps://github.com/njz3/vJoy/releases$\r$\n$\r$\n${PRODUCT_NAME} will not function without vJoy."
+        ${EndIf}
+    ${EndIf}
+    
+    ; ---- ViGEmBus Driver Installation ----
+    ${If} $InstallViGEm == 1
+        DetailPrint "Downloading ViGEmBus driver..."
+        SetOutPath "$TEMP"
+        
+        ; Download ViGEmBus setup from GitHub releases (nefarius)
+        NSISdl::download /TIMEOUT=60000 "https://github.com/nefarius/ViGEmBus/releases/download/v1.22.0/ViGEmBus_Setup_1.22.0.exe" "$TEMP\ViGEmBus_Setup.exe"
+        Pop $0
+        ${If} $0 == "success"
+            DetailPrint "Installing ViGEmBus driver (this may take a moment)..."
+            ; Run ViGEmBus installer silently
+            nsExec::ExecToLog '"$TEMP\ViGEmBus_Setup.exe" /quiet /norestart'
+            Pop $0
+            ${If} $0 == 0
+                DetailPrint "ViGEmBus driver installed successfully"
+            ${Else}
+                ; Try alternate silent flags
+                nsExec::ExecToLog '"$TEMP\ViGEmBus_Setup.exe" --silent'
+                Pop $0
+                ${If} $0 == 0
+                    DetailPrint "ViGEmBus driver installed successfully"
+                ${Else}
+                    DetailPrint "ViGEmBus installation may require manual steps"
+                    MessageBox MB_OK|MB_ICONINFORMATION "ViGEmBus driver installation complete.$\r$\n$\r$\nIf Game Mode doesn't detect the controller, try:$\r$\n1. Restart your computer$\r$\n2. Or run ViGEmBus_Setup.exe manually from:$\r$\nhttps://github.com/nefarius/ViGEmBus/releases"
+                ${EndIf}
+            ${EndIf}
+            
+            ; Clean up
+            Delete "$TEMP\ViGEmBus_Setup.exe"
+        ${Else}
+            DetailPrint "Failed to download ViGEmBus: $0"
+            MessageBox MB_OK|MB_ICONEXCLAMATION "Could not download ViGEmBus driver.$\r$\n$\r$\nPlease install it manually from:$\r$\nhttps://github.com/nefarius/ViGEmBus/releases$\r$\n$\r$\nGame Mode (virtual Xbox controller) requires this driver."
         ${EndIf}
     ${EndIf}
 SectionEnd

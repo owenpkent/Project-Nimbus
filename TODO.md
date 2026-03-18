@@ -107,9 +107,15 @@
 ## v1.4.1 Mouse Capture & Controller Mode
 - [x] **Controller Mode Enforcement** — keep-alive pulse via ViGEm forces games to stay in controller mode and voluntarily release mouse
 - [x] **`src/mouse_hider.py`** — sub-deadzone stick oscillations, initial burst, WH_MOUSE_LL hook, integrated ClipCursor release
-- [x] **`startFullGameMode()` / `stopFullGameMode()`** — one-call combined borderless + cursor release + controller mode
-- [x] **Controller burst** — one-shot burst to force controller mode without continuous keep-alive
-- [ ] **QML UI for Controller Mode** — add toggle in Borderless Gaming dialog for controller mode enforcement
+- [x] **`startFullGameMode()` / `stopFullGameMode()`** — one-call combined focus mode + cursor release + controller mode
+- [x] **Controller burst** — one-shot burst (amplitude 0.5 + A-button press) to force controller mode
+- [x] **Game Focus Mode rewrite** — `WS_EX_NOACTIVATE` + `WM_MOUSEACTIVATE` native event filter prevents focus stealing
+- [x] **One-click "Start Game Mode" button** — bottom-right of main window, opens filtered window picker
+- [x] **Raw Input mouse suppression** — `WH_MOUSE_LL` hook blocks mouse-move events over game window
+- [x] **ViGEm on-demand creation** — Game Mode creates ViGEm gamepad regardless of profile type
+- [x] **ViGEm diagnostics** — picker popup shows red warning if ViGEmBus driver missing
+- [x] **Installer: ViGEmBus driver** — NSIS installer detects and offers to install ViGEmBus alongside vJoy
+- [ ] **Test with Satisfactory** — verify controller mode works with ViGEmBus installed (WIP)
 - [ ] **Test with Minecraft** — verify controller mode prevents cursor re-capture
 - [ ] **Test with Elden Ring** — verify game switches to gamepad prompts and releases mouse
 - [ ] **Test with No Man's Sky** — verify ViGEm + controller mode works end-to-end
