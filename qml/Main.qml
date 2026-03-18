@@ -25,6 +25,11 @@ ApplicationWindow {
     // Guard: prevents Edit Layout menu from appearing during init
     property bool _appReady: false
 
+    // Game Mode state
+    property bool gameModeActive: false
+    property int gameModeHwnd: 0
+    property string gameModeTitle: ""
+
     // Timer to delay _appReady until menu bar is fully stable
     Timer {
         id: appReadyTimer
@@ -87,6 +92,9 @@ ApplicationWindow {
         function onNoFocusModeChanged(enabled) {
             // Update menu checkbox when mode changes
             noFocusModeItem.checked = enabled
+        }
+        function onControllerModeChanged(active) {
+            root.gameModeActive = active
         }
     }
     
@@ -689,6 +697,126 @@ ApplicationWindow {
     // Borderless Gaming Dialog
     Comp.BorderlessGamingDialog {
         id: borderlessGamingDialog
+    }
+
+    // ===== GAME MODE BUTTON — always visible in bottom-right corner =====
+    Rectangle {
+        id: gameModeBar
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        anchors.margins: 10
+        width: gameModeRow.implicitWidth + 24
+        height: 44
+        radius: 8
+        color: root.gameModeActive ? "#0d3320" : "#1e1e1e"
+        border.color: root.gameModeActive ? "#00cc44" : "#444"
+        border.width: root.gameModeActive ? 2 : 1
+        z: 500
+
+        // Pulse animation when active
+        SequentialAnimation on border.width {
+            running: root.gameModeActive
+            loops: Animation.Infinite
+            NumberAnimation { to: 3; duration: 800; easing.type: Easing.InOutSine }
+            NumberAnimation { to: 2; duration: 800; easing.type: Easing.InOutSine }
+        }
+
+        Row {
+            id: gameModeRow
+            anchors.centerIn: parent
+            spacing: 8
+
+            // Status dot
+            Rectangle {
+                width: 10; height: 10; radius: 5
+                anchors.verticalCenter: parent.verticalCenter
+                color: root.gameModeActive ? "#00cc44" : "#555"
+                SequentialAnimation on opacity {
+                    running: root.gameModeActive
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.3; duration: 600 }
+                    NumberAnimation { to: 1.0; duration: 600 }
+                }
+            }
+
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.gameModeActive
+                    ? ("GAME MODE: " + (root.gameModeTitle !== "" ? root.gameModeTitle : "ACTIVE"))
+                    : "Start Game Mode"
+                color: root.gameModeActive ? "#00cc44" : "#aaa"
+                font.pixelSize: 13
+                font.bold: root.gameModeActive
+            }
+
+            // Stop button (only when active)
+            Rectangle {
+                visible: root.gameModeActive
+                width: 20; height: 20; radius: 4
+                color: stopMa.containsMouse ? "#7a2020" : "#5a1010"
+                anchors.verticalCenter: parent.verticalCenter
+                Label {
+                    anchors.centerIn: parent
+                    text: "✕"
+                    color: "white"
+                    font.pixelSize: 11
+                }
+                MouseArea {
+                    id: stopMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (controller) controller.stopFullGameMode(root.gameModeHwnd)
+                        root.gameModeActive = false
+                        root.gameModeHwnd = 0
+                        root.gameModeTitle = ""
+                    }
+                }
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            enabled: !root.gameModeActive
+            onClicked: {
+                if (!controller || root.gameModeActive) return
+
+                // Auto-detect running game
+                var detected = controller.autoDetectGame()
+                var hwnd = 0
+                var title = ""
+
+                if (detected && detected.hwnd && detected.hwnd > 0) {
+                    hwnd = detected.hwnd
+                    title = detected.title || ""
+                } else {
+                    // Fall back: pick the first non-Nimbus window
+                    var wins = controller.getWindowList()
+                    for (var i = 0; i < wins.length; i++) {
+                        var t = (wins[i].title || "").toLowerCase()
+                        if (t.indexOf("nimbus") < 0 && t.indexOf("project nimbus") < 0) {
+                            hwnd = wins[i].hwnd
+                            title = wins[i].title || ""
+                            break
+                        }
+                    }
+                }
+
+                if (hwnd > 0) {
+                    var ok = controller.startFullGameMode(hwnd, 30)
+                    if (ok) {
+                        root.gameModeHwnd = hwnd
+                        root.gameModeTitle = title
+                        root.gameModeActive = true
+                    }
+                } else {
+                    // No game found — just enable focus mode
+                    controller.noFocusMode = true
+                }
+            }
+        }
     }
 
     // Layout loader - switches between Flight Sim, Xbox, Adaptive, and Custom layouts
