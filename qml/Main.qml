@@ -699,7 +699,160 @@ ApplicationWindow {
         id: borderlessGamingDialog
     }
 
-    // ===== GAME MODE BUTTON — always visible in bottom-right corner =====
+    // ===== GAME MODE BUTTON + WINDOW PICKER =====
+
+    // Filtered window list for picker
+    property var _gameModeWindowList: []
+
+    function _refreshGameWindows() {
+        var skipTitles = [
+            "nimbus", "edge", "chrome", "firefox", "opera", "brave",
+            "internet explorer", "microsoft store", "windows security",
+            "task manager", "program manager", "windows shell experience",
+            "search", "cortana", "start", "action center", "settings",
+            "explorer", "file explorer", "notepad", "visual studio code",
+            "windsurf", "discord", "slack", "teams", "zoom", "obs ",
+            "steam", "epic games launcher", "gog galaxy"
+        ]
+        var skipClasses = [
+            "shell_traywnd", "progman", "button", "tooltips_class32",
+            "workerw", "dv2controlhost", "windows.ui.core.corewindow"
+        ]
+        var all = controller ? controller.getWindowList() : []
+        var filtered = []
+        for (var i = 0; i < all.length; i++) {
+            var w = all[i]
+            var t = (w.title || "").toLowerCase()
+            var c = (w.className || "").toLowerCase()
+            var skip = false
+            for (var j = 0; j < skipTitles.length; j++) {
+                if (t.indexOf(skipTitles[j]) >= 0) { skip = true; break }
+            }
+            for (var k = 0; k < skipClasses.length; k++) {
+                if (c.indexOf(skipClasses[k]) >= 0) { skip = true; break }
+            }
+            // Must be reasonably large (games are usually > 400px)
+            if (w.width < 400 || w.height < 300) skip = true
+            if (!skip) filtered.push(w)
+        }
+        root._gameModeWindowList = filtered
+    }
+
+    // Window picker popup
+    Rectangle {
+        id: gamePickerPopup
+        visible: false
+        anchors.bottom: gameModeBar.top
+        anchors.right: gameModeBar.right
+        anchors.bottomMargin: 6
+        width: 340
+        height: Math.min(pickerCol.implicitHeight + 16, 320)
+        radius: 8
+        color: "#1e1e1e"
+        border.color: "#4a9eff"
+        border.width: 1
+        z: 600
+        clip: true
+
+        Flickable {
+            anchors.fill: parent
+            anchors.margins: 8
+            contentHeight: pickerCol.implicitHeight
+            clip: true
+            flickableDirection: Flickable.VerticalFlick
+
+            Column {
+                id: pickerCol
+                width: parent.width
+                spacing: 4
+
+                Label {
+                    text: "Select your game:"
+                    color: "#4a9eff"
+                    font.pixelSize: 12
+                    font.bold: true
+                    bottomPadding: 4
+                }
+
+                Repeater {
+                    model: root._gameModeWindowList
+                    delegate: Rectangle {
+                        width: pickerCol.width
+                        height: 36
+                        radius: 4
+                        color: pickerItemMa.containsMouse ? "#2a4a7a" : "#252525"
+                        border.color: pickerItemMa.containsMouse ? "#4a9eff" : "#333"
+                        border.width: 1
+
+                        Row {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            spacing: 8
+
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.title || "(untitled)"
+                                color: "white"
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                                width: parent.width - sizeLabel.width - 8
+                            }
+                            Label {
+                                id: sizeLabel
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.width + "×" + modelData.height
+                                color: "#666"
+                                font.pixelSize: 10
+                            }
+                        }
+
+                        MouseArea {
+                            id: pickerItemMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                gamePickerPopup.visible = false
+                                var hwnd = modelData.hwnd
+                                var title = modelData.title || ""
+                                if (controller && hwnd > 0) {
+                                    var ok = controller.startFullGameMode(hwnd, 30)
+                                    if (ok) {
+                                        root.gameModeHwnd = hwnd
+                                        root.gameModeTitle = title
+                                        root.gameModeActive = true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // No windows found message
+                Label {
+                    visible: root._gameModeWindowList.length === 0
+                    text: "No game windows found.\nMake sure your game is running."
+                    color: "#888"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: pickerCol.width
+                    topPadding: 8
+                    bottomPadding: 8
+                }
+            }
+        }
+    }
+
+    // Click outside picker to close it
+    MouseArea {
+        anchors.fill: parent
+        z: 590
+        visible: gamePickerPopup.visible
+        onClicked: gamePickerPopup.visible = false
+    }
+
+    // The main Game Mode bar
     Rectangle {
         id: gameModeBar
         anchors.bottom: parent.bottom
@@ -713,7 +866,6 @@ ApplicationWindow {
         border.width: root.gameModeActive ? 2 : 1
         z: 500
 
-        // Pulse animation when active
         SequentialAnimation on border.width {
             running: root.gameModeActive
             loops: Animation.Infinite
@@ -726,7 +878,6 @@ ApplicationWindow {
             anchors.centerIn: parent
             spacing: 8
 
-            // Status dot
             Rectangle {
                 width: 10; height: 10; radius: 5
                 anchors.verticalCenter: parent.verticalCenter
@@ -749,18 +900,12 @@ ApplicationWindow {
                 font.bold: root.gameModeActive
             }
 
-            // Stop button (only when active)
             Rectangle {
                 visible: root.gameModeActive
                 width: 20; height: 20; radius: 4
                 color: stopMa.containsMouse ? "#7a2020" : "#5a1010"
                 anchors.verticalCenter: parent.verticalCenter
-                Label {
-                    anchors.centerIn: parent
-                    text: "✕"
-                    color: "white"
-                    font.pixelSize: 11
-                }
+                Label { anchors.centerIn: parent; text: "✕"; color: "white"; font.pixelSize: 11 }
                 MouseArea {
                     id: stopMa
                     anchors.fill: parent
@@ -771,6 +916,7 @@ ApplicationWindow {
                         root.gameModeActive = false
                         root.gameModeHwnd = 0
                         root.gameModeTitle = ""
+                        gamePickerPopup.visible = false
                     }
                 }
             }
@@ -782,39 +928,8 @@ ApplicationWindow {
             enabled: !root.gameModeActive
             onClicked: {
                 if (!controller || root.gameModeActive) return
-
-                // Auto-detect running game
-                var detected = controller.autoDetectGame()
-                var hwnd = 0
-                var title = ""
-
-                if (detected && detected.hwnd && detected.hwnd > 0) {
-                    hwnd = detected.hwnd
-                    title = detected.title || ""
-                } else {
-                    // Fall back: pick the first non-Nimbus window
-                    var wins = controller.getWindowList()
-                    for (var i = 0; i < wins.length; i++) {
-                        var t = (wins[i].title || "").toLowerCase()
-                        if (t.indexOf("nimbus") < 0 && t.indexOf("project nimbus") < 0) {
-                            hwnd = wins[i].hwnd
-                            title = wins[i].title || ""
-                            break
-                        }
-                    }
-                }
-
-                if (hwnd > 0) {
-                    var ok = controller.startFullGameMode(hwnd, 30)
-                    if (ok) {
-                        root.gameModeHwnd = hwnd
-                        root.gameModeTitle = title
-                        root.gameModeActive = true
-                    }
-                } else {
-                    // No game found — just enable focus mode
-                    controller.noFocusMode = true
-                }
+                root._refreshGameWindows()
+                gamePickerPopup.visible = !gamePickerPopup.visible
             }
         }
     }
