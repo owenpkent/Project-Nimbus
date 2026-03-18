@@ -10,7 +10,7 @@ Games capture the mouse using one of three mechanisms:
 |---|---|
 | **ClipCursor** — game confines cursor to its window rect | Nimbus continuously releases the clip via polling (`ClipCursor(NULL)`) |
 | **Exclusive Fullscreen** — game takes over the display | Nimbus converts the window to borderless windowed mode |
-| **Raw Input** — game reads mouse delta directly from HID | **Cannot be solved externally** — use second monitor or streaming |
+| **Raw Input** — game reads mouse delta directly from HID | Use **Controller Mode** (see below) — requires Raw Input: OFF in game settings |
 
 ## Access
 
@@ -22,13 +22,55 @@ Games capture the mouse using one of three mechanisms:
 
 ---
 
+## Controller Mode Enforcement (Full Game Mode)
+
+**Full Game Mode** is a more powerful alternative to simple cursor release. Use it when the game camera still moves with the mouse even after cursor release is enabled.
+
+### How it works
+
+1. **ViGEm keep-alive pulse**: Sends a continuous stream of tiny sub-deadzone Xbox 360 controller inputs so the game stays in "controller mode" and voluntarily releases the mouse
+2. **WH_MOUSE_LL hook**: Installs a system-wide low-level mouse hook that suppresses `WM_MOUSEMOVE` events over the game window — the camera receives zero mouse delta
+3. **ClipCursor release**: Fights the game's cursor confinement at 2ms polling so you can still reach the Nimbus window
+
+### Requirements
+- **ViGEmBus driver** must be installed (Project Nimbus prompts for this automatically)
+- **Raw Input: OFF** in the game's mouse/video settings — `WH_MOUSE_LL` intercepts `WM_MOUSEMOVE` but cannot intercept `WM_INPUT` (raw device events)
+- Game must be in **windowed or borderless** mode (not exclusive fullscreen)
+
+### Emergency stop
+Press **Ctrl+Alt+F12** at any time to instantly kill Controller Mode and restore normal mouse behavior. This hotkey works even if Nimbus doesn't have focus.
+
+### Which games benefit from Controller Mode?
+Any game that:
+- Uses a standard Windows message loop for mouse input (most games)
+- Has a "Raw Input" or "DirectInput" toggle in settings (switch it OFF)
+- Supports XInput controllers natively (detects the virtual Xbox 360 pad)
+
+**Games that will NOT work** even with Controller Mode:
+- Games with kernel-level anti-cheat (Vanguard, EAC) — the hook gets blocked
+- Games that use Raw Input exclusively with no toggle option
+
+### How it generalizes across game engines
+
+| Engine | Notes |
+|---|---|
+| **Java (Minecraft)** | Raw Input toggle in Mouse Settings. Set Raw Input: OFF. Works perfectly. |
+| **Unity** | Most Unity games use `WM_MOUSEMOVE`. No setting change needed. |
+| **Unreal Engine** | Has a "Raw Input" or "Use Mouse for Touch" option — disable raw input. |
+| **Source Engine** | `m_rawinput 0` in console disables raw input. Works with Controller Mode. |
+| **GameMaker** | Uses standard WM_MOUSEMOVE. No setting change needed. |
+| **Godot** | Uses standard WM_MOUSEMOVE. No setting change needed. |
+| **XNA / MonoGame / FNA** | Uses standard WM_MOUSEMOVE. No setting change needed. |
+
+---
+
 ## Verified Games
 
-These games have been tested and confirmed working with Project Nimbus borderless mode.
+These games have been tested and confirmed working with Project Nimbus.
 
-| Game | Input Method | Notes |
+| Game | Method | Notes |
 |---|---|---|
-| **Minecraft (Java Edition)** | ClipCursor | Set to windowed mode first. Cursor release works perfectly. |
+| **Minecraft (Java Edition)** | Controller Mode | Set Raw Input: OFF in Options → Controls → Mouse Settings. Use Full Game Mode. |
 | **Stardew Valley** | ClipCursor | XNA/MonoGame engine. Very accessible with controller support. |
 | **Terraria** | ClipCursor | XNA/MonoGame engine. Great accessibility with controller support. |
 | **The Elder Scrolls V: Skyrim** | ClipCursor | Set to windowed mode in launcher. Full controller support via ViGEm/vJoy. |

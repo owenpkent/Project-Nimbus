@@ -47,7 +47,7 @@ Rectangle {
     })
 
     // Action type labels
-    readonly property var actionLabels: ["None", "Button", "Multi-Button", "Axis", "Turbo"]
+    readonly property var actionLabels: ["None", "Button", "Multi-Button", "Axis", "Turbo", "Axis + Button"]
 
     function loadConfig(cfg) {
         if (cfg && cfg.zones) {
@@ -68,7 +68,7 @@ Rectangle {
 
     function _refreshZoneEditor() {
         var cfg = _getZoneConfig(selectedZone)
-        actionCombo.currentIndex = ["none", "button", "multi_button", "axis", "turbo"].indexOf(cfg.action || "none")
+        actionCombo.currentIndex = ["none", "button", "multi_button", "axis", "turbo", "axis_button"].indexOf(cfg.action || "none")
         if (actionCombo.currentIndex < 0) actionCombo.currentIndex = 0
 
         // Button fields
@@ -85,10 +85,16 @@ Rectangle {
         // Turbo fields
         turboButtonField.text = cfg.buttons && cfg.buttons.length > 0 ? String(cfg.buttons[0]) : "1"
         turboHzSlider.value = cfg.turbo_hz || 10
+
+        // Axis + Button fields
+        axisButtonAxisCombo.currentIndex = ["x", "y", "rx", "ry", "z", "rz", "sl0", "sl1"].indexOf(cfg.axis || "x")
+        if (axisButtonAxisCombo.currentIndex < 0) axisButtonAxisCombo.currentIndex = 0
+        axisButtonValueSlider.value = cfg.axis_value !== undefined ? cfg.axis_value : 1.0
+        axisButtonButtonsField.text = cfg.buttons ? cfg.buttons.join(", ") : "1"
     }
 
     function _saveCurrentZone() {
-        var cfg = { "action": ["none", "button", "multi_button", "axis", "turbo"][actionCombo.currentIndex] }
+        var cfg = { "action": ["none", "button", "multi_button", "axis", "turbo", "axis_button"][actionCombo.currentIndex] }
 
         if (cfg.action === "button") {
             cfg.buttons = [parseInt(buttonIdField.text) || 1]
@@ -101,6 +107,11 @@ Rectangle {
         } else if (cfg.action === "turbo") {
             cfg.buttons = [parseInt(turboButtonField.text) || 1]
             cfg.turbo_hz = turboHzSlider.value
+        } else if (cfg.action === "axis_button") {
+            cfg.axis = ["x", "y", "rx", "ry", "z", "rz", "sl0", "sl1"][axisButtonAxisCombo.currentIndex]
+            cfg.axis_value = axisButtonValueSlider.value
+            var abParts = axisButtonButtonsField.text.split(",").map(function(s) { return parseInt(s.trim()) }).filter(function(n) { return !isNaN(n) && n > 0 })
+            cfg.buttons = abParts.length > 0 ? abParts : [1]
         }
 
         _setZoneConfig(selectedZone, cfg)
@@ -429,6 +440,59 @@ Rectangle {
                         }
                         Text { text: turboHzSlider.value.toFixed(0) + " Hz"; color: "#ff9800"; font.pixelSize: 10; width: 40; anchors.verticalCenter: parent.verticalCenter }
                     }
+                }
+
+                // Axis + Button action fields
+                Column {
+                    spacing: 4
+                    visible: actionCombo.currentIndex === 5
+                    Row {
+                        spacing: 8
+                        Text { text: "Axis:"; color: "#ccc"; font.pixelSize: 11; width: 50; anchors.verticalCenter: parent.verticalCenter }
+                        Basic.ComboBox {
+                            id: axisButtonAxisCombo
+                            width: 80; height: 26
+                            model: ["X", "Y", "RX", "RY", "Z", "RZ", "SL0", "SL1"]
+                            onCurrentIndexChanged: _saveCurrentZone()
+                            background: Rectangle { color: "#252525"; border.color: "#555"; radius: 4 }
+                            contentItem: Text { text: axisButtonAxisCombo.displayText; color: "white"; font.pixelSize: 11; leftPadding: 6; verticalAlignment: Text.AlignVCenter }
+                            delegate: ItemDelegate {
+                                width: axisButtonAxisCombo.width
+                                highlighted: axisButtonAxisCombo.highlightedIndex === index
+                                contentItem: Text { text: modelData; color: parent.highlighted ? "white" : "#ccc"; font.pixelSize: 11; leftPadding: 6 }
+                                background: Rectangle { color: parent.highlighted ? "#e040fb" : "#333" }
+                            }
+                            popup: Popup {
+                                y: axisButtonAxisCombo.height; width: axisButtonAxisCombo.width; padding: 1
+                                background: Rectangle { color: "#333"; border.color: "#555"; radius: 4 }
+                                contentItem: ListView { clip: true; implicitHeight: contentHeight; model: axisButtonAxisCombo.delegateModel }
+                            }
+                        }
+                        Basic.Slider {
+                            id: axisButtonValueSlider
+                            width: 80; from: -1; to: 1; stepSize: 0.1; value: 1.0
+                            onValueChanged: _saveCurrentZone()
+                            background: Rectangle { x: axisButtonValueSlider.leftPadding; y: axisButtonValueSlider.topPadding + axisButtonValueSlider.availableHeight / 2 - 2; width: axisButtonValueSlider.availableWidth; height: 4; radius: 2; color: "#444"
+                                Rectangle { width: axisButtonValueSlider.visualPosition * parent.width; height: parent.height; radius: 2; color: "#e040fb" }
+                            }
+                            handle: Rectangle { x: axisButtonValueSlider.leftPadding + axisButtonValueSlider.visualPosition * (axisButtonValueSlider.availableWidth - width); y: axisButtonValueSlider.topPadding + axisButtonValueSlider.availableHeight / 2 - height / 2; width: 14; height: 14; radius: 7; color: "#fff" }
+                        }
+                        Text { text: axisButtonValueSlider.value.toFixed(1); color: "#e040fb"; font.pixelSize: 10; width: 28; anchors.verticalCenter: parent.verticalCenter }
+                    }
+                    Row {
+                        spacing: 8
+                        Text { text: "Buttons:"; color: "#ccc"; font.pixelSize: 11; width: 50; anchors.verticalCenter: parent.verticalCenter }
+                        Rectangle {
+                            width: 120; height: 26; radius: 4; color: "#252525"; border.color: "#555"
+                            TextInput {
+                                id: axisButtonButtonsField
+                                anchors.fill: parent; anchors.margins: 4
+                                color: "white"; font.pixelSize: 11
+                                onTextChanged: _saveCurrentZone()
+                            }
+                        }
+                    }
+                    Text { text: "Axis + button(s) fire together"; color: "#666"; font.pixelSize: 9; leftPadding: 58 }
                 }
             }
         }

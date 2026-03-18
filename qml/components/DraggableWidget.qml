@@ -25,6 +25,10 @@ Item {
     property real deadZone: 0.0            // Axis dead zone % (0-100, matches Settings menu)
     property real extremityDeadZone: 5.0   // Extremity dead zone % (0-100, matches Settings menu)
 
+    // Per-axis inversion (joystick only)
+    property bool invert_x: false           // Flip left/right direction
+    property bool invert_y: false           // Flip up/down direction (on top of the default screen-Y negation)
+
     // Macro mode properties (joystick only)
     property bool macroMode: false          // When true, joystick acts as macro input instead of analog stick
     property var macroConfig: ({            // Configuration for macro zones
@@ -398,6 +402,16 @@ Item {
                     var axis = cfg.axis || "x"
                     var value = active ? (cfg.axis_value !== undefined ? cfg.axis_value : 1.0) : 0.0
                     controller.setAxis(axis, value)
+                } else if (cfg.action === "axis_button") {
+                    // Fire axis AND button(s) simultaneously
+                    var abAxis = cfg.axis || "x"
+                    var abValue = active ? (cfg.axis_value !== undefined ? cfg.axis_value : 1.0) : 0.0
+                    controller.setAxis(abAxis, abValue)
+                    if (cfg.buttons) {
+                        for (var k = 0; k < cfg.buttons.length; k++) {
+                            controller.setButton(cfg.buttons[k], active)
+                        }
+                    }
                 } else if (cfg.action === "turbo") {
                     if (active) {
                         // Start turbo
@@ -446,14 +460,20 @@ Item {
                 ny = root._applyCurve(ny)
                 var axisX = root.mapping["axis_x"] || ""
                 var axisY = root.mapping["axis_y"] || ""
-                if (axisX && axisY) {
+                var hasX = axisX && axisX !== "none"
+                var hasY = axisY && axisY !== "none"
+                // ny is screen-down=positive; controller Y is up=positive — always negate
+                // Then apply optional per-axis inversion from widget config
+                var outX = root.invert_x ? -nx : nx
+                var outY = root.invert_y ? ny : -ny
+                if (hasX || hasY) {
                     if (axisX === "x" && axisY === "y") {
-                        controller.setLeftStick(nx, -ny)
+                        controller.setLeftStick(outX, outY)
                     } else if (axisX === "rx" && axisY === "ry") {
-                        controller.setRightStick(nx, -ny)
+                        controller.setRightStick(outX, outY)
                     } else {
-                        controller.setAxis(axisX, nx)
-                        controller.setAxis(axisY, -ny)
+                        if (hasX) controller.setAxis(axisX, outX)
+                        if (hasY) controller.setAxis(axisY, outY)
                     }
                 }
             }

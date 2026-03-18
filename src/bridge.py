@@ -221,8 +221,8 @@ class ControllerBridge(QObject):
     def setWindow(self, window: QWindow) -> None:  # noqa: N802
         """Set the window reference for no-focus mode. Called from QML after window is ready."""
         self._window = window
-        # Restore saved no-focus mode setting
-        if self._config.get("ui.no_focus_mode", False):
+        # Only restore no-focus mode if user explicitly enabled it (not from game mode auto-enable)
+        if self._config.get("ui.no_focus_mode_user", False):
             self._set_no_focus_mode(True)
     
     @Slot(result=bool)
@@ -332,6 +332,46 @@ class ControllerBridge(QObject):
                 iface.set_button(int(button_id), bool(pressed))
         except Exception:
             pass
+
+    @Slot(result=str)
+    def getControllerStateText(self) -> str:  # noqa: N802
+        """Return a one-line controller state summary for the live monitor bar."""
+        try:
+            iface = self._get_active_interface()
+            if not iface or not iface.is_connected:
+                return "Controller: not connected"
+            cv = iface.current_values
+            if self._use_vigem:
+                lx = cv.get('left_x', 0.0)
+                ly = cv.get('left_y', 0.0)
+                rx = cv.get('right_x', 0.0)
+                ry = cv.get('right_y', 0.0)
+                lt = cv.get('left_trigger', 0.0)
+                rt = cv.get('right_trigger', 0.0)
+                btns = [str(b) for b, p in getattr(iface, 'button_states', {}).items() if p]
+                btns_str = "Btn:" + ",".join(btns) if btns else ""
+                parts = [
+                    f"Xbox360",
+                    f"LX:{lx:+.2f}",
+                    f"LY:{ly:+.2f}",
+                    f"RX:{rx:+.2f}",
+                    f"RY:{ry:+.2f}",
+                ]
+                if lt > 0.01:
+                    parts.append(f"LT:{lt:.2f}")
+                if rt > 0.01:
+                    parts.append(f"RT:{rt:.2f}")
+                if btns_str:
+                    parts.append(btns_str)
+                return "  ".join(parts)
+            else:
+                parts = ["vJoy"]
+                for k, v in cv.items():
+                    if abs(float(v)) > 0.01:
+                        parts.append(f"{k}:{float(v):+.2f}")
+                return "  ".join(parts) if len(parts) > 1 else "vJoy  (all axes at zero)"
+        except Exception as e:
+            return f"Controller error: {e}"
 
     @Slot(float)
     def setScaleFactor(self, value: float) -> None:  # noqa: N802
@@ -530,7 +570,7 @@ class ControllerBridge(QObject):
             _m = importlib.import_module("src")
             return _m.__version__
         except Exception:
-            return "1.4.0"
+            return "1.4.2"
 
     @Slot(result=bool)
     def isVJoyConnected(self) -> bool:  # noqa: N802
@@ -1203,6 +1243,7 @@ class ControllerBridge(QObject):
             
             success = _mouse_hider.start_controller_mode(
                 gamepad=self._vigem.gamepad,
+                vigem_interface=self._vigem,
                 game_hwnd=game_hwnd,
                 nimbus_hwnd=nimbus_hwnd,
                 pulse_hz=max(5, min(120, pulse_hz)),
@@ -1283,15 +1324,14 @@ class ControllerBridge(QObject):
         success = False
         
         # Step 0: Enable Game Focus Mode so clicking Nimbus doesn't steal focus
+        # NOTE: This is session-only — NOT saved to config, so it resets on restart.
         if WINDOW_UTILS_AVAILABLE and self._window and not self._no_focus_mode:
             try:
                 hwnd = get_qt_window_handle(self._window)
                 if make_window_no_activate(hwnd):
                     self._no_focus_mode = True
-                    self._config.set("ui.no_focus_mode", True)
-                    self._config.save_config()
                     self.noFocusModeChanged.emit(True)
-                    print("[bridge] Full Game Mode: Game Focus Mode auto-enabled")
+                    print("[bridge] Full Game Mode: Game Focus Mode auto-enabled (session-only)")
             except Exception as e:
                 print(f"[bridge] Full Game Mode: focus mode failed ({e}), continuing...")
         
@@ -1342,6 +1382,7 @@ class ControllerBridge(QObject):
                     self.controllerModeChanged.emit(active)
                 _mouse_hider.start_controller_mode(
                     gamepad=gamepad,
+                    vigem_interface=self._vigem,
                     game_hwnd=game_hwnd,
                     nimbus_hwnd=nimbus_hwnd,
                     pulse_hz=pulse_hz,
@@ -1397,6 +1438,17 @@ class ControllerBridge(QObject):
                     if self._borderless_game_hwnd == game_hwnd:
                         self._borderless_game_hwnd = 0
                     self.borderlessModeChanged.emit(game_hwnd, False)
+            except Exception:
+                pass
+        
+        # Disable game focus mode — restore normal window activation
+        if WINDOW_UTILS_AVAILABLE and self._window:
+            try:
+                hwnd = get_qt_window_handle(self._window)
+                remove_window_no_activate(hwnd)
+                self._no_focus_mode = False
+                self.noFocusModeChanged.emit(False)
+                print("[bridge] Full Game Mode: Game Focus Mode disabled, window is activatable again")
             except Exception:
                 pass
         

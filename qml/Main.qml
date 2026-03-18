@@ -30,6 +30,9 @@ ApplicationWindow {
     property int gameModeHwnd: 0
     property string gameModeTitle: ""
 
+    // Controller monitor bar
+    property bool controllerMonitorVisible: false
+
     // Timer to delay _appReady until menu bar is fully stable
     Timer {
         id: appReadyTimer
@@ -453,6 +456,13 @@ ApplicationWindow {
                 }
             }
             MenuSeparator {}
+            MenuItem {
+                id: controllerMonitorItem
+                text: qsTr("Controller Monitor")
+                checkable: true
+                checked: root.controllerMonitorVisible
+                onTriggered: { viewMenu.close(); Qt.callLater(function(){ root.controllerMonitorVisible = checked; }); }
+            }
             MenuItem {
                 id: debugBordersItem
                 text: qsTr("Debug Borders")
@@ -978,6 +988,38 @@ ApplicationWindow {
                 root._refreshGameWindows()
                 gamePickerPopup.visible = !gamePickerPopup.visible
             }
+        }
+    }
+
+    // Controller monitor status bar
+    footer: Rectangle {
+        id: controllerMonitorBar
+        width: parent.width
+        height: root.controllerMonitorVisible ? 22 : 0
+        color: "#0d1117"
+        border.color: "#222"
+        border.width: root.controllerMonitorVisible ? 1 : 0
+        clip: true
+
+        Timer {
+            interval: 150
+            running: root.controllerMonitorVisible
+            repeat: true
+            onTriggered: {
+                if (controller) monitorText.text = controller.getControllerStateText()
+            }
+        }
+
+        Text {
+            id: monitorText
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            color: "#66bb6a"
+            font.pixelSize: 10
+            font.family: "Consolas"
+            verticalAlignment: Text.AlignVCenter
+            text: "Controller Monitor — enable via View → Controller Monitor"
         }
     }
 

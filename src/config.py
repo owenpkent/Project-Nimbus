@@ -42,7 +42,13 @@ class ControllerConfig:
         # Ensure user profiles directory exists and has default profiles
         self._ensure_user_profiles()
         
-        self._current_profile: Optional[str] = self.config.get("current_profile", "flight_simulator")
+        _saved_profile = self.config.get("current_profile", "adaptive_platform_2")
+        # If the saved profile was deprecated and removed, fall back to the default
+        if _saved_profile in self._DEPRECATED_BUNDLED_PROFILES:
+            _saved_profile = "adaptive_platform_2"
+            self.set("current_profile", _saved_profile)
+            self.save_config()
+        self._current_profile: Optional[str] = _saved_profile
     
     @staticmethod
     def _get_user_data_dir() -> Path:
@@ -79,14 +85,33 @@ class ControllerConfig:
         
         return base_path / "profiles"
     
+    # Old bundled profile IDs that have been retired and should be cleaned up
+    # from the user profiles directory to avoid confusion.
+    _DEPRECATED_BUNDLED_PROFILES = {
+        "flight_simulator",
+        "xbox_controller",
+        "adaptive_platform_1",
+    }
+
     def _ensure_user_profiles(self) -> None:
         """
         Ensure user profiles directory exists and contains default profiles.
         
         Copies bundled profiles to user directory if they don't exist.
+        Also removes deprecated bundled profiles that are no longer shipped.
         """
         # Create user profiles directory
         self._user_profiles_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Remove deprecated bundled profiles that are no longer shipped
+        for old_id in self._DEPRECATED_BUNDLED_PROFILES:
+            old_path = self._user_profiles_dir / f"{old_id}.json"
+            if old_path.exists():
+                try:
+                    old_path.unlink()
+                    print(f"Removed deprecated profile: {old_id}")
+                except OSError:
+                    pass
         
         # Copy bundled profiles if they don't exist in user directory
         if self._bundled_profiles_dir.exists():

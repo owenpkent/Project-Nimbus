@@ -6,6 +6,26 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.4.2] — 2026-03-18
+
+### Added
+- **Controller Monitor status bar** — Live controller output display at the bottom of the Nimbus window. Toggle via **View → Controller Monitor**. Shows all current axis values (LX, LY, RX, RY, LT, RT) and active buttons at 150ms refresh. Replaces the need for an external vJoy monitor when using ViGEm.
+- **Individual axis selection for joystick widgets** — Axis Pair combo replaced with separate **X-Axis** and **Y-Axis** dropdowns in the widget config dialog. Each can independently be set to any axis (`x`, `y`, `rx`, `ry`, `z`, `rz`, `sl0`, `sl1`) or `None`. Enables mixed mappings like Left-Y + Right-X from a single joystick widget.
+- **Per-axis invert toggles** — Each axis row in the joystick config dialog now has an **INV** button. When active (blue), that axis direction is flipped. Useful for games with inverted camera axes or for left-handed control schemes.
+- **`getControllerStateText()` bridge slot** — Returns a formatted one-line summary of current ViGEm/vJoy axis and button state for the monitor bar.
+
+### Fixed
+- **Taskbar icon missing** — `WS_EX_APPWINDOW` is now explicitly set and `WS_EX_TOOLWINDOW` cleared when Game Focus Mode is enabled. The Nimbus taskbar entry is always visible even with `WS_EX_NOACTIVATE` active.
+- **Can't bring Nimbus to foreground** — Game Focus Mode (`WS_EX_NOACTIVATE`) was being persisted to config via `startFullGameMode`, so it was active on every startup even outside game sessions. It is now session-only: enabled automatically when Full Game Mode starts, disabled when it stops, and never saved to the profile config.
+- **Axis + Button macro not moving** — The keep-alive pulse loop (`mouse_hider.py`) was calling `left_joystick_float(micro_x, micro_y)` every 33ms, overwriting any macro-set axis value (e.g. LY:+1.0 for forward movement). The pulse now saves the current axis state from `ViGEmInterface.current_values`, adds the tiny oscillation delta on top, then immediately restores the saved values. Jump + movement now work simultaneously.
+- **Axis + Button macro action not saving** — `_saveCurrentZone` in `MacroEditorDialog.qml` was missing `"axis_button"` from its action array (index 5 out of bounds → saved `undefined`). Execution code was already correct but never reached because the saved action was `undefined`.
+
+### Changed
+- **`start_controller_mode()` now accepts `vigem_interface` parameter** — The pulse loop and mouse hook burst both save/restore the full left + right stick state through this reference, preventing any pulse from clobbering gameplay axis values.
+- **Game Focus Mode restore key changed** — `setWindow` now checks `ui.no_focus_mode_user` (explicit user setting) instead of `ui.no_focus_mode` (which was set by game mode auto-enable). Existing profiles with a stale `ui.no_focus_mode: true` will no longer force `WS_EX_NOACTIVATE` at startup.
+
+---
+
 ## [1.4.1] — 2026-03-17
 
 ### Added

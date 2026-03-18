@@ -132,6 +132,8 @@ Item {
                 sensitivity: wData.sensitivity !== undefined ? wData.sensitivity : 50.0
                 deadZone: wData.dead_zone !== undefined ? wData.dead_zone : 0.0
                 extremityDeadZone: wData.extremity_dead_zone !== undefined ? wData.extremity_dead_zone : 5.0
+                invert_x: wData.invert_x || false
+                invert_y: wData.invert_y || false
                 macroMode: wData.macro_mode || false
                 macroConfig: wData.macro_config || { "zones": {}, "deadzone_percent": 30, "diagonal_mode": "8-way" }
 
@@ -468,9 +470,13 @@ Item {
                         toggleModeSwitch.checked = targetWidget.toggle_mode || false
                     }
                     if (targetWidget.type === "joystick") {
-                        var axPair = (targetWidget.mapping.axis_x || "x") + "/" + (targetWidget.mapping.axis_y || "y")
-                        axisPairCombo.currentIndex = ["x/y", "rx/ry", "z/rz", "sl0/sl1"].indexOf(axPair)
-                        if (axisPairCombo.currentIndex < 0) axisPairCombo.currentIndex = 0
+                        var _axVals = ["none", "x", "y", "rx", "ry", "z", "rz", "sl0", "sl1"]
+                        var _hIdx = _axVals.indexOf(targetWidget.mapping.axis_x || "x")
+                        axisXCombo.currentIndex = _hIdx >= 0 ? _hIdx : 1
+                        var _vIdx = _axVals.indexOf(targetWidget.mapping.axis_y || "y")
+                        axisYCombo.currentIndex = _vIdx >= 0 ? _vIdx : 2
+                        invertXBtn.inverted = targetWidget.invert_x || false
+                        invertYBtn.inverted = targetWidget.invert_y || false
                         tripleClickSwitch.checked = targetWidget.triple_click_enabled !== undefined ? targetWidget.triple_click_enabled : true
                         autoCenterSwitch.checked = targetWidget.auto_center || false
                         autoCenterDelaySlider.value = targetWidget.auto_center_delay !== undefined ? Math.max(1, Math.min(10, targetWidget.auto_center_delay)) : 5
@@ -685,24 +691,65 @@ Item {
 
                 Row {
                     spacing: 8
-                    Text { text: "Axis Pair:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
+                    Text { text: "X-Axis:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
                     Basic.ComboBox {
-                        id: axisPairCombo
-                        width: 200
-                        model: ["x/y (Left Stick)", "rx/ry (Right Stick)", "z/rz (Throttle/Rudder)", "sl0/sl1 (Slider Axes)"]
+                        id: axisXCombo
+                        width: 160
+                        model: ["None", "x (Left Stick X)", "y (Left Stick Y)", "rx (Right Stick X)", "ry (Right Stick Y)", "z (LT)", "rz (RT)", "sl0", "sl1"]
                         background: Rectangle { color: "#1a1a1a"; border.color: "#444"; radius: 4 }
-                        contentItem: Text { text: axisPairCombo.displayText; color: "white"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
+                        contentItem: Text { text: axisXCombo.displayText; color: "white"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
                         delegate: ItemDelegate {
-                            width: axisPairCombo.width
-                            highlighted: axisPairCombo.highlightedIndex === index
+                            width: axisXCombo.width
+                            highlighted: axisXCombo.highlightedIndex === index
                             contentItem: Text { text: modelData; color: parent.highlighted ? "white" : "#ccc"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
                             background: Rectangle { color: parent.highlighted ? "#4a9eff" : "#333" }
                         }
                         popup: Popup {
-                            y: axisPairCombo.height; width: axisPairCombo.width; padding: 1
+                            y: axisXCombo.height; width: axisXCombo.width; padding: 1
                             background: Rectangle { color: "#333"; border.color: "#555"; radius: 4 }
-                            contentItem: ListView { clip: true; implicitHeight: contentHeight; model: axisPairCombo.delegateModel; currentIndex: axisPairCombo.highlightedIndex }
+                            contentItem: ListView { clip: true; implicitHeight: contentHeight; model: axisXCombo.delegateModel; currentIndex: axisXCombo.highlightedIndex }
                         }
+                    }
+                    Rectangle {
+                        id: invertXBtn
+                        property bool inverted: false
+                        width: 36; height: 30; radius: 4
+                        color: inverted ? "#4a9eff" : "#2a2a2a"
+                        border.color: inverted ? "#6ab8ff" : "#555"
+                        Text { anchors.centerIn: parent; text: "INV"; color: parent.inverted ? "white" : "#888"; font.pixelSize: 10; font.bold: true }
+                        MouseArea { anchors.fill: parent; onClicked: parent.inverted = !parent.inverted; cursorShape: Qt.PointingHandCursor }
+                    }
+                }
+
+                Row {
+                    spacing: 8
+                    Text { text: "Y-Axis:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
+                    Basic.ComboBox {
+                        id: axisYCombo
+                        width: 160
+                        model: ["None", "x (Left Stick X)", "y (Left Stick Y)", "rx (Right Stick X)", "ry (Right Stick Y)", "z (LT)", "rz (RT)", "sl0", "sl1"]
+                        background: Rectangle { color: "#1a1a1a"; border.color: "#444"; radius: 4 }
+                        contentItem: Text { text: axisYCombo.displayText; color: "white"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
+                        delegate: ItemDelegate {
+                            width: axisYCombo.width
+                            highlighted: axisYCombo.highlightedIndex === index
+                            contentItem: Text { text: modelData; color: parent.highlighted ? "white" : "#ccc"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
+                            background: Rectangle { color: parent.highlighted ? "#4a9eff" : "#333" }
+                        }
+                        popup: Popup {
+                            y: axisYCombo.height; width: axisYCombo.width; padding: 1
+                            background: Rectangle { color: "#333"; border.color: "#555"; radius: 4 }
+                            contentItem: ListView { clip: true; implicitHeight: contentHeight; model: axisYCombo.delegateModel; currentIndex: axisYCombo.highlightedIndex }
+                        }
+                    }
+                    Rectangle {
+                        id: invertYBtn
+                        property bool inverted: false
+                        width: 36; height: 30; radius: 4
+                        color: inverted ? "#4a9eff" : "#2a2a2a"
+                        border.color: inverted ? "#6ab8ff" : "#555"
+                        Text { anchors.centerIn: parent; text: "INV"; color: parent.inverted ? "white" : "#888"; font.pixelSize: 10; font.bold: true }
+                        MouseArea { anchors.fill: parent; onClicked: parent.inverted = !parent.inverted; cursorShape: Qt.PointingHandCursor }
                     }
                 }
 
@@ -1278,9 +1325,12 @@ Item {
                         }
 
                         if (wType === "joystick") {
-                            var axisPairs = [["x", "y"], ["rx", "ry"], ["z", "rz"], ["sl0", "sl1"]]
-                            var pair = axisPairs[axisPairCombo.currentIndex] || ["x", "y"]
-                            _updateWidgetProp(wid, "mapping", {"axis_x": pair[0], "axis_y": pair[1]})
+                            var _axSave = ["none", "x", "y", "rx", "ry", "z", "rz", "sl0", "sl1"]
+                            var selAxisX = _axSave[axisXCombo.currentIndex] || "x"
+                            var selAxisY = _axSave[axisYCombo.currentIndex] || "y"
+                            _updateWidgetProp(wid, "mapping", {"axis_x": selAxisX, "axis_y": selAxisY})
+                            _updateWidgetProp(wid, "invert_x", invertXBtn.inverted)
+                            _updateWidgetProp(wid, "invert_y", invertYBtn.inverted)
                             _updateWidgetProp(wid, "triple_click_enabled", tripleClickSwitch.checked)
                             _updateWidgetProp(wid, "auto_center", autoCenterSwitch.checked)
                             _updateWidgetProp(wid, "auto_center_delay", autoCenterDelaySlider.value)

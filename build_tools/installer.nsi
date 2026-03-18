@@ -9,9 +9,9 @@
 
 ; ---- General ----
 !define PRODUCT_NAME "Project Nimbus"
-!define PRODUCT_EXE "Project-Nimbus-1.4.1.exe"
+!define PRODUCT_EXE "Project-Nimbus-1.4.2.exe"
 !define PRODUCT_PUBLISHER "Owen Kent"
-!define PRODUCT_VERSION "1.4.1"
+!define PRODUCT_VERSION "1.4.2"
 !define PRODUCT_GUID "project-nimbus-virtual-controller"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_GUID}"
 

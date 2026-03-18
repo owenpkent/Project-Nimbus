@@ -253,8 +253,10 @@ def enable_game_focus_mode(our_hwnd: int) -> bool:
         # Save original extended style so we can restore it
         _original_ex_style = _GetWindowLongPtr(our_hwnd, GWL_EXSTYLE)
         
-        # Add WS_EX_NOACTIVATE
-        new_style = _original_ex_style | WS_EX_NOACTIVATE
+        # Add WS_EX_NOACTIVATE + WS_EX_APPWINDOW, remove WS_EX_TOOLWINDOW
+        # WS_EX_APPWINDOW forces a taskbar entry even on non-activatable windows.
+        # WS_EX_TOOLWINDOW hides from taskbar — must be removed.
+        new_style = (_original_ex_style | WS_EX_NOACTIVATE | WS_EX_APPWINDOW) & ~WS_EX_TOOLWINDOW
         _SetWindowLongPtr(our_hwnd, GWL_EXSTYLE, new_style)
         
         # Install the native event filter

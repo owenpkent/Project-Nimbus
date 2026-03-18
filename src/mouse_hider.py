@@ -67,6 +67,29 @@ if sys.platform == "win32":
         wintypes.LPARAM,  # lParam
     )
 
+    # Declare argtypes so ctypes handles 64-bit LPARAM correctly
+    user32.CallNextHookEx.argtypes = [
+        wintypes.HHOOK,   # hhk
+        ctypes.c_int,     # nCode
+        wintypes.WPARAM,  # wParam
+        wintypes.LPARAM,  # lParam
+    ]
+    user32.CallNextHookEx.restype = ctypes.c_long
+
+    user32.SetWindowsHookExW.argtypes = [
+        ctypes.c_int,     # idHook
+        HOOKPROC,         # lpfn
+        wintypes.HINSTANCE,  # hMod
+        wintypes.DWORD,   # dwThreadId
+    ]
+    user32.SetWindowsHookExW.restype = wintypes.HHOOK
+
+    user32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+    user32.SetCursorPos.restype = wintypes.BOOL
+
+    user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+    user32.GetCursorPos.restype = wintypes.BOOL
+
 
 # ---------------------------------------------------------------------------
 # Module state
@@ -78,6 +101,7 @@ _controller_mode_lock = threading.Lock()
 # Keep-alive pulse thread
 _pulse_thread: Optional[threading.Thread] = None
 _pulse_gamepad: Any = None  # ViGEm gamepad reference
+_vigem_iface_ref: Any = None  # ViGEmInterface reference (for current_values save/restore)
 _pulse_hz: int = 30
 _pulse_game_hwnd: int = 0
 
@@ -99,8 +123,19 @@ _stats = {
 # Nimbus window handle (to identify "our" window and let mouse through)
 _nimbus_hwnd: int = 0
 
+# Cursor parking position (screen coords) — set when controller mode starts
+_park_x: int = 0
+_park_y: int = 0
+
 # Callback for status changes
 _status_callback: Optional[Callable[[bool], None]] = None
+
+# Safety: maximum duration before auto-stop (seconds). 0 = no limit.
+_MAX_DURATION: float = 0
+
+# Emergency hotkey state (Ctrl+Alt+F12)
+_hotkey_thread: Optional[threading.Thread] = None
+_hotkey_stop_event = threading.Event()
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +153,8 @@ def _pulse_loop() -> None:
     This keeps the game in controller mode so it voluntarily releases
     the mouse cursor.
     """
+    global _park_x, _park_y
+
     # Elevate thread priority for consistent timing
     try:
         THREAD_PRIORITY_ABOVE_NORMAL = 1
@@ -151,8 +188,24 @@ def _pulse_loop() -> None:
             micro_x = 0.08 * math.cos(angle)
             micro_y = 0.08 * math.sin(angle)
 
-            gamepad.left_joystick_float(micro_x, micro_y)
+            # Save current axis state so macro/joystick values aren't clobbered
+            iface = _vigem_iface_ref
+            if iface is not None:
+                saved_lx = iface.current_values.get('left_x', 0.0)
+                saved_ly = iface.current_values.get('left_y', 0.0)
+                saved_rx = iface.current_values.get('right_x', 0.0)
+                saved_ry = iface.current_values.get('right_y', 0.0)
+            else:
+                saved_lx = saved_ly = saved_rx = saved_ry = 0.0
+
+            gamepad.left_joystick_float(saved_lx + micro_x, saved_ly + micro_y)
             gamepad.update()
+
+            # Restore the actual axis state immediately
+            if iface is not None:
+                gamepad.left_joystick_float(saved_lx, saved_ly)
+                gamepad.right_joystick_float(saved_rx, saved_ry)
+                gamepad.update()
 
             with _stats_lock:
                 _stats["pulses_sent"] += 1
@@ -165,6 +218,17 @@ def _pulse_loop() -> None:
                     _release_clip_with_attach(game_hwnd)
                 else:
                     ctypes.windll.user32.ClipCursor(None)
+
+            # Refresh parking position & park cursor if over game (every 8th pulse)
+            if tick % 8 == 0 and sys.platform == "win32":
+                try:
+                    _park_x, _park_y = _compute_park_position()
+                    pt = wintypes.POINT()
+                    if user32.GetCursorPos(ctypes.byref(pt)):
+                        if _is_point_in_game_window(pt.x, pt.y) and not _is_point_in_nimbus_window(pt.x, pt.y):
+                            user32.SetCursorPos(_park_x, _park_y)
+                except Exception:
+                    pass
 
         except Exception as e:
             if _controller_mode_active:
@@ -270,55 +334,82 @@ def _is_point_in_nimbus_window(x: int, y: int) -> bool:
         return False
 
 
+def _compute_park_position() -> tuple:
+    """
+    Compute cursor parking position.
+
+    Prefers the center of the Nimbus window so the cursor stays visible
+    and accessible. Falls back to the top-left screen corner (1, 1).
+    """
+    if _nimbus_hwnd:
+        try:
+            rect = wintypes.RECT()
+            user32.GetWindowRect(_nimbus_hwnd, ctypes.byref(rect))
+            cx = (rect.left + rect.right) // 2
+            cy = (rect.top + rect.bottom) // 2
+            if cx > 0 or cy > 0:
+                return cx, cy
+        except Exception:
+            pass
+    return 1, 1
+
+
 def _low_level_mouse_proc(n_code: int, w_param: int, l_param: int) -> int:
     """
     WH_MOUSE_LL callback. Runs for every system-wide mouse event.
 
     Strategy:
-      - When cursor is over the NIMBUS window: pass events through normally
-        so the user can interact with Nimbus widgets.
-      - When cursor is over the GAME window: SUPPRESS mouse-move events
-        (return 1 to block them) so the game's Raw Input doesn't receive
-        delta movement. This prevents the camera from moving when the user
-        is trying to use Nimbus. Also counter with controller input to keep
-        the game in controller mode.
-      - Clicks are always passed through.
+      - When cursor is over the NIMBUS window: pass through so the user
+        can interact with Nimbus widgets normally.
+      - When cursor is over the GAME window: SUPPRESS WM_MOUSEMOVE so
+        the game camera does not respond to mouse movement. Clicks are
+        always passed through.
+      - All other events pass through normally.
+
+    This requires Raw Input: OFF in Minecraft's mouse settings, because
+    WH_MOUSE_LL cannot intercept WM_INPUT raw events.
+
+    Safe because:
+      - ctypes argtypes are declared (no LPARAM overflow crash)
+      - Emergency kill: Ctrl+Alt+F12 stops controller mode instantly
     """
     if n_code >= 0 and _controller_mode_active:
         try:
             ms = ctypes.cast(l_param, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
             px, py = ms.pt.x, ms.pt.y
 
-            # Mouse MOVEMENT events
             if w_param == WM_MOUSEMOVE:
-                # If cursor is over the Nimbus window, pass through normally
+                # Always allow movement over the Nimbus window
                 if _is_point_in_nimbus_window(px, py):
-                    return user32.CallNextHookEx(_hook_handle, n_code, w_param, l_param)
+                    return user32.CallNextHookEx(
+                        _hook_handle, n_code, w_param, l_param)
 
-                # If cursor is over the game window, suppress the movement
-                # This blocks Raw Input from seeing delta and moving the camera
+                # Suppress mouse movement over the game window
+                # so the camera cannot move. Clicks still pass through.
                 if _is_point_in_game_window(px, py):
                     with _stats_lock:
                         _stats["mouse_events_over_game"] += 1
-
-                    # Counter with controller input to reassert controller mode
+                    # Counter with controller input to keep game in controller mode
                     gamepad = _pulse_gamepad
                     if gamepad:
                         try:
-                            gamepad.left_joystick_float(0.04, 0.0)
+                            iface = _vigem_iface_ref
+                            slx = iface.current_values.get('left_x', 0.0) if iface else 0.0
+                            sly = iface.current_values.get('left_y', 0.0) if iface else 0.0
+                            srx = iface.current_values.get('right_x', 0.0) if iface else 0.0
+                            sry = iface.current_values.get('right_y', 0.0) if iface else 0.0
+                            gamepad.left_joystick_float(slx + 0.04, sly)
                             gamepad.update()
-                            gamepad.left_joystick_float(0.0, 0.0)
+                            gamepad.left_joystick_float(slx, sly)
+                            gamepad.right_joystick_float(srx, sry)
                             gamepad.update()
                         except Exception:
                             pass
-
-                    # SUPPRESS — return non-zero to block this mouse move
-                    # from reaching the game's Raw Input / WM_INPUT handler
+                    # Suppress — game camera stays still
                     return 1
         except Exception:
             pass
 
-    # Default: pass the event through
     return user32.CallNextHookEx(_hook_handle, n_code, w_param, l_param)
 
 
@@ -376,6 +467,7 @@ def start_controller_mode(
     pulse_hz: int = 30,
     use_mouse_hook: bool = True,
     callback: Optional[Callable[[bool], None]] = None,
+    vigem_interface: Any = None,
 ) -> bool:
     """
     Start Controller Mode Enforcement.
@@ -400,9 +492,10 @@ def start_controller_mode(
     Returns:
         True if started successfully.
     """
-    global _controller_mode_active, _pulse_thread, _pulse_gamepad
+    global _controller_mode_active, _pulse_thread, _pulse_gamepad, _vigem_iface_ref
     global _pulse_hz, _pulse_game_hwnd, _nimbus_hwnd
     global _hook_thread, _status_callback
+    global _park_x, _park_y
 
     if sys.platform != "win32":
         print("[mouse_hider] Controller mode only available on Windows")
@@ -418,11 +511,16 @@ def start_controller_mode(
             return False
 
         _pulse_gamepad = gamepad
+        _vigem_iface_ref = vigem_interface
         _pulse_game_hwnd = game_hwnd
         _nimbus_hwnd = nimbus_hwnd
         _pulse_hz = max(5, min(120, pulse_hz))
         _status_callback = callback
         _controller_mode_active = True
+
+        # Compute cursor parking position (center of Nimbus window)
+        _park_x, _park_y = _compute_park_position()
+        print(f"[mouse_hider] Cursor parking position: ({_park_x}, {_park_y})")
 
         # Reset stats
         with _stats_lock:
@@ -443,9 +541,13 @@ def start_controller_mode(
             target=_hook_thread_func, daemon=True, name="MouseHook")
         _hook_thread.start()
 
+    # Start emergency hotkey listener (Ctrl+Alt+F12 kills controller mode)
+    _start_emergency_hotkey()
+
     print(f"[mouse_hider] Controller Mode started "
           f"(game_hwnd={game_hwnd or 'none'}, pulse={_pulse_hz}Hz, "
           f"hook={'on' if use_mouse_hook and game_hwnd else 'off'})")
+    print(f"[mouse_hider] Emergency stop: press Ctrl+Alt+F12")
 
     if callback:
         callback(True)
@@ -467,6 +569,9 @@ def stop_controller_mode() -> None:
         if not _controller_mode_active:
             return
         _controller_mode_active = False
+
+    # Stop emergency hotkey
+    _stop_emergency_hotkey()
 
     # Stop mouse hook
     _hook_stop_event.set()
@@ -527,3 +632,68 @@ def get_controller_mode_stats() -> dict:
     result["pulse_hz"] = _pulse_hz
     result["game_hwnd"] = _pulse_game_hwnd
     return result
+
+
+# ---------------------------------------------------------------------------
+# Emergency hotkey (Ctrl+Alt+F12)
+# ---------------------------------------------------------------------------
+
+def _emergency_hotkey_loop() -> None:
+    """
+    Poll for Ctrl+Alt+F12 to instantly kill controller mode.
+
+    Uses GetAsyncKeyState so it works even when the app doesn't have focus.
+    This is a last-resort safety mechanism in case something goes wrong.
+    """
+    if sys.platform != "win32":
+        return
+
+    VK_F12 = 0x7B
+    VK_CONTROL = 0x11
+    VK_MENU = 0x12  # Alt key
+
+    print("[mouse_hider] Emergency hotkey listener active (Ctrl+Alt+F12)")
+
+    while not _hotkey_stop_event.is_set():
+        try:
+            ctrl = user32.GetAsyncKeyState(VK_CONTROL) & 0x8000
+            alt = user32.GetAsyncKeyState(VK_MENU) & 0x8000
+            f12 = user32.GetAsyncKeyState(VK_F12) & 0x8000
+
+            if ctrl and alt and f12:
+                print("[mouse_hider] *** EMERGENCY STOP: Ctrl+Alt+F12 pressed ***")
+                # Force-stop without going through the lock
+                global _controller_mode_active
+                _controller_mode_active = False
+                # Also unhook immediately
+                _hook_stop_event.set()
+                # Release any ClipCursor
+                try:
+                    ctypes.windll.user32.ClipCursor(None)
+                except Exception:
+                    pass
+                break
+        except Exception:
+            pass
+
+        _hotkey_stop_event.wait(timeout=0.05)  # Poll at 20Hz
+
+    print("[mouse_hider] Emergency hotkey listener stopped")
+
+
+def _start_emergency_hotkey() -> None:
+    """Start the emergency hotkey listener thread."""
+    global _hotkey_thread
+    _hotkey_stop_event.clear()
+    _hotkey_thread = threading.Thread(
+        target=_emergency_hotkey_loop, daemon=True, name="EmergencyHotkey")
+    _hotkey_thread.start()
+
+
+def _stop_emergency_hotkey() -> None:
+    """Stop the emergency hotkey listener thread."""
+    global _hotkey_thread
+    _hotkey_stop_event.set()
+    if _hotkey_thread and _hotkey_thread.is_alive():
+        _hotkey_thread.join(timeout=1.0)
+    _hotkey_thread = None
