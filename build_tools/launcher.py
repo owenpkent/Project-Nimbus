@@ -34,9 +34,10 @@ def main():
             
             error_msg = f"Failed to start Project Nimbus:\n\n{str(e)}\n\n"
             error_msg += "Common issues:\n"
-            error_msg += "1. VJoy driver not installed\n"
-            error_msg += "2. VJoy device #1 not configured\n"
-            error_msg += "3. VJoy device not enabled"
+            error_msg += "1. ViGEmBus driver not installed (install from ViGEmBus GitHub releases)\n"
+            error_msg += "2. ViGEmClient.dll missing — reinstall Project Nimbus\n"
+            error_msg += "3. VJoy driver not installed (optional — only needed for vJoy profiles)\n"
+            error_msg += "4. Windows Defender blocking the virtual controller driver"
             
             QMessageBox.critical(None, "Project Nimbus Error", error_msg)
         except:

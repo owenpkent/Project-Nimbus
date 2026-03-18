@@ -76,14 +76,22 @@ echo.
 
 REM Build NSIS installer (optional - skip if makensis not found)
 echo Checking for NSIS...
+set MAKENSIS=
 where makensis >nul 2>&1
-if errorlevel 1 (
-    echo NSIS not found in PATH. Skipping installer build.
+if not errorlevel 1 set MAKENSIS=makensis
+if not defined MAKENSIS (
+    if exist "C:\Program Files (x86)\NSIS\makensis.exe" set MAKENSIS="C:\Program Files (x86)\NSIS\makensis.exe"
+)
+if not defined MAKENSIS (
+    if exist "C:\Program Files\NSIS\makensis.exe" set MAKENSIS="C:\Program Files\NSIS\makensis.exe"
+)
+if not defined MAKENSIS (
+    echo NSIS not found. Skipping installer build.
     echo Install NSIS from https://nsis.sourceforge.io/ to build the installer.
     echo.
 ) else (
     echo Building installer with NSIS...
-    makensis build_tools\installer.nsi
+    %MAKENSIS% build_tools\installer.nsi
     if errorlevel 1 (
         echo WARNING: Installer build failed. Executable is still available.
     ) else (
