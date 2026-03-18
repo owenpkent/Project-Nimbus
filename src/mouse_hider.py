@@ -144,11 +144,12 @@ def _pulse_loop() -> None:
     while _controller_mode_active:
         try:
             # Oscillate left stick in a tiny circle below deadzone
-            # Amplitude 0.02 is well below any game's deadzone (0.1-0.3)
-            # but registers as "controller input changed" in XInputGetState
+            # Amplitude 0.08 is below most games' deadzones (0.15-0.3)
+            # but large enough that UE/Unity input detection registers it
+            # as "controller input changed" via XInputGetState packet counter
             angle = (tick % 60) * (2.0 * math.pi / 60.0)
-            micro_x = 0.02 * math.cos(angle)
-            micro_y = 0.02 * math.sin(angle)
+            micro_x = 0.08 * math.cos(angle)
+            micro_y = 0.08 * math.sin(angle)
 
             gamepad.left_joystick_float(micro_x, micro_y)
             gamepad.update()
@@ -185,17 +186,32 @@ def _send_controller_burst(gamepad: Any, count: int = 10,
                            delay: float = 0.016) -> None:
     """
     Send a rapid burst of controller inputs to force the game into
-    controller mode. Uses progressively larger (but still sub-deadzone)
-    stick movements to trigger input-mode switching in games that
-    require a minimum delta.
+    controller mode.
+
+    Uses ABOVE-deadzone stick deflections (0.5) to reliably trigger the
+    input-mode switch in Unreal Engine and other games with large deadzones
+    (typically 0.2-0.3). Also presses the A button briefly — many games
+    (including UE titles) detect button presses as unambiguous controller
+    input and immediately switch input mode.
     """
     try:
+        # Phase 1: Strong stick deflection to exceed any deadzone
         for i in range(count):
-            # Alternate between small positive and negative deflections
-            val = 0.05 * (1.0 if i % 2 == 0 else -1.0)
-            gamepad.left_joystick_float(val, val)
+            val = 0.5 * (1.0 if i % 2 == 0 else -1.0)
+            gamepad.left_joystick_float(val, 0.0)
             gamepad.update()
             time.sleep(delay)
+
+        # Phase 2: Button press — unambiguous "controller is being used"
+        try:
+            import vgamepad as vg
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
+            gamepad.update()
+            time.sleep(0.05)
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
+            gamepad.update()
+        except Exception:
+            pass  # vgamepad API may differ; stick burst alone may suffice
 
         # Return to center
         gamepad.left_joystick_float(0.0, 0.0)
@@ -204,7 +220,7 @@ def _send_controller_burst(gamepad: Any, count: int = 10,
         with _stats_lock:
             _stats["controller_bursts_sent"] += 1
 
-        print(f"[mouse_hider] Sent {count}-pulse controller burst")
+        print(f"[mouse_hider] Sent {count}-pulse controller burst (amplitude=0.5 + A press)")
     except Exception as e:
         print(f"[mouse_hider] Burst error: {e}")
 
@@ -258,41 +274,51 @@ def _low_level_mouse_proc(n_code: int, w_param: int, l_param: int) -> int:
     """
     WH_MOUSE_LL callback. Runs for every system-wide mouse event.
 
-    Strategy: We do NOT suppress mouse events (that would freeze the cursor).
-    Instead, when we detect mouse movement over the game window, we
-    immediately send a burst of controller input to counter the game's
-    automatic switch to M/KB mode.
-
-    This is a "fight fire with fire" approach — the game sees mouse input
-    but immediately gets overwhelmed by controller input, so it stays in
-    (or quickly returns to) controller mode.
+    Strategy:
+      - When cursor is over the NIMBUS window: pass events through normally
+        so the user can interact with Nimbus widgets.
+      - When cursor is over the GAME window: SUPPRESS mouse-move events
+        (return 1 to block them) so the game's Raw Input doesn't receive
+        delta movement. This prevents the camera from moving when the user
+        is trying to use Nimbus. Also counter with controller input to keep
+        the game in controller mode.
+      - Clicks are always passed through.
     """
     if n_code >= 0 and _controller_mode_active:
         try:
             ms = ctypes.cast(l_param, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
             px, py = ms.pt.x, ms.pt.y
 
-            # Only react to mouse movement (not clicks)
+            # Mouse MOVEMENT events
             if w_param == WM_MOUSEMOVE:
+                # If cursor is over the Nimbus window, pass through normally
+                if _is_point_in_nimbus_window(px, py):
+                    return user32.CallNextHookEx(_hook_handle, n_code, w_param, l_param)
+
+                # If cursor is over the game window, suppress the movement
+                # This blocks Raw Input from seeing delta and moving the camera
                 if _is_point_in_game_window(px, py):
                     with _stats_lock:
                         _stats["mouse_events_over_game"] += 1
 
-                    # Counter with immediate controller input
+                    # Counter with controller input to reassert controller mode
                     gamepad = _pulse_gamepad
                     if gamepad:
                         try:
-                            # Quick jolt to reassert controller mode
-                            gamepad.left_joystick_float(0.03, 0.0)
+                            gamepad.left_joystick_float(0.04, 0.0)
                             gamepad.update()
                             gamepad.left_joystick_float(0.0, 0.0)
                             gamepad.update()
                         except Exception:
                             pass
+
+                    # SUPPRESS — return non-zero to block this mouse move
+                    # from reaching the game's Raw Input / WM_INPUT handler
+                    return 1
         except Exception:
             pass
 
-    # Always pass the event through — never suppress (cursor must move freely)
+    # Default: pass the event through
     return user32.CallNextHookEx(_hook_handle, n_code, w_param, l_param)
 
 

@@ -23,10 +23,18 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 - **Mouse capture strategy** — Shifted from pure `ClipCursor(NULL)` racing to a combined approach: controller mode enforcement (primary) + cursor release (fallback). Games that detect Xbox input will voluntarily release the mouse, eliminating the race condition entirely.
+- **Game Focus Mode rewritten** — Now uses true `WS_EX_NOACTIVATE` window style instead of save/restore approach. Clicking Project Nimbus **never** steals focus from the game — no more pause menus triggering on click.
+- **`startFullGameMode()` auto-enables Game Focus Mode** — No need to enable separately from View menu.
+
+### Fixed
+- **Clicking Nimbus caused game to pause** — The old Game Focus Mode briefly transferred focus to Nimbus before restoring it. Games like Minecraft detected the focus loss and opened the pause menu. Fixed by using `WS_EX_NOACTIVATE` + `WM_MOUSEACTIVATE` native event filter so focus never leaves the game at all.
+- **Raw Input mouse still moved game camera** — Games using Raw Input (Satisfactory, Unreal Engine titles) received mouse delta movement even when the cursor was outside the game window. The `WH_MOUSE_LL` hook now **suppresses** mouse-move events when the cursor is over the game window, blocking Raw Input from seeing them.
+- **Games not switching to controller mode** — Controller burst amplitude was too small (0.05) to exceed Unreal Engine's deadzone (0.25). Increased burst amplitude to 0.5 and added A-button press during burst for unambiguous controller detection.
 
 ### Technical Notes
-- Controller keep-alive sends tiny stick oscillations (amplitude 0.02) that are below any game's deadzone (typically 0.1–0.3) but register as "controller input changed" in `XInputGetState()`
-- The `WH_MOUSE_LL` hook does NOT suppress mouse events (that would freeze the cursor) — it detects mouse-over-game and immediately counters with controller input bursts
+- Controller keep-alive sends stick oscillations (amplitude 0.08) that are below most games' deadzones (0.15–0.3) but large enough that UE/Unity input detection registers them
+- The `WH_MOUSE_LL` hook now suppresses mouse-move events over the game window (returns 1 to block) while passing through events over Nimbus — this prevents Raw Input camera movement
+- `WS_EX_NOACTIVATE` + `QAbstractNativeEventFilter` for `WM_MOUSEACTIVATE` → `MA_NOACTIVATE` keeps Qt mouse handling working while preventing window activation
 - Requires ViGEm (Xbox 360 emulation) — not available with vJoy-only profiles
 
 ---
