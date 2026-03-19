@@ -4,11 +4,11 @@
 
 # Project Nimbus
 
-Project Nimbus is a Python-based modular virtual controller interface that transforms mouse input into virtual joystick commands via vJoy (DirectInput) or ViGEm (Xbox XInput emulation). Users build their own controller layout by dragging, dropping, and resizing widgets — joysticks, buttons, sliders, D-pads, and steering wheels — onto a customizable canvas.
+**Project Nimbus** is a free, open-source modular virtual controller for Windows. It transforms mouse input into virtual joystick commands via [vJoy](http://vjoystick.sourceforge.net/) (DirectInput) or [ViGEmBus](https://github.com/nefarius/ViGEmBus) (Xbox 360 XInput emulation).
 
-It is designed with accessibility in mind, offering a practical solution for individuals with mobility limitations who may not be able to use traditional physical controllers. By providing a mouse-first input model, it enables users to interact with systems that expect joystick input.
+Users build their own controller layout by dragging, dropping, and resizing widgets — joysticks, buttons, sliders, D-pads, and steering wheels — onto a customizable canvas. Every widget's axis mapping, sensitivity curve, deadzone, and button behavior is independently configurable.
 
-At the same time, Project Nimbus is versatile enough for anyone interested in alternative control schemes. Whether for adaptive gaming, connecting to Mission Planner for UAV and rover control, or playing games via Steam Input, Nimbus makes joystick input more flexible and inclusive.
+**Designed with accessibility in mind.** Project Nimbus is a free software alternative to the Xbox Adaptive Controller, enabling people with mobility limitations to build custom controller layouts without expensive hardware. It works equally well for adaptive gaming, UAV/rover control via Mission Planner, or any application that expects joystick input.
 
 ## Adaptive Platform 2 — Custom Layout Builder
 
@@ -131,28 +131,28 @@ When playing games that pause or lose input when unfocused, enable **Game Focus 
 Project Nimbus is evolving beyond a virtual controller into a broader **adaptive input platform**. The following directions are actively being explored and documented.
 
 ### 🎙️ Voice Command Integration
-Speak to control. Buttons, axes, and macros can be triggered by voice — using offline engines (Faster-Whisper, Vosk) for low latency and privacy, or cloud engines (DeepGram Nova-3) for higher accuracy. A working DeepGram streaming implementation already exists in a companion project and is being ported to Python/PySide6. The goal: act on interim results for time-critical commands, confirm on final transcript. → [`docs/distribution/VOICE_COMMAND.md`](docs/distribution/VOICE_COMMAND.md)
+Speak to control. Buttons, axes, and macros triggered by voice — using offline engines (Faster-Whisper, Vosk) for low latency and privacy, or cloud engines for higher accuracy. Goal: act on interim results for time-critical commands.
 
 ### 🤖 Spectator+ — AI-Assisted Play
-*"You direct. The AI executes."* Spectator+ is an accessibility-first AI copilot: the user provides high-level intent (via voice, click, or switch), and a trained agent handles precise execution through the existing vJoy/ViGEm bridge. Designed for users who have the cognitive engagement to play but not the fine motor precision. Runs inference-only on modest hardware (GTX 1060 class). → [`docs/distribution/SPECTATOR_PLUS.md`](docs/distribution/SPECTATOR_PLUS.md)
+*"You direct. The AI executes."* An accessibility-first AI copilot: the user provides high-level intent (via voice, click, or switch), and a trained agent handles precise execution through the existing vJoy/ViGEm bridge. Designed for users who have the cognitive engagement to play but not the fine motor precision.
 
 ### ⌨️ Keyboard Output Mode
-Any Nimbus button or slider can emit native keyboard shortcuts to any application — Photoshop, DaVinci Resolve, OBS, a browser — with no external software. Implemented via Windows `SendInput` (same `user32.dll` already used by Nimbus), fully bundled in the installer, no driver install required. Enables Nimbus as a **Stream Deck replacement**, a **drawing tablet express key surface**, or a **DAW controller**. → [`docs/vision/KEYBOARD_OUTPUT.md`](docs/vision/KEYBOARD_OUTPUT.md)
+Any Nimbus button or slider emits native keyboard shortcuts to any application — Photoshop, DaVinci Resolve, OBS, a browser — with no external software. Enables Nimbus as a **Stream Deck replacement**, a **drawing tablet express key surface**, or a **DAW controller**.
 
 ### 🎮 Physical Hardware Integration
-Nimbus can wrap existing adaptive hardware — **Xbox Adaptive Controller**, **QuadStick**, foot pedals, head trackers — reading their input via XInput/DirectInput and re-emitting through vJoy with Nimbus's sensitivity curves, macros, and voice layer applied on top. The XAC appears as a standard XInput device; no special SDK needed. → [`docs/vision/HARDWARE_INTEGRATION.md`](docs/vision/HARDWARE_INTEGRATION.md)
+Nimbus can wrap existing adaptive hardware — **Xbox Adaptive Controller**, **QuadStick**, foot pedals, head trackers — reading their input via XInput/DirectInput and re-emitting through vJoy with Nimbus's sensitivity curves, macros, and voice layer applied on top.
 
 ### 🗣️ AAC — Augmentative & Alternative Communication
-The same customizable button surface that controls a game can output spoken phrases via text-to-speech, navigate AAC vocabulary pages, or trigger keyboard shortcuts in dedicated AAC software. Switch access (single/dual switch scanning) and eye gaze (Windows Eye Control already works with Nimbus today) are natural extensions. A gaming + AAC hybrid on one screen — something no commercial product currently offers. → [`docs/vision/AAC_INTEGRATION.md`](docs/vision/AAC_INTEGRATION.md)
+The same customizable button surface that controls a game can output spoken phrases via text-to-speech, navigate AAC vocabulary pages, or trigger keyboard shortcuts in dedicated AAC software. Switch access and eye gaze (Windows Eye Control already works with Nimbus today) are natural extensions.
 
 ### 📊 Research Platform
-Every Nimbus session generates behavioral data — axis configurations, input frequency, profile choices, fatigue patterns — that the disability gaming research community doesn't have at scale. With opt-in, IRB-appropriate telemetry, Nimbus could become a research instrument for understanding how people with disabilities actually play, in partnership with AbleGamers, Shirley Ryan AbilityLab, CMU HCII, and others. → [`docs/vision/RESEARCH_PLATFORM.md`](docs/vision/RESEARCH_PLATFORM.md)
+With opt-in telemetry, Nimbus could become a research instrument for understanding how people with disabilities play, in partnership with AbleGamers, Shirley Ryan AbilityLab, CMU HCII, and others.
 
 ### 🔧 Modular Control Surface
-Beyond gaming: Nimbus as a universal adaptive input layer for video editing, music production, streaming, and any Windows application. Pre-built profiles for DaVinci Resolve, Photoshop, Ableton, OBS. Auto-switch profiles by active window. One device, one learned interface, works everywhere. → [`docs/vision/MODULAR_CONTROL_SURFACE.md`](docs/vision/MODULAR_CONTROL_SURFACE.md)
+Nimbus as a universal adaptive input layer for video editing, music production, streaming, and any Windows application. Pre-built profiles for DaVinci Resolve, Photoshop, Ableton, OBS. Auto-switch profiles by active window.
 
 ### 💼 Sustainability
-Project Nimbus is and will remain **free for all accessibility use**. A freemium model is being designed where advanced features (voice, macros, AI, cloud sync) are available via optional subscription, while the core — all layouts, vJoy/ViGEm, profiles, custom builder — stays MIT-licensed and free forever. Corporate sponsorships, institutional licenses (hospitals, rehab centers, VA), and research grants are the primary sustainability path. → [`docs/distribution/BUSINESS_MODEL.md`](docs/distribution/BUSINESS_MODEL.md)
+Project Nimbus is and will remain **free for all accessibility use**. The core — all layouts, vJoy/ViGEm, profiles, custom builder — is MIT-licensed and free forever. Advanced features (voice, AI, cloud sync) may be offered optionally in future to sustain development.
 
 ---
 
@@ -162,15 +162,18 @@ Project Nimbus is and will remain **free for all accessibility use**. A freemium
 
 1. **Download the latest release**:
    - Go to [Releases](https://github.com/owenpkent/Project-Nimbus/releases)
-   - Download `Project-Nimbus-1.3.1.exe` from the latest release
+   - Download `Project-Nimbus-Setup-<version>.exe` (installer) or `Project-Nimbus-<version>.exe` (portable)
 
-2. **Install VJoy Driver**:
+2. **Install the ViGEmBus driver** (for Xbox/XInput emulation — recommended):
+   - Download from [ViGEmBus Releases](https://github.com/nefarius/ViGEmBus/releases)
+   - Run the installer, reboot if prompted
+
+3. **Install VJoy Driver** (optional — for DirectInput / legacy games):
    - Download and install from [VJoy Official Site](http://vjoystick.sourceforge.net/)
    - Configure VJoy device #1 with at least 6 axes (X, Y, Z, RX, RY, RZ)
-   - Ensure VJoy device is enabled and available
 
-3. **Run the application**:
-   - Double-click `Project-Nimbus.exe`
+4. **Run the application**:
+   - Run the installer, or double-click the portable `.exe`
    - No Python installation required!
 
 ### Option 2: Run from Source (For Developers)
@@ -532,97 +535,28 @@ The **Adaptive Platform 2** profile introduces a modular controller builder wher
 | **vJoy** | 8 (X,Y,Z,RX,RY,RZ,SL0,SL1) | Up to 4 | Up to 128 |
 | **ViGEm** (Xbox) | 4 + 2 triggers | 2 | 14 |
 
-See [docs/WIDGET_IDEAS.md](docs/WIDGET_IDEAS.md) for planned accessibility widgets including dwell buttons, scan mode strips, steering wheels, and more.
+See [`docs/development/WIDGET_IDEAS.md`](docs/development/WIDGET_IDEAS.md) for planned accessibility widgets including dwell buttons, scan mode strips, steering wheels, and more.
 
-See [docs/architecture.md](docs/architecture.md) for detailed technical documentation of the custom layout system.
+See [`docs/architecture/`](docs/architecture/) for detailed technical documentation of the custom layout system.
 
-## Changelog (recent)
+## Changelog
 
-### v1.3.2 - Borderless Gaming & Mouse Capture
-- **Borderless Gaming Integration**: Built-in borderless window mode + continuous ClipCursor release (no external tools needed)
-- **Auto-detect games**: Identifies 30+ known games from a built-in compatibility database
-- **One-click workflow**: Green button applies borderless mode AND starts cursor release simultaneously
-- **Adjustable release speed**: Tune polling interval from 16ms (aggressive) to 200ms (gentle)
-- **Compatibility browser**: In-app Compatibility tab with verified/likely/partial/incompatible game lists
-- **Single default profile**: Removed Flight Simulator, Xbox Controller, and Adaptive Platform 1 profiles — Adaptive Platform 2 is now the only bundled profile and opens on first launch
-- **Game compatibility docs**: [`docs/GAME_COMPATIBILITY.md`](docs/GAME_COMPATIBILITY.md) with setup tips and genre guidance
-
-### v1.3.1 - Versioned Distribution Filenames
-- **Versioned exe/installer filenames**: Distribution files now include the version number (`Project-Nimbus-1.3.1.exe`, `Project-Nimbus-Setup-1.3.1.exe`) for clearer release management
-- **Code-signed release**: EV certificate signed with SHA-256 timestamping
-
-### v3.1 - Widget Palette Pop-Out, Mouse Lock Fix, Enhanced Axis Config
-- **Pop-Out Widget Palette**: Palette is now a separate floating window with custom draggable title bar — never overlaps the canvas
-- **Triple-Click Mouse Lock Fix**: Joystick lock now uses a full-canvas hover overlay that tracks mouse everywhere without edge-sticking
-- **Unlock Returns to Center**: Joystick automatically snaps back to (0,0) when triple-click unlocked
-- **3-Mode Slider Snap**: Sliders now have three snap behaviors — hold position, snap to zero (return-to-zero), snap to center (spring-to-center)
-- **Slider Orientation**: Each slider can be set to horizontal or vertical in the config dialog
-- **Per-Widget Sensitivity Settings**: Sensitivity (0-100%), deadzone (0-100%), and extremity deadzone (0-100%) per axis widget
-- **Response Curve Preview**: Live-updating graph in config dialog showing exact sensitivity curve with deadzone regions
-- **Settings Menu Formula Match**: Widget `_applyCurve()` now uses the identical formula as the Settings menu dialogs
-- **Scrollable Config Dialog**: Config dialog now scrolls when content exceeds screen height
-
-### v3.0 - Adaptive Platform 2 & Custom Layout Builder
-- **Modular Controller Builder**: New `custom` layout type with drag-and-drop canvas for placing joysticks, buttons, and sliders anywhere
-- **5 Widget Types**: Joystick, Button, Slider, D-Pad, and Steering Wheel
-- **DraggableWidget System**: Universal wrapper providing drag, resize, delete, and config for any widget type
-- **Widget Palette**: Toolbar for adding new widgets with smart auto-assignment of button IDs and axes
-- **Widget Config Dialog**: Double-click to edit label, axis mapping, button ID, color, shape, toggle mode
-- **Grid Snapping**: Configurable grid with optional overlay for clean alignment
-- **Auto-Save**: Layout automatically saved on every change
-- **Profile Persistence**: Full widget layout stored in profile JSON for portability
-- **Save As**: Create named layout profiles from the palette
-- **8-Axis Support**: vJoy SL0/SL1 slider axes exposed (8 total axes, up to 4 joysticks)
-- **Triple-Click Mouse Lock**: Lock mouse to joystick for continuous control
-- **Comprehensive Documentation**: Updated architecture docs, widget brainstorm, accessibility focus
-
-### v2.1 - Profile-Specific Settings & Menu Redesign
-- **Profile-Specific Settings**: Joystick sensitivity, slider sensitivity, and button toggle modes are now saved per-profile instead of globally
-  - Each profile stores its own `joystick_settings`, `rudder_settings`, and button `toggle_mode` configurations
-  - Switching profiles automatically loads that profile's settings
-  - Settings dialogs (Joystick, Slider, Button, Axis Mapping) now persist changes to the current profile
-- **Consolidated Settings Menu**: All settings now under `File > Settings` submenu with clearer organization:
-  - `Joystick Sensitivity...` - Sensitivity curves for joysticks
-  - `Throttle/Rudder Sensitivity...` or `Trigger Sensitivity...` (profile-aware label)
-  - `Axis Mapping...` - Map UI controls to VJoy axes
-  - `Button Modes...` - Toggle/momentary button behavior
-- **Profile-Aware Labels**: Axis mapping and settings dialogs show context-appropriate names:
-  - Flight Sim: "Throttle", "Rudder"
-  - Adaptive Platform: "Left Trigger (LT)", "Right Trigger (RT)"
-- **Profiles Menu in Qt Widgets Shell**: Added Profiles menu to the alternative Qt shell for profile switching
-- **Qt Widgets Shell Warning**: Running `qt_main.py` directly now displays a warning directing users to use `run.py`
-
-### v2.0 - Adaptive Platform & Steam Input Support
-- **New Adaptive Platform Profile**: Accessibility-focused layout with larger buttons, Greek symbols (α, Ω, β), and prominent L3/R3 stick click buttons
-- **Steam Input Integration**: vJoy now works with Steam Input for XInput-compatible games like No Man's Sky
-- **Dynamic Layout Switching**: Profiles now support multiple layout types (flight_sim, xbox, adaptive) that dynamically load the appropriate QML layout
-- **Improved Profile System**: Profiles stored in user data directory with automatic copying from bundled defaults
-- **Button Enhancements**: Full Xbox controller button support (A, B, X, Y, LB, RB, LT, RT, L3, R3, D-Pad, View, Menu, Guide)
-- **Menus**: Safe dark top menu bar; native popups for reliability; menus close immediately on selection
-- **View menu**: Debug Borders toggle for UI layout tuning
-- **Axis mapping**: Defaults for Throttle=Z and Rudder=RZ so Configure Axes shows correct mappings
-- **Buttons**: QML now reacts to Button Settings changes (new `controller.buttonsVersion`); buttons unlatch automatically when switching from toggle to momentary
-- **Curves**: Runtime uses the same math as the Joystick/Rudder Settings dialogs for consistent feel with previews
-- **Smoothing**: QTimer-based interpolation of vJoy axes towards targets so sticks/rudder glide smoothly back to center on release
-- **Joystick UI**: Thumb constrained to the circle using an effective radius; base circle layout fixed; Y-axis inverted per preference
-- **Flight Sim Improvements**: Responsive button sizing that scales with window height; wider rudder slider with optional center-lock toggle button
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ## Contributing
 
+Contributions are welcome! To get started:
+
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes with proper documentation
-4. Add tests for new functionality
-5. Submit a pull request
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Make your changes — follow existing code style, add docstrings for new functions
+4. Run tests: `python -m pytest tests/`
+5. Submit a pull request with a clear description
 
-## Support
+For larger changes or new feature ideas, open an issue first to discuss approach.
 
-For issues, questions, or contributions, please refer to the project's issue tracker or documentation.
+See [`docs/development/INTEGRATION_GUIDE.md`](docs/development/INTEGRATION_GUIDE.md) for architecture notes useful for contributors.
 
----
+## License
 
-**Note**: This software is designed for educational and development purposes. When using for actual drone control, always follow proper safety protocols and local regulations.
+MIT License — see [LICENSE](LICENSE) for details. Free for all use including accessibility and educational purposes.
