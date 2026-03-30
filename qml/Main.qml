@@ -12,7 +12,7 @@ ApplicationWindow {
     height: 600
     minimumWidth: 700
     minimumHeight: 450
-    title: "Project Nimbus - QML UI"
+    title: "Nimbus Adaptive Controller"
     background: Rectangle { color: "black" }
 
     // Scale factor bound to Python bridge; default 1.0
@@ -33,6 +33,9 @@ ApplicationWindow {
     // Controller monitor bar
     property bool controllerMonitorVisible: false
 
+    // Output device mode: "vjoy" or "vigem"
+    property string outputMode: controller ? controller.getOutputMode() : "vjoy"
+
     // Timer to delay _appReady until menu bar is fully stable
     Timer {
         id: appReadyTimer
@@ -43,6 +46,7 @@ ApplicationWindow {
 
     // Track available profiles for dynamic updates
     property var availableProfiles: controller ? controller.getAvailableProfiles() : []
+    property var recentProfiles: []
     
     // Initialize window reference for game focus mode
     Component.onCompleted: {
@@ -82,8 +86,10 @@ ApplicationWindow {
             root.layoutType = newLayoutType
         }
         function onProfilesListChanged() {
-            // Refresh profile list when profiles are added/deleted
             root.availableProfiles = controller.getAvailableProfiles()
+        }
+        function onRecentProfilesChanged() {
+            root.recentProfiles = controller.getRecentProfiles()
         }
         function onProfileSaved(success) {
             if (success) {
@@ -98,6 +104,9 @@ ApplicationWindow {
         }
         function onControllerModeChanged(active) {
             root.gameModeActive = active
+        }
+        function onOutputModeChanged(mode) {
+            root.outputMode = mode
         }
     }
     
@@ -133,6 +142,118 @@ ApplicationWindow {
             NumberAnimation { target: saveNotification; property: "opacity"; to: 1; duration: 200 }
             PauseAnimation { duration: 2000 }
             NumberAnimation { target: saveNotification; property: "opacity"; to: 0; duration: 500 }
+        }
+    }
+
+    // New Profile — combined name entry + optional save-current toggle
+    Dialog {
+        id: newProfileDialog
+        title: "New Profile"
+        modal: true
+        anchors.centerIn: parent
+        width: 400
+        height: 310
+
+        background: Rectangle { color: "#2a2a2a"; border.color: "#555"; radius: 6 }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            anchors.fill: parent
+            anchors.margins: 16
+
+            Label {
+                text: "Profile Name:"
+                color: "#ccc"
+                font.pixelSize: 13
+            }
+            Basic.TextField {
+                id: newProfileNameField
+                Layout.fillWidth: true
+                placeholderText: "Enter profile name..."
+                color: "white"
+                font.pixelSize: 14
+                background: Rectangle {
+                    color: "#1a1a1a"
+                    border.color: newProfileNameField.activeFocus ? "#4a9eff" : "#555"
+                    border.width: 1
+                    radius: 4
+                }
+            }
+
+            Label {
+                text: "Description (optional):"
+                color: "#ccc"
+                font.pixelSize: 13
+            }
+            Basic.TextField {
+                id: newProfileDescField
+                Layout.fillWidth: true
+                placeholderText: "Enter description..."
+                color: "white"
+                font.pixelSize: 13
+                background: Rectangle {
+                    color: "#1a1a1a"
+                    border.color: newProfileDescField.activeFocus ? "#4a9eff" : "#555"
+                    border.width: 1
+                    radius: 4
+                }
+            }
+
+            Basic.CheckBox {
+                id: saveCurrentCheck
+                text: "Save \"" + root.currentProfile + "\" before switching"
+                checked: true
+                contentItem: Label {
+                    text: saveCurrentCheck.text
+                    color: "#bbb"
+                    font.pixelSize: 12
+                    leftPadding: saveCurrentCheck.indicator.width + saveCurrentCheck.spacing
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+
+            Item { Layout.fillHeight: true }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                Basic.Button {
+                    text: "Create"
+                    enabled: newProfileNameField.text.trim().length > 0
+                    onClicked: {
+                        var name = newProfileNameField.text.trim()
+                        var desc = newProfileDescField.text.trim()
+                        newProfileDialog.close()
+                        Qt.callLater(function() {
+                            if (saveCurrentCheck.checked && controller)
+                                controller.saveCurrentProfile()
+                            var newId = controller ? controller.createProfileAs(name, desc) : ""
+                            if (newId !== "") {
+                                saveNotification.show("Profile '" + name + "' created")
+                                if (controller) controller.switchProfile(newId)
+                            } else {
+                                saveNotification.show("Failed to create profile")
+                            }
+                        })
+                    }
+                    contentItem: Label { text: parent.text; color: "white"; horizontalAlignment: Text.AlignHCenter }
+                    background: Rectangle { color: parent.hovered ? "#1a6adf" : "#1255b8"; radius: 4 }
+                }
+                Basic.Button {
+                    text: "Cancel"
+                    onClicked: newProfileDialog.close()
+                    contentItem: Label { text: parent.text; color: "#aaa"; horizontalAlignment: Text.AlignHCenter }
+                    background: Rectangle { color: parent.hovered ? "#333" : "#222"; radius: 4 }
+                }
+            }
+        }
+
+        onOpened: {
+            newProfileNameField.text = ""
+            newProfileDescField.text = ""
+            saveCurrentCheck.checked = true
+            newProfileNameField.forceActiveFocus()
         }
     }
 
@@ -304,7 +425,17 @@ ApplicationWindow {
         Menu {
             id: fileMenu
             title: qsTr("File")
-            
+
+            MenuItem {
+                text: qsTr("New Profile...")
+                onTriggered: {
+                    fileMenu.close()
+                    Qt.callLater(function() { newProfileDialog.open() })
+                }
+            }
+
+            MenuSeparator {}
+
             // Profile submenu
             Menu {
                 id: profileMenu
@@ -329,6 +460,33 @@ ApplicationWindow {
                 }
             }
             
+            // Recent Profiles submenu
+            Menu {
+                id: recentProfilesMenu
+                title: qsTr("Recent Profiles")
+                enabled: root.recentProfiles.length > 0
+
+                Instantiator {
+                    model: root.recentProfiles
+                    delegate: MenuItem {
+                        text: modelData.name
+                        checkable: true
+                        checked: root.currentProfile === modelData.id
+                        onTriggered: {
+                            recentProfilesMenu.close()
+                            fileMenu.close()
+                            Qt.callLater(function() {
+                                if (controller) controller.switchProfile(modelData.id)
+                            })
+                        }
+                    }
+                    onObjectAdded: function(index, object) { recentProfilesMenu.insertItem(index, object) }
+                    onObjectRemoved: function(index, object) { recentProfilesMenu.removeItem(object) }
+                }
+            }
+
+            MenuSeparator {}
+
             MenuItem {
                 text: qsTr("Save Profile")
                 onTriggered: {
@@ -410,6 +568,37 @@ ApplicationWindow {
         Menu {
             id: settingsMenu
             title: qsTr("Settings")
+            
+            Menu {
+                id: outputDeviceMenu
+                title: qsTr("Output Device")
+                
+                MenuItem {
+                    id: outputVjoyItem
+                    text: qsTr("vJoy (DirectInput)")
+                    checkable: true
+                    checked: root.outputMode === "vjoy"
+                    onTriggered: {
+                        outputDeviceMenu.close()
+                        settingsMenu.close()
+                        Qt.callLater(function(){ if (controller) controller.setOutputMode("vjoy"); })
+                    }
+                }
+                MenuItem {
+                    id: outputVigemItem
+                    text: qsTr("ViGEm Xbox 360 (XInput)")
+                    checkable: true
+                    checked: root.outputMode === "vigem"
+                    enabled: controller ? controller.isVigemAvailable() : false
+                    onTriggered: {
+                        outputDeviceMenu.close()
+                        settingsMenu.close()
+                        Qt.callLater(function(){ if (controller) controller.setOutputMode("vigem"); })
+                    }
+                }
+            }
+            
+            MenuSeparator {}
             
             MenuItem { 
                 text: qsTr("Axis Configuration...")
@@ -499,7 +688,7 @@ ApplicationWindow {
             }
             MenuSeparator {}
             MenuItem { 
-                text: qsTr("About Project Nimbus...")
+                text: qsTr("About Nimbus Adaptive Controller...")
                 onTriggered: { 
                     helpMenu.close()
                     Qt.callLater(function(){ aboutDialog.open(); })
@@ -511,7 +700,7 @@ ApplicationWindow {
     // About Dialog
     Dialog {
         id: aboutDialog
-        title: "About Project Nimbus"
+        title: "About Nimbus Adaptive Controller"
         modal: true
         anchors.centerIn: parent
         width: 450
@@ -547,7 +736,7 @@ ApplicationWindow {
             }
             
             Label {
-                text: "Project Nimbus"
+                text: "Nimbus Adaptive Controller"
                 color: "white"
                 font.pixelSize: 20
                 font.bold: true
@@ -619,8 +808,8 @@ ApplicationWindow {
                 x: 10; y: 10
                 spacing: 14
 
-                Label { text: "Welcome to Project Nimbus"; color: "#4a9eff"; font.pixelSize: 15; font.bold: true; wrapMode: Text.WordWrap; width: parent.width }
-                Label { text: "Project Nimbus transforms mouse, wheelchair joystick, or other pointing device input into virtual game controller commands via vJoy."; color: "#ccc"; font.pixelSize: 12; wrapMode: Text.WordWrap; width: parent.width }
+                Label { text: "Welcome to Nimbus Adaptive Controller"; color: "#4a9eff"; font.pixelSize: 15; font.bold: true; wrapMode: Text.WordWrap; width: parent.width }
+                Label { text: "Nimbus Adaptive Controller transforms mouse, wheelchair joystick, or other pointing device input into virtual game controller commands via vJoy."; color: "#ccc"; font.pixelSize: 12; wrapMode: Text.WordWrap; width: parent.width }
 
                 Label { text: "1. Choose a Profile"; color: "#ff8833"; font.pixelSize: 13; font.bold: true }
                 Label { text: "Go to File → Profile to select a layout:\n• Flight Simulator — dual joysticks, throttle, rudder\n• Xbox Controller — gamepad-style layout\n• Adaptive Platform — accessibility-focused with large buttons\n• Custom layouts — fully configurable drag-and-drop canvas"; color: "#ccc"; font.pixelSize: 12; wrapMode: Text.WordWrap; width: parent.width }
@@ -635,7 +824,7 @@ ApplicationWindow {
                 Label { text: "Double-click any widget to configure:\n• Axis mapping — which vJoy axis to control\n• Sensitivity — response curve (0-100%)\n• Dead zone — ignore small inputs near center\n• Extremity dead zone — snap to full at edges\n• Copy settings from other widgets via dropdown"; color: "#ccc"; font.pixelSize: 12; wrapMode: Text.WordWrap; width: parent.width }
 
                 Label { text: "5. Game Focus Mode"; color: "#ff8833"; font.pixelSize: 13; font.bold: true }
-                Label { text: "Enable via View → Game Focus Mode. When active, clicking Project Nimbus won't steal focus from your game — the game window stays in the foreground."; color: "#ccc"; font.pixelSize: 12; wrapMode: Text.WordWrap; width: parent.width }
+                Label { text: "Enable via View → Game Focus Mode. When active, clicking Nimbus Adaptive Controller won't steal focus from your game — the game window stays in the foreground."; color: "#ccc"; font.pixelSize: 12; wrapMode: Text.WordWrap; width: parent.width }
 
                 Label { text: "6. Borderless Gaming"; color: "#ff8833"; font.pixelSize: 13; font.bold: true }
                 Label { text: "Go to View → Borderless Gaming to free your cursor from games that lock it.\n\n• Auto-detects running games from our compatibility database\n• Converts windowed games to borderless fullscreen\n• Continuously releases cursor lock so you can reach Nimbus\n• Works with most indie, strategy, and older games\n• See the Compatibility tab for a full list of tested games"; color: "#ccc"; font.pixelSize: 12; wrapMode: Text.WordWrap; width: parent.width }
@@ -756,9 +945,10 @@ ApplicationWindow {
     Rectangle {
         id: gamePickerPopup
         visible: false
-        anchors.bottom: gameModeBar.top
-        anchors.right: gameModeBar.right
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
         anchors.bottomMargin: 6
+        anchors.rightMargin: 4
         width: 340
         height: Math.min(pickerCol.implicitHeight + 16, 320)
         radius: 8
@@ -909,117 +1099,213 @@ ApplicationWindow {
         onClicked: gamePickerPopup.visible = false
     }
 
-    // The main Game Mode bar
-    Rectangle {
-        id: gameModeBar
-        anchors.bottom: parent.bottom
-        anchors.right: parent.right
-        anchors.margins: 10
-        width: gameModeRow.implicitWidth + 24
-        height: 44
-        radius: 8
-        color: root.gameModeActive ? "#0d3320" : "#1e1e1e"
-        border.color: root.gameModeActive ? "#00cc44" : "#444"
-        border.width: root.gameModeActive ? 2 : 1
-        z: 500
+    // ==================== STATUS RIBBON (VS Code-style) ====================
+    footer: Rectangle {
+        id: statusRibbon
+        width: parent.width
+        height: 22
+        color: "#0d1117"
 
-        SequentialAnimation on border.width {
-            running: root.gameModeActive
-            loops: Animation.Infinite
-            NumberAnimation { to: 3; duration: 800; easing.type: Easing.InOutSine }
-            NumberAnimation { to: 2; duration: 800; easing.type: Easing.InOutSine }
+        // Top border line
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 1
+            color: "#2a3a4a"
         }
 
-        Row {
-            id: gameModeRow
-            anchors.centerIn: parent
-            spacing: 8
+        // --- Left side: connection dot + controller type (clickable to change output mode) ---
+        Item {
+            id: ribbonLeftSection
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 8
+            width: ribbonLeftRow.implicitWidth + 20
 
-            Rectangle {
-                width: 10; height: 10; radius: 5
+            Row {
+                id: ribbonLeftRow
                 anchors.verticalCenter: parent.verticalCenter
-                color: root.gameModeActive ? "#00cc44" : "#555"
-                SequentialAnimation on opacity {
-                    running: root.gameModeActive
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 0.3; duration: 600 }
-                    NumberAnimation { to: 1.0; duration: 600 }
+                anchors.left: parent.left
+                spacing: 6
+
+                Rectangle {
+                    id: ribbonDot
+                    width: 7; height: 7; radius: 3.5
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: "#666"
+                }
+
+                Text {
+                    id: ribbonStatusText
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: controller ? controller.getControllerType() : "No controller"
+                    color: outputModeMa.containsMouse ? "#ccc" : "#888"
+                    font.pixelSize: 10
+                    font.family: "Segoe UI, sans-serif"
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "▲"
+                    color: outputModeMa.containsMouse ? "#ccc" : "#555"
+                    font.pixelSize: 7
                 }
             }
 
-            Label {
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.gameModeActive
-                    ? ("GAME MODE: " + (root.gameModeTitle !== "" ? root.gameModeTitle : "ACTIVE"))
-                    : "Start Game Mode"
-                color: root.gameModeActive ? "#00cc44" : "#aaa"
-                font.pixelSize: 13
-                font.bold: root.gameModeActive
+            MouseArea {
+                id: outputModeMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: outputModeMenu.popup()
             }
 
-            Rectangle {
-                visible: root.gameModeActive
-                width: 20; height: 20; radius: 4
-                color: stopMa.containsMouse ? "#7a2020" : "#5a1010"
-                anchors.verticalCenter: parent.verticalCenter
-                Label { anchors.centerIn: parent; text: "✕"; color: "white"; font.pixelSize: 11 }
-                MouseArea {
-                    id: stopMa
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (controller) controller.stopFullGameMode(root.gameModeHwnd)
-                        root.gameModeActive = false
-                        root.gameModeHwnd = 0
-                        root.gameModeTitle = ""
-                        gamePickerPopup.visible = false
+            Menu {
+                id: outputModeMenu
+
+                MenuItem {
+                    text: "vJoy (DirectInput)"
+                    checkable: true
+                    checked: root.outputMode === "vjoy"
+                    onTriggered: {
+                        if (controller) controller.setOutputMode("vjoy")
+                    }
+                }
+                MenuItem {
+                    text: "Xbox 360 (ViGEm)"
+                    checkable: true
+                    checked: root.outputMode === "vigem"
+                    enabled: controller ? controller.isVigemAvailable() : false
+                    onTriggered: {
+                        if (controller) controller.setOutputMode("vigem")
                     }
                 }
             }
         }
 
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            enabled: !root.gameModeActive
-            onClicked: {
-                if (!controller || root.gameModeActive) return
-                root._refreshGameWindows()
-                gamePickerPopup.visible = !gamePickerPopup.visible
-            }
-        }
-    }
-
-    // Controller monitor status bar
-    footer: Rectangle {
-        id: controllerMonitorBar
-        width: parent.width
-        height: root.controllerMonitorVisible ? 22 : 0
-        color: "#0d1117"
-        border.color: "#222"
-        border.width: root.controllerMonitorVisible ? 1 : 0
-        clip: true
-
+        // Polling timer — updates dot colour and status / monitor text
         Timer {
-            interval: 150
-            running: root.controllerMonitorVisible
+            interval: 200
+            running: true
             repeat: true
             onTriggered: {
-                if (controller) monitorText.text = controller.getControllerStateText()
+                if (!controller) return
+                ribbonDot.color = controller.isVJoyConnected() ? "#4caf50" : "#f44336"
+                ribbonStatusText.text = root.controllerMonitorVisible
+                    ? controller.getControllerStateText()
+                    : controller.getControllerType()
             }
         }
 
-        Text {
-            id: monitorText
-            anchors.fill: parent
-            anchors.leftMargin: 8
-            anchors.rightMargin: 8
-            color: "#66bb6a"
-            font.pixelSize: 10
-            font.family: "Consolas"
-            verticalAlignment: Text.AlignVCenter
-            text: "Controller Monitor — enable via View → Controller Monitor"
+        // --- Right side: Edit Layout + Game Mode buttons ---
+        Row {
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            spacing: 0
+
+            // Edit Layout toggle (custom layout only)
+            Rectangle {
+                visible: root.layoutType === "custom"
+                width: visible ? editRibbonLabel.implicitWidth + 16 : 0
+                height: parent.height
+                color: editRibbonMa.containsMouse
+                    ? "#1e2e40"
+                    : (layoutLoader.item && layoutLoader.item.editMode ? "#12283a" : "transparent")
+
+                Text {
+                    id: editRibbonLabel
+                    anchors.centerIn: parent
+                    text: layoutLoader.item && layoutLoader.item.editMode ? "✓ Done Editing" : "✏ Edit Layout"
+                    color: layoutLoader.item && layoutLoader.item.editMode ? "#4a9eff" : "#aaa"
+                    font.pixelSize: 10
+                }
+
+                MouseArea {
+                    id: editRibbonMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (layoutLoader.item) {
+                            layoutLoader.item.editMode = !layoutLoader.item.editMode
+                            if (!layoutLoader.item.editMode) layoutLoader.item._saveLayout()
+                        }
+                    }
+                }
+            }
+
+            // Divider
+            Rectangle {
+                width: 1; height: 12
+                color: "#333"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.layoutType === "custom"
+            }
+
+            // Game Mode button
+            Rectangle {
+                id: gameModeRibbonBtn
+                width: gameModeRibbonRow.implicitWidth + 16
+                height: parent.height
+                color: gameModeRibbonMa.containsMouse
+                    ? (root.gameModeActive ? "#0a2a18" : "#1e2020")
+                    : (root.gameModeActive ? "#071810" : "transparent")
+
+                Row {
+                    id: gameModeRibbonRow
+                    anchors.centerIn: parent
+                    spacing: 5
+
+                    Rectangle {
+                        id: gameModeDot
+                        width: 6; height: 6; radius: 3
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: root.gameModeActive ? "#00cc44" : "#666"
+
+                        SequentialAnimation on opacity {
+                            running: root.gameModeActive
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 0.3; duration: 600 }
+                            NumberAnimation { to: 1.0; duration: 600 }
+                        }
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.gameModeActive
+                            ? ("■ " + (root.gameModeTitle !== "" ? root.gameModeTitle : "Game Mode"))
+                            : "▶ Game Mode"
+                        color: root.gameModeActive ? "#00cc44" : "#aaa"
+                        font.pixelSize: 10
+                    }
+                }
+
+                MouseArea {
+                    id: gameModeRibbonMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (!controller) return
+                        if (root.gameModeActive) {
+                            controller.stopFullGameMode(root.gameModeHwnd)
+                            root.gameModeActive = false
+                            root.gameModeHwnd = 0
+                            root.gameModeTitle = ""
+                            gamePickerPopup.visible = false
+                        } else {
+                            root._refreshGameWindows()
+                            gamePickerPopup.visible = !gamePickerPopup.visible
+                        }
+                    }
+                }
+            }
+
+            // Right padding
+            Item { width: 4; height: parent.height }
         }
     }
 
@@ -1064,6 +1350,8 @@ ApplicationWindow {
         id: customLayout
         Layouts.CustomLayout {
             scaleFactor: root.scaleFactor
+            outputMode: root.outputMode
+            mainWindow: root
         }
     }
 }

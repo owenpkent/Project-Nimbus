@@ -2,13 +2,13 @@
   <img src="logo.png" alt="Project Nimbus Logo" width="300"/>
 </div>
 
-# Project Nimbus
+# Nimbus Adaptive Controller
 
-**Project Nimbus** is a free, open-source modular virtual controller for Windows. It transforms mouse input into virtual joystick commands via [vJoy](http://vjoystick.sourceforge.net/) (DirectInput) or [ViGEmBus](https://github.com/nefarius/ViGEmBus) (Xbox 360 XInput emulation).
+**Nimbus Adaptive Controller** is a free, open-source modular virtual controller for Windows. It transforms mouse input into virtual joystick commands via [vJoy](http://vjoystick.sourceforge.net/) (DirectInput) or [ViGEmBus](https://github.com/nefarius/ViGEmBus) (Xbox 360 XInput emulation).
 
 Users build their own controller layout by dragging, dropping, and resizing widgets — joysticks, buttons, sliders, D-pads, and steering wheels — onto a customizable canvas. Every widget's axis mapping, sensitivity curve, deadzone, and button behavior is independently configurable.
 
-**Designed with accessibility in mind.** Project Nimbus is a free software alternative to the Xbox Adaptive Controller, enabling people with mobility limitations to build custom controller layouts without expensive hardware. It works equally well for adaptive gaming, UAV/rover control via Mission Planner, or any application that expects joystick input.
+**Designed with accessibility in mind.** Nimbus Adaptive Controller is a free software alternative to the Xbox Adaptive Controller, enabling people with mobility limitations to build custom controller layouts without expensive hardware. It works equally well for adaptive gaming, UAV/rover control via Mission Planner, or any application that expects joystick input.
 
 ## Adaptive Platform 2 — Custom Layout Builder
 
@@ -16,6 +16,7 @@ Users build their own controller layout by dragging, dropping, and resizing widg
   <img src="docs/screenshots/adaptive-platform-layout.png" alt="Adaptive Platform 2 Layout" width="800"/>
   <p><em>Adaptive Platform 2 — modular drag-and-drop canvas: place joysticks, buttons, sliders, and D-pads anywhere on a fully customizable layout</em></p>
 </div>
+
 
 ## Screenshots
 
@@ -128,7 +129,7 @@ When playing games that pause or lose input when unfocused, enable **Game Focus 
 
 ## Roadmap & Vision
 
-Project Nimbus is evolving beyond a virtual controller into a broader **adaptive input platform**. The following directions are actively being explored and documented.
+Nimbus Adaptive Controller is evolving beyond a virtual controller into a broader **adaptive input platform**. The following directions are actively being explored and documented.
 
 ### 🎙️ Voice Command Integration
 Speak to control. Buttons, axes, and macros triggered by voice — using offline engines (Faster-Whisper, Vosk) for low latency and privacy, or cloud engines for higher accuracy. Goal: act on interim results for time-critical commands.
@@ -152,7 +153,7 @@ With opt-in telemetry, Nimbus could become a research instrument for understandi
 Nimbus as a universal adaptive input layer for video editing, music production, streaming, and any Windows application. Pre-built profiles for DaVinci Resolve, Photoshop, Ableton, OBS. Auto-switch profiles by active window.
 
 ### 💼 Sustainability
-Project Nimbus is and will remain **free for all accessibility use**. The core — all layouts, vJoy/ViGEm, profiles, custom builder — is MIT-licensed and free forever. Advanced features (voice, AI, cloud sync) may be offered optionally in future to sustain development.
+Nimbus Adaptive Controller is and will remain **free for all accessibility use**. The core — all layouts, vJoy/ViGEm, profiles, custom builder — is MIT-licensed and free forever. Advanced features (voice, AI, cloud sync) may be offered optionally in future to sustain development.
 
 ---
 
@@ -162,7 +163,7 @@ Project Nimbus is and will remain **free for all accessibility use**. The core �
 
 1. **Download the latest release**:
    - Go to [Releases](https://github.com/owenpkent/Project-Nimbus/releases)
-   - Download `Project-Nimbus-Setup-<version>.exe` (installer) or `Project-Nimbus-<version>.exe` (portable)
+   - Download `Nimbus-Adaptive-Controller-Setup-<version>.exe` (installer) or `Nimbus-Adaptive-Controller-<version>.exe` (portable)
 
 2. **Install the ViGEmBus driver** (for Xbox/XInput emulation — recommended):
    - Download from [ViGEmBus Releases](https://github.com/nefarius/ViGEmBus/releases)
@@ -212,7 +213,7 @@ Project Nimbus is and will remain **free for all accessibility use**. The core �
 
 ### Building Your Own Executable
 
-See [build_tools/BUILD_EXECUTABLE.md](build_tools/BUILD_EXECUTABLE.md) for detailed instructions on creating a standalone Windows executable using PyInstaller.
+See [`build_tools/BUILD_EXECUTABLE.md`](build_tools/BUILD_EXECUTABLE.md) for detailed instructions on creating a standalone Windows executable using PyInstaller.
 
 ## Usage
 
@@ -227,6 +228,8 @@ See [build_tools/BUILD_EXECUTABLE.md](build_tools/BUILD_EXECUTABLE.md) for detai
 
 ### Menu System
 - **File > Profile**: Switch between profiles or create new ones
+- **File > New Profile...**: Create a blank new profile with a custom name
+- **File > Recent Profiles**: Quickly switch to one of the last 5 used profiles
 - **File > Save Profile / Save Profile As...**: Save current settings to profile
 - **File > Settings**: Consolidated settings submenu
   - **Joystick Sensitivity**: Configure sensitivity curves for joysticks
@@ -249,7 +252,7 @@ See [build_tools/BUILD_EXECUTABLE.md](build_tools/BUILD_EXECUTABLE.md) for detai
 
 ## Profiles
 
-Project Nimbus uses a profile system to save and manage different controller configurations. Each profile stores its own sensitivity curves, deadzones, button settings, and layout type.
+Nimbus Adaptive Controller uses a profile system to save and manage different controller configurations. Each profile stores its own sensitivity curves, deadzones, button settings, and layout type.
 
 ### Profile Storage Location
 
@@ -291,7 +294,7 @@ You can create unlimited custom profiles using **File > Save Profile As...** fro
 
 ## Configuration
 
-The application uses a JSON-based configuration system stored in `controller_config.json`. The configuration is automatically created with sensible defaults on first run.
+The application uses a JSON-based configuration system stored in `controller_config.json`. Auto-generated on first run with sensible defaults.
 
 ### Key Configuration Sections
 
@@ -410,7 +413,7 @@ Project-Nimbus/
 └── README.md
 ```
 
-### Recent Changes (QML Migration)
+### Architecture Notes
 - Migrated UI to Qt Quick (PySide6 QML) with a dark top menu bar.
 - Standardized sizes using `controller.scaled(...)` for consistent, DPI-aware scaling.
 - Joystick, throttle, rudder input behavior:
@@ -510,7 +513,7 @@ Legacy pygame-based UI and dialogs are kept under `src/legacy/` for reference on
 
 ## Adaptive Platform 2 — Custom Layout Builder
 
-The **Adaptive Platform 2** profile introduces a modular controller builder where users can design their own controller layout:
+The **Adaptive Platform 2** profile (included with Nimbus Adaptive Controller) introduces a modular controller builder where users can design their own controller layout:
 
 ### How It Works
 1. Open Adaptive Platform 2 (loads automatically on first launch)
@@ -541,7 +544,7 @@ See [`docs/architecture/`](docs/architecture/) for detailed technical documentat
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for the full version history.
+See [`CHANGELOG.md`](CHANGELOG.md) for the full version history.
 
 ## Contributing
 
@@ -560,3 +563,7 @@ See [`docs/development/INTEGRATION_GUIDE.md`](docs/development/INTEGRATION_GUIDE
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details. Free for all use including accessibility and educational purposes.
+
+---
+
+*Nimbus Adaptive Controller — formerly distributed as Project Nimbus.*

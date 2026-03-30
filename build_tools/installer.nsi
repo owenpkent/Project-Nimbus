@@ -8,15 +8,16 @@
 !include "nsDialogs.nsh"
 
 ; ---- General ----
-!define PRODUCT_NAME "Project Nimbus"
-!define PRODUCT_EXE "Project-Nimbus-1.4.2.exe"
+!define PRODUCT_NAME "Nimbus Adaptive Controller"
+!define PRODUCT_FILENAME "Nimbus-Adaptive-Controller"
+!define PRODUCT_EXE "${PRODUCT_FILENAME}-1.5.0.exe"
 !define PRODUCT_PUBLISHER "Owen Kent"
-!define PRODUCT_VERSION "1.4.2"
-!define PRODUCT_GUID "project-nimbus-virtual-controller"
+!define PRODUCT_VERSION "1.5.0"
+!define PRODUCT_GUID "nimbus-adaptive-controller"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_GUID}"
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
-OutFile "..\dist\Project-Nimbus-Setup-${PRODUCT_VERSION}.exe"
+OutFile "..\dist\${PRODUCT_FILENAME}-Setup-${PRODUCT_VERSION}.exe"
 InstallDir "$PROGRAMFILES64\${PRODUCT_NAME}"
 InstallDirRegKey HKLM "${PRODUCT_UNINST_KEY}" "InstallLocation"
 RequestExecutionLevel admin  ; Required for Program Files install
@@ -36,7 +37,7 @@ Var ViGEmInstalled
 !define MUI_UNICON "Project-Nimbus.ico"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${PRODUCT_NAME} Setup"
-!define MUI_WELCOMEPAGE_TEXT "This wizard will install ${PRODUCT_NAME} v${PRODUCT_VERSION} on your computer.$\r$\n$\r$\n${PRODUCT_NAME} is a virtual controller interface for accessibility.$\r$\n$\r$\nRequired drivers (vJoy and ViGEmBus) will be installed automatically if needed.$\r$\n$\r$\nClick Next to continue."
+!define MUI_WELCOMEPAGE_TEXT "This wizard will install ${PRODUCT_NAME} v${PRODUCT_VERSION} on your computer.$\r$\n$\r$\n${PRODUCT_NAME} is a free, open-source modular virtual controller designed for accessibility.$\r$\n$\r$\nRequired virtual controller drivers will be offered on the next page if not already installed.$\r$\n$\r$\nClick Next to continue."
 
 ; vJoy detection registry key
 !define VJOY_UNINST_KEY "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8E31F76F-74C3-47F1-9550-E041EEDC5FBB}_is1"
@@ -178,7 +179,7 @@ Function .onInit
     StrCpy $CreateStartMenuShortcut 1
     
     ; Check if Project Nimbus is currently running
-    nsExec::ExecToStack 'cmd /c tasklist /FI "IMAGENAME eq ${PRODUCT_EXE}" /NH | findstr /I "Project-Nimbus"'
+    nsExec::ExecToStack 'cmd /c tasklist /FI "IMAGENAME eq ${PRODUCT_EXE}" /NH | findstr /I "Nimbus-Adaptive"'
     Pop $0
     ${If} $0 == 0
         MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "${PRODUCT_NAME} is currently running.$\r$\n$\r$\nClick OK to close it and continue, or Cancel to abort." IDOK closeApp IDCANCEL abortInstall

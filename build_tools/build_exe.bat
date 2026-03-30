@@ -1,9 +1,9 @@
 @echo off
-REM Build script for Project Nimbus executable
+REM Build script for Nimbus Adaptive Controller executable
 REM This script creates a standalone .exe file using PyInstaller
 
 echo ================================================
-echo Project Nimbus - Executable Builder
+echo Nimbus Adaptive Controller - Executable Builder
 echo ================================================
 echo.
 
@@ -42,7 +42,7 @@ echo.
 echo Cleaning previous build files...
 if exist "build" rmdir /s /q "build"
 if exist "dist" rmdir /s /q "dist"
-if exist "dist\Project-Nimbus-1.4.2.exe" del /q "dist\Project-Nimbus-1.4.2.exe"
+if exist "dist\Nimbus-Adaptive-Controller-1.5.0.exe" del /q "dist\Nimbus-Adaptive-Controller-1.5.0.exe"
 
 REM Build the executable
 echo.
@@ -60,7 +60,7 @@ if errorlevel 1 (
 )
 
 REM Check if executable was created
-if not exist "dist\Project-Nimbus-1.4.2.exe" (
+if not exist "dist\Nimbus-Adaptive-Controller-1.5.0.exe" (
     echo.
     echo ERROR: Executable was not created!
     echo Check the build output for errors.
@@ -70,7 +70,7 @@ if not exist "dist\Project-Nimbus-1.4.2.exe" (
 
 echo.
 echo ================================================
-echo SUCCESS! Executable created: dist\Project-Nimbus-1.4.2.exe
+echo SUCCESS! Executable created: dist\Nimbus-Adaptive-Controller-1.5.0.exe
 echo ================================================
 echo.
 
@@ -96,15 +96,15 @@ if not defined MAKENSIS (
         echo WARNING: Installer build failed. Executable is still available.
     ) else (
         echo.
-        echo Installer created: dist\Project-Nimbus-Setup-1.4.2.exe
+        echo Installer created: dist\Nimbus-Adaptive-Controller-Setup-1.5.0.exe
     )
 )
 
 echo.
 echo You can now:
-echo 1. Run dist\Project-Nimbus-1.4.2.exe directly
+echo 1. Run dist\Nimbus-Adaptive-Controller-1.5.0.exe directly
 echo 2. Sign with: build_tools\sign_exe.bat
-echo 3. Distribute dist\Project-Nimbus-Setup-1.4.2.exe (if NSIS was available)
+echo 3. Distribute dist\Nimbus-Adaptive-Controller-Setup-1.5.0.exe (if NSIS was available)
 echo.
 echo NOTE: VJoy driver must be installed on the target system!
 echo.

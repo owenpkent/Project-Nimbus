@@ -1,93 +1,49 @@
-# Project Nimbus — Next Steps
+# Nimbus Adaptive Controller — Next Steps
 
-> **Current state**: v1.3.2 ready for build and release  
-> **Branch**: `feature/borderless-mouse-integration`  
-> **Last updated**: March 8, 2026
+> **Current state**: v1.5.0 — renamed to Nimbus Adaptive Controller; UI refinements, profile system, smart layout  
+> **Last updated**: March 29, 2026
 
 ---
 
-## Immediate (Before Releasing v1.3.2)
+## Immediate (Release v1.5.0)
 
-### 1. Build the v1.3.2 Executable
+### 1. Build the v1.5.0 Executable
 
 ```powershell
 # From project root
-venv\Scripts\pyinstaller.exe build_tools\Project-Nimbus.spec --noconfirm
+.venv\Scripts\pyinstaller.exe build_tools\Project-Nimbus.spec --noconfirm
 ```
 
-**Output**: `dist\Project-Nimbus-1.3.2.exe` (~174MB)
+**Output**: `dist\Project-Nimbus-1.5.0.exe`
 
-The previous unsigned build is `1.3.1` — you need a fresh `1.3.2` build with the new borderless gaming module and updated version strings.
-
-### 2. Test Borderless Gaming on Real Games
+### 2. Test v1.5.0 Changes
 
 **Critical test cases**:
-- Launch Minecraft (Java Edition) in windowed mode
-- Open Project Nimbus → **View → Borderless Gaming...**
-- Click **"Scan for Games"** — verify Minecraft is auto-detected
-- Select Minecraft, click **"Apply Borderless + Free Cursor"** (green button)
-- Verify:
-  - Game window fills screen without borders
-  - Cursor can freely move between game and Nimbus
-  - Cursor release polling is active (check status indicator)
-- Click **"Restore Window & Stop"** — verify game returns to normal
+- Switch profiles via File → Profile → (any profile): canvas must reload, not stay blank
+- Create a new profile (File → New Profile...): confirm blank canvas, no inherited widgets
+- Recent Profiles: switch to 3 different profiles, close app, reopen — verify recent list persists
+- Add 4+ widgets: each new widget must land in a free area, not on top of the previous
+- Click "Save Layout" while on `adaptive_platform_2` (bundled): must redirect to Save As dialog
+- Click output mode label in bottom ribbon: popup menu must appear to switch ViGEm ↔ vJoy
 
-**Other games to test**:
-- Stardew Valley
-- Terraria
-- Skyrim (set to windowed first)
-
-**What to watch for**:
-- `start_cursor_release` background thread stability
-- ClipCursor polling doesn't cause performance issues
-- Window restoration works correctly
-- Auto-detect matches the right window
-
-### 3. Build the Installer
+### 3. Build Installer & Sign
 
 ```powershell
-# Requires NSIS installed
 & "C:\Program Files (x86)\NSIS\makensis.exe" build_tools\installer.nsi
-```
-
-**Output**: `dist\Project-Nimbus-Setup-1.3.2.exe`
-
-### 4. Sign Both Files (EV Certificate)
-
-```powershell
 cmd /c build_tools\sign_exe.bat
 ```
 
-**Requires**: Hardware token with EV certificate
-
-**What it does**:
-- Signs `Project-Nimbus-1.3.2.exe` with SHA-256 + DigiCert timestamp
-- Signs `Project-Nimbus-Setup-1.3.2.exe` with SHA-256 + DigiCert timestamp
-- Verifies both signatures
-
-**Why this matters**: `UIAccess=true` in the manifest only activates when the exe is EV-signed AND installed in a trusted location (`%LOCALAPPDATA%\Programs\`). Without signing, the borderless gaming features work, but the app won't have on-screen-keyboard parity for full accessibility.
-
-### 5. Merge the Branch
+### 4. Tag and Release
 
 ```powershell
-git checkout main
-git merge feature/borderless-mouse-integration
-git push origin main
-```
-
-**Only after** testing passes and the build is verified.
-
-### 6. Tag and Release
-
-```powershell
-git tag v1.3.2
-git push origin v1.3.2
+git tag v1.5.0
+git push origin v1.5.0
 ```
 
 Upload to GitHub Releases:
-- `Project-Nimbus-1.3.2.exe` (signed)
-- `Project-Nimbus-Setup-1.3.2.exe` (signed)
-- Release notes from `CHANGELOG.md` [1.3.2] section
+- `Project-Nimbus-1.5.0.exe` (signed)
+- `Project-Nimbus-Setup-1.5.0.exe` (signed)
+- Release notes from `CHANGELOG.md` [1.5.0] section
 
 ---
 
@@ -248,46 +204,132 @@ GameCompatEntry(
 
 ---
 
-## Sustainability & Business Model
+## Sustainability, Distribution & Growth
 
-**Status**: Documented in `docs/distribution/BUSINESS_MODEL.md`
+**Core principle**: Nimbus Adaptive Controller is and will remain **free for all accessibility use**.
 
-**Core principle**: Project Nimbus is and will remain **free for all accessibility use**.
+**Full proposal**: [`docs/vision/TELEMETRY_AND_ACCOUNTS.md`](vision/TELEMETRY_AND_ACCOUNTS.md)
 
-**Freemium model**:
-- **Free forever**: All layouts, vJoy/ViGEm, profiles, custom builder, borderless gaming
-- **Optional subscription** ($5-10/month): Voice commands, advanced macros, AI copilot (Spectator+), cloud sync
-- **Institutional licenses**: Hospitals, rehab centers, VA — bulk licensing for clinical use
-- **Corporate sponsorships**: Microsoft, Logitech, AbleGamers Foundation
-- **Research grants**: NIH SBIR, NSF, accessibility-focused foundations
+---
 
-**Next steps**:
-- Finalize freemium tier boundaries
-- Implement Stripe integration for subscriptions
-- Draft sponsorship outreach emails (templates in `docs/distribution/SPONSORSHIP_OUTREACH.md`)
-- Apply for grants (sources in `docs/distribution/RELEASE_STRATEGY.md`)
+### Phase 1 — Crash Reporting (1 session)
+
+**Goal**: Visibility into production bugs without waiting for user reports.
+
+1. Add `sentry-sdk` to `requirements.txt`
+2. Add opt-in checkbox to Settings → Privacy: *"Send crash reports"*
+3. Initialize Sentry in `src/qt_qml_app.py` conditioned on opt-in flag
+4. Write `_scrub_event()` to strip any file paths / OS usernames before send
+5. Store opt-in state in `controller_config.json` under `telemetry.crash_reports`
+
+**Delivers**: Immediate production visibility. No accounts required.
+
+---
+
+### Phase 2 — Anonymous Usage Analytics (1–2 sessions)
+
+**Goal**: Understand which features, output modes, and games users actually use.
+
+1. Implement `src/telemetry.py` — local event buffer, 5-minute batch flush to API
+2. Events to track: `session_start`, `profile_switch`, `widget_added`, `game_mode_start`
+3. Game identification: `sha256(window_title)` — cross-reference with known game list to decode
+4. Add opt-in checkbox alongside crash reporting in Settings → Privacy
+5. Host ingestion: Supabase Edge Function or Plausible (self-hosted)
+
+**Key constraint**: No plaintext window titles, no axis values, no PII — hashes only.
+
+**Delivers**: Data to prioritize game compatibility, feature work, and research partnerships.
+
+---
+
+### Phase 3 — User Accounts (3–5 sessions)
+
+**Goal**: Identity layer enabling cloud sync, premium licensing, and community features.
+
+**Backend**: Supabase (auth + Postgres + storage, open-source, can self-host)
+
+1. Set up Supabase project: `auth.users`, `profiles` table, `sessions` table
+2. Implement `src/cloud_client.py` — login/logout, token refresh, profile upsert/pull
+3. Register `nimbus://` custom URL scheme in NSIS installer for OAuth callback
+4. Add **File → Account → Sign In / Sign Out** to main menu
+5. Profile sync for Nimbus+ users: push on save, pull on startup, last-write-wins merge
+6. Add account status (avatar / email) to status ribbon
+7. Store OAuth token in OS credential vault via `keyring` (no plaintext tokens on disk)
+
+**Tiers**:
+- **Free**: All core features, local profiles only
+- **Nimbus+** ($5–8/month): Cloud profile sync, voice commands, AI copilot, advanced macros
+- **Institutional**: Bulk licenses for hospitals/VA/rehab centers
+- **Research**: Free (application) — opt-in session logging for IRB studies
+
+---
+
+### Phase 4 — Distribution Expansion (parallel with Phase 3)
+
+**Goal**: Reach users beyond GitHub; reduce SmartScreen friction.
+
+1. **Auto-update** — startup check against `https://nimbus.app/version.json`; non-intrusive ribbon if update available
+2. **winget** — submit to `microsoft/winget-pkgs` (`winget install ProjectNimbus.Nimbus`)
+3. **Microsoft Store (MSIX)** — Store auto-updates, no SmartScreen, no admin required; blocker is ViGEmBus driver (prompt `winget install nefarius.vigembus` at first run)
+4. **nimbus.app website** — landing page, download button, account portal, public profile gallery
+
+**Update channels**: `stable` (all users), `beta` (opt-in), `dev` (contributors)
+
+---
+
+### Phase 5 — Premium Billing (2–3 sessions, after accounts)
+
+1. Stripe integration for Nimbus+ subscriptions
+2. JWT entitlement claims checked in `cloud_client.py`
+3. Feature gates in QML: voice/AI/macros show upsell if not Nimbus+
+4. Institutional license flow (email-based initially)
+5. Apply for grants: NIH SBIR, NSF, AbleGamers Foundation, Microsoft Accessibility
+
+---
+
+### Business Model Summary
+
+| Revenue Stream | Timeline |
+|---|---|
+| Nimbus+ subscriptions ($5–8/mo) | After Phase 4 (accounts) |
+| Institutional licenses | Outreach alongside accounts |
+| Corporate sponsorships (Microsoft, Logitech) | Ongoing |
+| Research grants (NIH SBIR, NSF) | Apply now — 6–12 month lag |
 
 ---
 
 ## Testing Checklist (Before Each Release)
 
+**Core layout**
 - [ ] Build exe with PyInstaller
-- [ ] Test borderless gaming with 3+ games
-- [ ] Test profile switching (AP2 → legacy → AP2)
-- [ ] Test widget drag/resize/delete in edit mode
-- [ ] Test joystick triple-click lock + unlock
-- [ ] Test macro joystick with all action types
-- [ ] Test button toggle/momentary modes
-- [ ] Test slider snap modes (none, left, center)
-- [ ] Test sensitivity curve preview in config dialog
-- [ ] Test Game Focus Mode (Windows only)
-- [ ] Test vJoy connection status
+- [ ] Switch profiles: canvas reloads with correct widgets (not blank)
+- [ ] Create new profile: blank canvas, no inherited widgets
+- [ ] Recent Profiles persists across app restart
+- [ ] Add 4+ widgets: each lands in a free spot, no overlap
+- [ ] Save Layout on bundled profile → redirected to Save As dialog
+- [ ] Status ribbon: click output mode label → popup menu appears
+- [ ] Widget drag/resize/delete in edit mode
+- [ ] Joystick triple-click lock + unlock
+- [ ] Macro joystick with all action types
+
+**Output modes**
+- [ ] ViGEm palette shows Xbox-specific widgets; vJoy shows generic widgets
+- [ ] Xbox button labels are read-only in ViGEm config dialog
+- [ ] sl0/sl1 axes hidden in ViGEm axis dropdowns
+- [ ] Test vJoy connection status indicator
 - [ ] Test ViGEm connection (if available)
+
+**Game integration**
+- [ ] Test borderless gaming with 3+ games
+- [ ] Test Game Focus Mode (Windows only)
+- [ ] Test controller mode enforcement (ViGEm keep-alive)
+
+**Build & release**
 - [ ] Build installer with NSIS
 - [ ] Sign exe + installer with EV cert
 - [ ] Verify UIAccess works (install in trusted location)
-- [ ] Test uninstall (verify profiles preserved)
-- [ ] Tag release, upload to GitHub
+- [ ] Test uninstall (verify profiles preserved in %APPDATA%)
+- [ ] Tag release, upload to GitHub Releases
 
 ---
 

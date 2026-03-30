@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec file for Project Nimbus Virtual Controller
+PyInstaller spec file for Nimbus Adaptive Controller
 This creates a standalone Windows executable with all dependencies bundled.
 """
 
@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 # Version info - keep in sync with src/__init__.py
-VERSION = "1.4.2"
-VERSION_TUPLE = (1, 4, 2, 0)
+VERSION = "1.5.0"
+VERSION_TUPLE = (1, 5, 0, 0)
 
 block_cipher = None
 
@@ -118,7 +118,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Project-Nimbus-1.4.2',
+    name='Nimbus-Adaptive-Controller-1.5.0',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

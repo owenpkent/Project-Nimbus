@@ -73,7 +73,7 @@ def _create_splash(project_root: Path) -> QSplashScreen | None:
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("Project Nimbus - QML UI")
+    app.setApplicationName("Nimbus Adaptive Controller")
 
     # Resolve project root
     here = Path(__file__).resolve().parent

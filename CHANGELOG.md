@@ -1,8 +1,38 @@
-# Project Nimbus Changelog
+# Nimbus Adaptive Controller — Changelog
+
+> **Formerly distributed as Project Nimbus**
 
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [1.5.0] — 2026-03-29 — *Renamed to Nimbus Adaptive Controller*
+
+### Added
+- **VS Code-style status ribbon** — Thin ribbon at the bottom of the main window displays the active output mode (Xbox/vJoy), current profile name, and connection status. Click the output mode label to switch between ViGEm and vJoy from the ribbon without opening any menu.
+- **New Profile dialog** — Single combined dialog replacing the old two-step save-then-create flow. Enter profile name, optional description, and check/uncheck "save current profile first" — all in one step. Blank canvas is created on confirm; no widgets are inherited from the previous profile.
+- **Recent Profiles menu** — File → Recent Profiles submenu shows the last 5 used profiles (most-recent first). Recent list is persisted in `controller_config.json` under `ui.recent_profiles` and survives application restarts.
+- **Profile reload on switch** — `CustomLayout.qml` now listens to `profileChanged` and reloads `widgetModel`, `gridSnap`, and `showGrid` from the newly active profile immediately. Previously the canvas stayed blank after switching profiles.
+- **Smart widget placement** — `_findFreePosition()` in `CustomLayout.qml` scans the canvas for a clear spot (AABB collision check, grid-snap step size) before placing a new widget from the palette. New widgets no longer drop on top of existing ones.
+- **Bundled-profile save guard** — Clicking "Save Layout" while on a bundled profile (e.g., `adaptive_platform_2`) redirects to "Save Layout As..." so the bundled file cannot be accidentally overwritten.
+- **`isBundledProfile()` bridge slot** — QML-callable slot that returns `true` when the active profile is a built-in bundled profile.
+- **`createProfileAs()` bridge slot** — QML-callable slot creating a new blank profile (empty widget canvas, default settings) by name and description. Emits `profilesListChanged` so the profile menu updates immediately.
+- **`getRecentProfiles()` bridge slot** — Returns the recent-profiles list (filtered to profiles that still exist on disk) as a `QVariantList` for QML.
+
+### Changed
+- **Widget palette window width** — Widened from 200 px to 240 px for better readability of ViGEm-mode labels.
+- **ViGEm palette separation** — Widget palette shows context-specific controls based on output mode. ViGEm mode: Left Stick, Right Stick, LT/RT triggers, Xbox button presets, D-Pad with fixed IDs 11–14. vJoy mode: generic joystick, buttons, sliders, wheel, D-Pad with dynamic IDs.
+- **Xbox button labels read-only** — In ViGEm mode the per-widget config dialog shows the fixed Xbox label (A/B/X/Y/LB/RB/Back/Start/LS/RS) as read-only text; numeric ID editing is only available in vJoy mode.
+- **Joystick axis combos context-aware** — `sl0`/`sl1` axes are hidden from axis dropdowns in ViGEm mode (Xbox controller has no slider axes).
+- **New profile starts blank** — `config.create_profile_as()` now produces a profile with `layout_type: "custom"`, an empty `widgets: []` canvas, and default sensitivity settings. It no longer copies widget layout or axis mappings from the current profile.
+- **Recent profiles persistence** — `bridge.switchProfile()` writes the updated recent list to `config.set("ui.recent_profiles", ...)` and calls `config.save_config()` on every switch.
+
+### Fixed
+- **`ReferenceError: root is not defined` in `CustomLayout.qml`** — Delegate signal handlers (`onWidgetMoved`, `onWidgetResized`, etc.) referenced `root` but `DraggableWidget` also defines `id: root` internally. Fixed by adding `readonly property var layout: root` on the canvas `Rectangle` and using `canvas.layout` in all delegate signal handlers.
+- **Scrollbar encroaching on palette content** — `ColumnLayout` inside the `Flickable` now subtracts `vsb.width` from its width so the attached `ScrollBar` overlay does not clip the rightmost edge of palette items.
+- **`isViGEmAvailable` capitalization mismatch** — QML was calling `controller.isViGEmAvailable` but the bridge slot is `isVigemAvailable`. Corrected throughout `Main.qml`.
 
 ---
 
