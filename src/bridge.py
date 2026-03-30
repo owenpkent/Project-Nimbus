@@ -66,6 +66,8 @@ class ControllerBridge(QObject):
     cursorReleaseChanged = Signal(bool)  # Emits when cursor release polling starts/stops
     borderlessModeChanged = Signal(int, bool)  # Emits (hwnd, is_borderless)
     controllerModeChanged = Signal(bool)  # Emits when controller mode enforcement starts/stops
+    outputModeChanged = Signal(str)  # Emits "vjoy" or "vigem" when output device changes
+    recentProfilesChanged = Signal()  # Emits when the recently-used profile list changes
 
     def __init__(self, config: ControllerConfig, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -75,6 +77,8 @@ class ControllerBridge(QObject):
         self._cursor_release_active = False
         self._borderless_game_hwnd: int = 0
         self._controller_mode_active = False
+        # Load recent profiles from persistent config (most-recent first)
+        self._recent_profiles: list = list(self._config.get("ui.recent_profiles", []))
         
         # Determine which controller interface to use based on profile layout type
         # ViGEm (Xbox emulation) is preferred for xbox/adaptive profiles as it works with XInput games
@@ -583,6 +587,40 @@ class ControllerBridge(QObject):
             return "Xbox 360 (ViGEm)"
         return "vJoy (DirectInput)"
 
+    @Slot(result=str)
+    def getOutputMode(self) -> str:  # noqa: N802
+        """Get current output mode: 'vigem' or 'vjoy'."""
+        return "vigem" if self._use_vigem else "vjoy"
+
+    @Slot(result=bool)
+    def isVigemAvailable(self) -> bool:  # noqa: N802
+        """Check if ViGEm (vgamepad) is available on this system."""
+        return VIGEM_AVAILABLE
+
+    @Slot(str)
+    def setOutputMode(self, mode: str) -> None:  # noqa: N802
+        """Switch output device. mode is 'vjoy' or 'vigem'."""
+        mode = mode.lower().strip()
+        if mode not in ("vjoy", "vigem"):
+            return
+        want_vigem = mode == "vigem"
+        if want_vigem == self._use_vigem:
+            return
+        if want_vigem and not VIGEM_AVAILABLE:
+            print("Cannot switch to ViGEm — vgamepad not installed")
+            return
+        # Initialize the target interface if needed
+        if want_vigem and self._vigem is None:
+            self._vigem = ViGEmInterface(self._config)
+        if not want_vigem and self._vjoy is None:
+            self._vjoy = VJoyInterface(self._config)
+        self._use_vigem = want_vigem
+        self._config.set("controller.prefer_vigem", want_vigem)
+        self._config.save_config()
+        self.outputModeChanged.emit(mode)
+        self.vjoyConnectionChanged.emit(self._is_controller_connected())
+        print(f"Output mode switched to: {self.getControllerType()}")
+
     # ----- Borderless gaming -----
     @Slot(result=bool)
     def isBorderlessAvailable(self) -> bool:  # noqa: N802
@@ -791,10 +829,36 @@ class ControllerBridge(QObject):
         if success:
             self.profileChanged.emit(profile_id)
             self.layoutTypeChanged.emit(self._config.get_layout_type())
-            # Bump buttons version so QML refreshes button labels/modes
             self._buttons_version += 1
             self.buttonsVersionChanged.emit(self._buttons_version)
+            # Track recently used (keep last 5, most-recent first, no duplicates)
+            if profile_id in self._recent_profiles:
+                self._recent_profiles.remove(profile_id)
+            self._recent_profiles.insert(0, profile_id)
+            self._recent_profiles = self._recent_profiles[:5]
+            self._config.set("ui.recent_profiles", self._recent_profiles)
+            self._config.save_config()
+            self.recentProfilesChanged.emit()
         return success
+
+    @Slot(result="QVariantList")
+    def getRecentProfiles(self) -> list:  # noqa: N802
+        """Get recently used profile IDs (most-recent first, up to 5)."""
+        all_profiles = {p["id"]: p for p in self._config.get_available_profiles()}
+        return [all_profiles[pid] for pid in self._recent_profiles if pid in all_profiles]
+
+    @Slot(result=bool)
+    def isBundledProfile(self) -> bool:  # noqa: N802
+        """Return True if the current profile is a built-in (bundled) profile."""
+        return self._config.is_builtin_profile(self._config.get_current_profile())
+
+    @Slot(str, str, result=str)
+    def createProfileAs(self, name: str, description: str = "") -> str:  # noqa: N802
+        """Create a new blank profile and return its ID (empty string on failure)."""
+        new_id = self._config.create_profile_as(name, description)
+        if new_id:
+            self.profilesListChanged.emit()
+        return new_id or ""
 
     @Slot(int, result=str)
     def getButtonLabel(self, button_id: int) -> str:  # noqa: N802

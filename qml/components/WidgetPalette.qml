@@ -13,6 +13,7 @@ Rectangle {
     property bool editMode: false
     property int gridSnap: 10
     property var widgetModel: []  // Current widgets for smart assignment
+    property string outputMode: "vjoy"  // "vjoy" or "vigem"
 
     // Signals to parent
     signal addWidget(var widgetData)
@@ -20,6 +21,19 @@ Rectangle {
     signal toggleGrid()
     signal doneEditing()
     signal saveLayoutAs(string layoutName)
+
+    readonly property var xboxButtons: [
+        { "id": 1,  "label": "A",     "color": "#1a7a1a" },
+        { "id": 2,  "label": "B",     "color": "#7a1a1a" },
+        { "id": 3,  "label": "X",     "color": "#1a3a7a" },
+        { "id": 4,  "label": "Y",     "color": "#7a7a1a" },
+        { "id": 5,  "label": "LB",    "color": "#444444" },
+        { "id": 6,  "label": "RB",    "color": "#444444" },
+        { "id": 7,  "label": "Back",  "color": "#333333" },
+        { "id": 8,  "label": "Start", "color": "#333333" },
+        { "id": 9,  "label": "LS",    "color": "#555555" },
+        { "id": 10, "label": "RS",    "color": "#555555" }
+    ]
 
     // Check if all axis pairs are used
     function _allAxisPairsUsed() {
@@ -99,16 +113,26 @@ Rectangle {
         return "z"
     }
 
-    ColumnLayout {
+    Flickable {
         anchors.fill: parent
         anchors.margins: 8
-        spacing: 6
+        contentHeight: paletteColumn.implicitHeight
+        clip: true
+        flickableDirection: Flickable.VerticalFlick
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar { id: vsb; policy: ScrollBar.AsNeeded }
 
-        // Add Joystick
+    ColumnLayout {
+        id: paletteColumn
+        width: parent.width - vsb.width
+        spacing: 10
+
+        // Add Joystick (vJoy only — generic, auto-picks next axis pair)
         Rectangle {
             Layout.fillWidth: true
             height: 36
             radius: 6
+            visible: palette.outputMode !== "vigem"
             color: joyAddArea.containsMouse ? "#3a5a8a" : "#2e4a6e"
             border.color: "#4a7aaa"
             border.width: 1
@@ -143,11 +167,56 @@ Rectangle {
             }
         }
 
-        // Add Button
+        // Left Stick (ViGEm only — x/y)
         Rectangle {
             Layout.fillWidth: true
             height: 36
             radius: 6
+            visible: palette.outputMode === "vigem"
+            color: lStickArea.containsMouse ? "#3a5a8a" : "#2e4a6e"
+            border.color: "#4a7aaa"
+            border.width: 1
+            RowLayout {
+                anchors.fill: parent; anchors.margins: 6; spacing: 6
+                Text { text: "◉"; color: "#6aa3ff"; font.pixelSize: 16 }
+                Text { text: "Left Stick"; color: "#ddd"; font.pixelSize: 12; font.bold: true; Layout.fillWidth: true }
+            }
+            MouseArea {
+                id: lStickArea; anchors.fill: parent; hoverEnabled: true
+                onClicked: palette.addWidget({ "id": "joystick_" + Date.now(), "type": "joystick",
+                    "x": 80, "y": 200, "width": 180, "height": 180, "label": "Left Stick",
+                    "mapping": {"axis_x": "x", "axis_y": "y"} })
+            }
+        }
+
+        // Right Stick (ViGEm only — rx/ry)
+        Rectangle {
+            Layout.fillWidth: true
+            height: 36
+            radius: 6
+            visible: palette.outputMode === "vigem"
+            color: rStickArea.containsMouse ? "#3a5a8a" : "#2e4a6e"
+            border.color: "#4a7aaa"
+            border.width: 1
+            RowLayout {
+                anchors.fill: parent; anchors.margins: 6; spacing: 6
+                Text { text: "◉"; color: "#6aa3ff"; font.pixelSize: 16 }
+                Text { text: "Right Stick"; color: "#ddd"; font.pixelSize: 12; font.bold: true; Layout.fillWidth: true }
+            }
+            MouseArea {
+                id: rStickArea; anchors.fill: parent; hoverEnabled: true
+                onClicked: palette.addWidget({ "id": "joystick_" + Date.now(), "type": "joystick",
+                    "x": 300, "y": 200, "width": 180, "height": 180, "label": "Right Stick",
+                    "mapping": {"axis_x": "rx", "axis_y": "ry"} })
+            }
+        }
+
+        // Add Button (generic — vJoy only; Xbox users use the presets below)
+        Rectangle {
+            Layout.fillWidth: true
+            height: 36
+            radius: 6
+            visible: palette.outputMode !== "vigem"
             color: btnAddArea.containsMouse ? "#5a3a3a" : "#4e2e2e"
             border.color: "#aa4a4a"
             border.width: 1
@@ -185,11 +254,123 @@ Rectangle {
             }
         }
 
-        // Add Horizontal Slider
+        // Xbox Button Presets (visible when ViGEm output selected)
+        Column {
+            Layout.fillWidth: true
+            spacing: 5
+            visible: palette.outputMode === "vigem"
+
+            Text {
+                text: "Xbox Buttons:"
+                color: "#aaa"
+                font.pixelSize: 11
+                font.bold: true
+                bottomPadding: 4
+                topPadding: 2
+            }
+
+            // Grid of Xbox button presets
+            Grid {
+                columns: 2
+                spacing: 5
+                width: parent.width
+
+                Repeater {
+                    model: palette.xboxButtons
+                    Rectangle {
+                        width: (parent.width - 5) / 2
+                        height: 32
+                        radius: 5
+                        color: xboxBtnMa.containsMouse ? Qt.lighter(modelData.color, 1.4) : modelData.color
+                        border.color: Qt.lighter(modelData.color, 1.6)
+                        border.width: 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData.label
+                            color: "white"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: xboxBtnMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: {
+                                var uid = "button_" + Date.now()
+                                palette.addWidget({
+                                    "id": uid,
+                                    "type": "button",
+                                    "x": 400,
+                                    "y": 300,
+                                    "width": 60,
+                                    "height": 60,
+                                    "label": modelData.label,
+                                    "button_id": modelData.id,
+                                    "color": modelData.color,
+                                    "shape": "circle",
+                                    "toggle_mode": false
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // LT — Left Trigger (ViGEm only, maps to z axis)
         Rectangle {
             Layout.fillWidth: true
             height: 36
             radius: 6
+            visible: palette.outputMode === "vigem"
+            color: ltArea.containsMouse ? "#5a4a2a" : "#463b20"
+            border.color: "#aa8a3a"
+            border.width: 1
+            RowLayout {
+                anchors.fill: parent; anchors.margins: 6; spacing: 6
+                Text { text: "▬"; color: "#ffcc55"; font.pixelSize: 16 }
+                Text { text: "LT (Trigger)"; color: "#ddd"; font.pixelSize: 12; font.bold: true; Layout.fillWidth: true }
+            }
+            MouseArea {
+                id: ltArea; anchors.fill: parent; hoverEnabled: true
+                onClicked: palette.addWidget({ "id": "slider_" + Date.now(), "type": "slider",
+                    "x": 100, "y": 100, "width": 160, "height": 50, "label": "LT",
+                    "orientation": "horizontal", "snap_mode": "left",
+                    "mapping": {"axis": "z"} })
+            }
+        }
+
+        // RT — Right Trigger (ViGEm only, maps to rz axis)
+        Rectangle {
+            Layout.fillWidth: true
+            height: 36
+            radius: 6
+            visible: palette.outputMode === "vigem"
+            color: rtArea.containsMouse ? "#5a4a2a" : "#463b20"
+            border.color: "#aa8a3a"
+            border.width: 1
+            RowLayout {
+                anchors.fill: parent; anchors.margins: 6; spacing: 6
+                Text { text: "▬"; color: "#ffcc55"; font.pixelSize: 16 }
+                Text { text: "RT (Trigger)"; color: "#ddd"; font.pixelSize: 12; font.bold: true; Layout.fillWidth: true }
+            }
+            MouseArea {
+                id: rtArea; anchors.fill: parent; hoverEnabled: true
+                onClicked: palette.addWidget({ "id": "slider_" + Date.now(), "type": "slider",
+                    "x": 300, "y": 100, "width": 160, "height": 50, "label": "RT",
+                    "orientation": "horizontal", "snap_mode": "left",
+                    "mapping": {"axis": "rz"} })
+            }
+        }
+
+        // Add Horizontal Slider (vJoy only)
+        Rectangle {
+            Layout.fillWidth: true
+            height: 36
+            radius: 6
+            visible: palette.outputMode !== "vigem"
             color: sliderAddArea.containsMouse ? "#3a5a3a" : "#2e4e2e"
             border.color: "#4aaa4a"
             border.width: 1
@@ -226,11 +407,12 @@ Rectangle {
             }
         }
 
-        // Add Vertical Slider
+        // Add Vertical Slider (vJoy only)
         Rectangle {
             Layout.fillWidth: true
             height: 36
             radius: 6
+            visible: palette.outputMode !== "vigem"
             color: vSliderAddArea.containsMouse ? "#3a5a3a" : "#2e4e2e"
             border.color: "#4aaa4a"
             border.width: 1
@@ -296,6 +478,9 @@ Rectangle {
                     var downId = upId + 1
                     var leftId = upId + 2
                     var rightId = upId + 3
+                    var mapping = palette.outputMode === "vigem"
+                        ? {"up": 11, "down": 12, "left": 13, "right": 14}
+                        : {"up": upId, "down": downId, "left": leftId, "right": rightId}
                     palette.addWidget({
                         "id": uid,
                         "type": "dpad",
@@ -304,17 +489,18 @@ Rectangle {
                         "width": 140,
                         "height": 140,
                         "label": "D-Pad",
-                        "mapping": {"up": upId, "down": downId, "left": leftId, "right": rightId}
+                        "mapping": mapping
                     })
                 }
             }
         }
 
-        // Add Steering Wheel
+        // Add Steering Wheel (vJoy only)
         Rectangle {
             Layout.fillWidth: true
             height: 36
             radius: 6
+            visible: palette.outputMode !== "vigem"
             color: wheelAddArea.containsMouse ? "#4a3a5a" : "#3e2e4e"
             border.color: "#aa4aaa"
             border.width: 1
@@ -353,13 +539,15 @@ Rectangle {
 
         // Axis limits info
         Text {
-            text: "Axis Limits:"
+            text: palette.outputMode === "vigem" ? "Xbox Limits:" : "Axis Limits:"
             color: "#aaa"
             font.pixelSize: 10
             font.bold: true
         }
         Text {
-            text: "vJoy: 4 sticks (8 axes)\nViGEm: 2 sticks max\nButtons: up to 128"
+            text: palette.outputMode === "vigem"
+                ? "2 sticks, 2 triggers\n10 buttons + D-Pad"
+                : "4 sticks (8 axes)\n128 buttons"
             color: "#888"
             font.pixelSize: 9
             lineHeight: 1.3
@@ -467,5 +655,6 @@ Rectangle {
         }
 
         Item { Layout.fillHeight: true }
+    }
     }
 }

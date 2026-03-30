@@ -843,57 +843,46 @@ class ControllerConfig:
         Returns:
             New profile ID if successful, None otherwise
         """
-        # Start from current profile as template
-        current_data = self.get_current_profile_data()
-        if current_data is None:
-            current_data = {}
-        
         # Generate new ID from name
         new_id = name.lower().replace(" ", "_")
         new_id = "".join(c for c in new_id if c.isalnum() or c == "_")
-        
+
         if not new_id:
             new_id = "custom_profile"
-        
+
         # Ensure unique ID
         base_id = new_id
         counter = 1
         while (self._user_profiles_dir / f"{new_id}.json").exists():
             new_id = f"{base_id}_{counter}"
             counter += 1
-        
-        # Build new profile data with current settings
+
+        # Build a blank custom profile — empty canvas, no widgets
         new_data = {
             "name": name,
-            "description": description if description else f"Custom profile created from {current_data.get('name', 'settings')}",
-            "layout_type": current_data.get("layout_type", "flight_sim"),
+            "description": description if description else "Custom profile",
+            "layout_type": "custom",
+            "custom_layout": {
+                "canvas_width": 1024,
+                "canvas_height": 600,
+                "grid_snap": 10,
+                "show_grid": True,
+                "widgets": []
+            },
             "axis_mapping": {},
-            "buttons": current_data.get("buttons", {}),
+            "buttons": {},
             "joystick_settings": {
-                "sensitivity": self.get("joystick_settings.sensitivity", 35.0),
-                "deadzone": self.get("joystick_settings.deadzone", 0.0),
-                "extremity_deadzone": self.get("joystick_settings.extremity_deadzone", 38.0),
+                "sensitivity": 50.0,
+                "deadzone": 10.0,
+                "extremity_deadzone": 5.0,
             },
             "rudder_settings": {
-                "sensitivity": self.get("rudder_settings.sensitivity", 50.0),
-                "deadzone": self.get("rudder_settings.deadzone", 10.0),
-                "extremity_deadzone": self.get("rudder_settings.extremity_deadzone", 5.0),
+                "sensitivity": 50.0,
+                "deadzone": 10.0,
+                "extremity_deadzone": 5.0,
             }
         }
-        
-        # Copy axis mapping from config
-        for axis in ["left_x", "left_y", "right_x", "right_y", "throttle", "rudder"]:
-            value = self.get(f"axis_mapping.{axis}")
-            if value:
-                new_data["axis_mapping"][axis] = value
-        
-        # Update button toggle modes from current settings
-        if "buttons" in new_data:
-            for btn_key in new_data["buttons"]:
-                if isinstance(new_data["buttons"][btn_key], dict):
-                    toggle_mode = self.get(f"buttons.{btn_key}.toggle_mode", False)
-                    new_data["buttons"][btn_key]["toggle_mode"] = toggle_mode
-        
+
         new_path = self._user_profiles_dir / f"{new_id}.json"
         try:
             with open(new_path, 'w') as f:

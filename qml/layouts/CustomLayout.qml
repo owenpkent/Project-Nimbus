@@ -8,6 +8,8 @@ import "../components" as Comp
 Item {
     id: root
     property real scaleFactor: 1.0
+    property string outputMode: "vjoy"
+    property var mainWindow: null
 
     // Edit mode state
     property bool editMode: false
@@ -33,12 +35,26 @@ Item {
         }
     }
 
+    // Reload when the active profile changes
+    Connections {
+        target: controller
+        function onProfileChanged(profileId) {
+            var data = controller.getCustomLayout()
+            root.widgetModel = (data && data.length > 0) ? JSON.parse(data) : []
+            root.gridSnap = controller.getCustomLayoutGridSnap()
+            root.showGrid = controller.getCustomLayoutShowGrid()
+            gridCanvas.requestPaint()
+        }
+    }
+
     // ==================== CANVAS BACKGROUND ====================
     Rectangle {
         id: canvas
         anchors.fill: parent
         color: "#111111"
         clip: true
+        // Stable reference to outer layout (avoids shadowing by DraggableWidget's own id:root)
+        readonly property var layout: root
 
         // Grid overlay
         Canvas {
@@ -141,20 +157,20 @@ Item {
                 gridSnap: root.gridSnap
 
                 onWidgetMoved: function(wid, wx, wy) {
-                    root._updateWidgetProp(wid, "x", wx)
-                    root._updateWidgetProp(wid, "y", wy)
-                    root._autoSave()
+                    canvas.layout._updateWidgetProp(wid, "x", wx)
+                    canvas.layout._updateWidgetProp(wid, "y", wy)
+                    canvas.layout._autoSave()
                 }
 
                 onWidgetResized: function(wid, ww, wh) {
-                    root._updateWidgetProp(wid, "width", ww)
-                    root._updateWidgetProp(wid, "height", wh)
-                    root._autoSave()
+                    canvas.layout._updateWidgetProp(wid, "width", ww)
+                    canvas.layout._updateWidgetProp(wid, "height", wh)
+                    canvas.layout._autoSave()
                 }
 
                 onWidgetRemoved: function(wid) {
-                    root._removeWidget(wid)
-                    root._autoSave()
+                    canvas.layout._removeWidget(wid)
+                    canvas.layout._autoSave()
                 }
 
                 onWidgetConfigRequested: function(wid) {
@@ -163,20 +179,18 @@ Item {
 
                 onMouseLockChanged: function(wid, locked) {
                     if (locked) {
-                        root.lockedJoystickId = wid
-                        root.lockedWidget = dragWidget
+                        canvas.layout.lockedJoystickId = wid
+                        canvas.layout.lockedWidget = dragWidget
                         joyLockOverlay._warping = true
                         warpSafetyTimer.restart()
                         if (controller) {
-                            // Keep cursor inside window so hover events keep firing
                             controller.clipCursorToWindow()
-                            // Warp cursor to joystick center for accurate mapping
                             var center = dragWidget.mapToGlobal(dragWidget.width / 2, dragWidget.height / 2)
                             controller.setCursorPos(Math.round(center.x), Math.round(center.y))
                         }
                     } else {
-                        root.lockedJoystickId = ""
-                        root.lockedWidget = null
+                        canvas.layout.lockedJoystickId = ""
+                        canvas.layout.lockedWidget = null
                         if (controller) controller.unclipCursor()
                     }
                 }
@@ -330,14 +344,16 @@ Item {
         }
     }
 
-    // ==================== WIDGET PALETTE (pop-out tool window) ====================
+    // ==================== WIDGET PALETTE (external window, right of main window) ====================
     Window {
         id: paletteWindow
-        title: "Widget Palette"
-        width: 190
-        height: 680
-        visible: root.editMode
-        flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+        transientParent: root.mainWindow
+        x: root.mainWindow ? (root.mainWindow.x + root.mainWindow.width) : 0
+        y: root.mainWindow ? root.mainWindow.y : 0
+        width: 240
+        height: root.mainWindow ? root.mainWindow.height : 600
+        visible: root.editMode && root.mainWindow !== null
+        flags: Qt.Tool | Qt.FramelessWindowHint
         color: "transparent"
 
         Rectangle {
@@ -345,26 +361,14 @@ Item {
             color: "#2a2a2a"
             border.color: "#4a9eff"
             border.width: 1
-            radius: 8
 
-            // Custom draggable title bar
             Rectangle {
                 id: paletteTitleBar
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 28
-                color: paletteDragArea.containsPress ? "#1a5a9e" : "#1e3a5a"
-                radius: 8
-
-                // Square off bottom corners
-                Rectangle {
-                    anchors.bottom: parent.bottom
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    height: 8
-                    color: parent.color
-                }
+                color: "#1e3a5a"
 
                 Text {
                     anchors.centerIn: parent
@@ -372,24 +376,6 @@ Item {
                     color: "#ccc"
                     font.pixelSize: 12
                     font.bold: true
-                }
-
-                MouseArea {
-                    id: paletteDragArea
-                    anchors.fill: parent
-                    property real _startX: 0
-                    property real _startY: 0
-                    property bool containsPress: pressed
-
-                    onPressed: function(mouse) {
-                        _startX = mouse.x
-                        _startY = mouse.y
-                    }
-                    onPositionChanged: function(mouse) {
-                        if (!pressed) return
-                        paletteWindow.x += (mouse.x - _startX)
-                        paletteWindow.y += (mouse.y - _startY)
-                    }
                 }
             }
 
@@ -402,14 +388,21 @@ Item {
                 anchors.margins: 2
                 editMode: root.editMode
                 widgetModel: root.widgetModel
+                outputMode: root.outputMode
 
                 onAddWidget: function(widgetData) {
                     root._addWidget(widgetData)
-                    _autoSave()
+                    root._autoSave()
                 }
 
                 onSaveLayout: {
-                    root._saveLayout()
+                    if (controller && controller.isBundledProfile()) {
+                        saveAsDialog.visible = true
+                        saveAsNameField.text = ""
+                        saveAsNameField.forceActiveFocus()
+                    } else {
+                        root._saveLayout()
+                    }
                 }
 
                 onToggleGrid: {
@@ -470,7 +463,9 @@ Item {
                         toggleModeSwitch.checked = targetWidget.toggle_mode || false
                     }
                     if (targetWidget.type === "joystick") {
-                        var _axVals = ["none", "x", "y", "rx", "ry", "z", "rz", "sl0", "sl1"]
+                        var _axVals = root.outputMode === "vigem"
+                            ? ["none", "x", "y", "rx", "ry", "z", "rz"]
+                            : ["none", "x", "y", "rx", "ry", "z", "rz", "sl0", "sl1"]
                         var _hIdx = _axVals.indexOf(targetWidget.mapping.axis_x || "x")
                         axisXCombo.currentIndex = _hIdx >= 0 ? _hIdx : 1
                         var _vIdx = _axVals.indexOf(targetWidget.mapping.axis_y || "y")
@@ -585,7 +580,30 @@ Item {
                 visible: configDialog.targetWidget ? configDialog.targetWidget.type === "button" : false
                 width: parent.width
 
+                // ViGEm mode: read-only Xbox button assignment
                 Row {
+                    visible: root.outputMode === "vigem"
+                    spacing: 8
+                    Text { text: "Xbox Button:"; color: "#ccc"; font.pixelSize: 12; width: 82; verticalAlignment: Text.AlignVCenter; height: 32 }
+                    Rectangle {
+                        width: 80; height: 32; radius: 6
+                        color: configDialog.targetWidget ? (configDialog.targetWidget.color || "#333") : "#333"
+                        border.color: "#888"
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: configDialog.targetWidget ? (configDialog.targetWidget.label || "?") : "?"
+                            color: "white"
+                            font.pixelSize: 13
+                            font.bold: true
+                        }
+                    }
+                    Text { text: "(fixed)"; color: "#666"; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; height: 32 }
+                }
+
+                // vJoy mode: editable numeric button ID
+                Row {
+                    visible: root.outputMode !== "vigem"
                     spacing: 8
                     Text { text: "Button ID:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
                     Rectangle {
@@ -695,7 +713,9 @@ Item {
                     Basic.ComboBox {
                         id: axisXCombo
                         width: 160
-                        model: ["None", "x (Left Stick X)", "y (Left Stick Y)", "rx (Right Stick X)", "ry (Right Stick Y)", "z (LT)", "rz (RT)", "sl0", "sl1"]
+                        model: root.outputMode === "vigem"
+                            ? ["None", "x (Left X)", "y (Left Y)", "rx (Right X)", "ry (Right Y)", "z (LT)", "rz (RT)"]
+                            : ["None", "x (Left X)", "y (Left Y)", "rx (Right X)", "ry (Right Y)", "z (LT)", "rz (RT)", "sl0", "sl1"]
                         background: Rectangle { color: "#1a1a1a"; border.color: "#444"; radius: 4 }
                         contentItem: Text { text: axisXCombo.displayText; color: "white"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
                         delegate: ItemDelegate {
@@ -727,7 +747,9 @@ Item {
                     Basic.ComboBox {
                         id: axisYCombo
                         width: 160
-                        model: ["None", "x (Left Stick X)", "y (Left Stick Y)", "rx (Right Stick X)", "ry (Right Stick Y)", "z (LT)", "rz (RT)", "sl0", "sl1"]
+                        model: root.outputMode === "vigem"
+                            ? ["None", "x (Left X)", "y (Left Y)", "rx (Right X)", "ry (Right Y)", "z (LT)", "rz (RT)"]
+                            : ["None", "x (Left X)", "y (Left Y)", "rx (Right X)", "ry (Right Y)", "z (LT)", "rz (RT)", "sl0", "sl1"]
                         background: Rectangle { color: "#1a1a1a"; border.color: "#444"; radius: 4 }
                         contentItem: Text { text: axisYCombo.displayText; color: "white"; font.pixelSize: 12; leftPadding: 8; verticalAlignment: Text.AlignVCenter }
                         delegate: ItemDelegate {
@@ -1318,14 +1340,18 @@ Item {
                         _updateWidgetProp(wid, "label", labelField.text)
 
                         if (wType === "button") {
-                            _updateWidgetProp(wid, "button_id", parseInt(buttonIdField.text) || 1)
+                            if (root.outputMode !== "vigem") {
+                                _updateWidgetProp(wid, "button_id", parseInt(buttonIdField.text) || 1)
+                            }
                             _updateWidgetProp(wid, "color", colorField.text)
                             _updateWidgetProp(wid, "shape", shapeCombo.currentText)
                             _updateWidgetProp(wid, "toggle_mode", toggleModeSwitch.checked)
                         }
 
                         if (wType === "joystick") {
-                            var _axSave = ["none", "x", "y", "rx", "ry", "z", "rz", "sl0", "sl1"]
+                            var _axSave = root.outputMode === "vigem"
+                                ? ["none", "x", "y", "rx", "ry", "z", "rz"]
+                                : ["none", "x", "y", "rx", "ry", "z", "rz", "sl0", "sl1"]
                             var selAxisX = _axSave[axisXCombo.currentIndex] || "x"
                             var selAxisY = _axSave[axisYCombo.currentIndex] || "y"
                             _updateWidgetProp(wid, "mapping", {"axis_x": selAxisX, "axis_y": selAxisY})
@@ -1492,7 +1518,32 @@ Item {
         }
     }
 
+    function _findFreePosition(w, h) {
+        var canvasW = root.width > 0 ? root.width : 1024
+        var canvasH = root.height > 0 ? root.height : 600
+        var stepX = Math.max(Math.round(w / 2), gridSnap > 0 ? gridSnap : 10)
+        var stepY = Math.max(Math.round(h / 2), gridSnap > 0 ? gridSnap : 10)
+        for (var ty = 10; ty + h <= canvasH - 10; ty += stepY) {
+            for (var tx = 10; tx + w <= canvasW - 10; tx += stepX) {
+                var clear = true
+                for (var i = 0; i < widgetModel.length; i++) {
+                    var wm = widgetModel[i]
+                    var wx1 = wm.x || 0, wy1 = wm.y || 0
+                    var wx2 = wx1 + (wm.width || 100), wy2 = wy1 + (wm.height || 100)
+                    if (tx < wx2 && tx + w > wx1 && ty < wy2 && ty + h > wy1) {
+                        clear = false; break
+                    }
+                }
+                if (clear) return { x: tx, y: ty }
+            }
+        }
+        return { x: 10, y: 10 }  // fallback
+    }
+
     function _addWidget(data) {
+        var pos = _findFreePosition(data.width || 100, data.height || 100)
+        data.x = pos.x
+        data.y = pos.y
         var m = widgetModel.slice()
         m.push(data)
         widgetModel = m
