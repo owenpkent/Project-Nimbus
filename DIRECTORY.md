@@ -1,4 +1,4 @@
-# Project Nimbus — Directory Structure
+# Nimbus Adaptive Controller — Directory Structure
 
 > **Purpose**: Quick reference for developers and AI assistants to understand the codebase layout.  
 > **Last updated**: March 2026 (v1.4.1)

@@ -2,7 +2,7 @@
 
 ## The Idea
 
-Project Nimbus is currently framed as a virtual game controller. But its core capability — a **fully customizable, touch/switch/gaze/voice-driven control surface that outputs arbitrary input signals** — is exactly what AAC devices do. The same architecture that lets a user with limited mobility control a game could let them control a communication app, trigger pre-programmed phrases, navigate a speech-generating device, or operate any software that accepts keyboard/mouse/controller input.
+Nimbus Adaptive Controller is currently framed as a virtual game controller. But its core capability — a **fully customizable, touch/switch/gaze/voice-driven control surface that outputs arbitrary input signals** — is exactly what AAC devices do. The same architecture that lets a user with limited mobility control a game could let them control a communication app, trigger pre-programmed phrases, navigate a speech-generating device, or operate any software that accepts keyboard/mouse/controller input.
 
 > *"AAC is just a control surface for language. Nimbus is already a control surface."*
 

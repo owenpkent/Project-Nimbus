@@ -234,7 +234,7 @@ class ViGEmInterface:
         """
         Set button state using Xbox button mapping.
         
-        Button mapping (matching Project Nimbus conventions):
+        Button mapping (matching Nimbus Adaptive Controller conventions):
             1: A
             2: B
             3: X

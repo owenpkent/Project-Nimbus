@@ -1,5 +1,5 @@
 """
-Controller Mode Enforcement for Project Nimbus.
+Controller Mode Enforcement for Nimbus Adaptive Controller.
 
 Makes games voluntarily release the mouse by keeping them in "controller mode."
 
@@ -7,7 +7,7 @@ Most modern games have dual input detection:
   - Mouse/keyboard input detected → M/KB mode → cursor captured, mouse prompts
   - Controller input detected → Controller mode → cursor RELEASED, gamepad prompts
 
-Since Project Nimbus already creates a virtual Xbox 360 controller via ViGEm,
+Since Nimbus Adaptive Controller already creates a virtual Xbox 360 controller via ViGEm,
 we can exploit this by:
   1. Sending a constant stream of controller keep-alive signals (tiny stick
      oscillations below deadzone) so the game stays in controller mode

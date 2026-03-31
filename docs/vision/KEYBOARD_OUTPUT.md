@@ -58,7 +58,7 @@ This module follows the exact same duck-type interface as `VJoyInterface` and `V
 
 ```python
 """
-Keyboard output interface for Project Nimbus.
+Keyboard output interface for Nimbus Adaptive Controller.
 
 Emits synthetic keystrokes via Windows SendInput API (user32.dll).
 No external dependencies — user32.dll is always present on Windows.

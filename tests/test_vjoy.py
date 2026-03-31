@@ -114,7 +114,7 @@ def test_vjoy_device(pyvjoy, device_id=1):
 def main():
     """Main test function."""
     print("=" * 60)
-    print("Project Nimbus - VJoy Diagnostic Test")
+    print("Nimbus Adaptive Controller - VJoy Diagnostic Test")
     print("=" * 60)
     
     # Test 1: PyVjoy import
@@ -149,7 +149,7 @@ def main():
     print("\n" + "=" * 60)
     print("✓ ALL TESTS PASSED!")
     print("VJoy is properly configured and ready to use.")
-    print("You can now run Project Nimbus successfully.")
+    print("You can now run Nimbus Adaptive Controller successfully.")
     print("=" * 60)
     return 0
 

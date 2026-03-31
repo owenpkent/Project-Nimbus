@@ -1,5 +1,5 @@
 """
-Button Settings Dialog for Project Nimbus.
+Button Settings Dialog for Nimbus Adaptive Controller.
 Allows users to configure button modes (momentary vs toggle) for each button.
 """
 

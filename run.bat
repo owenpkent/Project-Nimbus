@@ -1,5 +1,5 @@
 @echo off
-echo Starting Project Nimbus - Virtual Controller Interface...
+echo Starting Nimbus Adaptive Controller - Virtual Controller Interface...
 echo.
 
 REM Check if Python is available

@@ -1,6 +1,6 @@
-# Building Project Nimbus Executable
+# Building Nimbus Adaptive Controller Executable
 
-This guide explains how to create a standalone Windows executable (.exe) for Project Nimbus.
+This guide explains how to create a standalone Windows executable (.exe) for Nimbus Adaptive Controller.
 
 ## Quick Start
 
@@ -16,7 +16,7 @@ This will:
 1. Check for PyInstaller and install it if needed
 2. Clean previous build files
 3. Build the executable using PyInstaller
-4. Create `dist\Project-Nimbus.exe`
+4. Create `dist\Nimbus-Adaptive-Controller.exe`
 
 ### Option 2: Manual Build
 
@@ -30,19 +30,19 @@ venv\Scripts\activate
 pip install pyinstaller>=6.0.0
 
 # Build the executable
-pyinstaller --clean --noconfirm Project-Nimbus.spec
+pyinstaller --clean --noconfirm Nimbus-Adaptive-Controller.spec
 ```
 
 ## Output
 
 After a successful build, you'll find:
 
-- **Executable**: `dist\Project-Nimbus.exe` - The standalone application
+- **Executable**: `dist\Nimbus-Adaptive-Controller.exe` - The standalone application
 - **Build files**: `build\` folder - Temporary build files (can be deleted)
 
 ## Distribution
 
-The `Project-Nimbus.exe` file in the `dist` folder is a **standalone executable** that includes:
+The `Nimbus-Adaptive-Controller.exe` file in the `dist` folder is a **standalone executable** that includes:
 
 - All Python dependencies (PySide6, NumPy, pyvjoy)
 - All QML interface files
@@ -51,7 +51,7 @@ The `Project-Nimbus.exe` file in the `dist` folder is a **standalone executable*
 
 ### To distribute:
 
-1. Copy `dist\Project-Nimbus.exe` to any location
+1. Copy `dist\Nimbus-Adaptive-Controller.exe` to any location
 2. The executable can run on any Windows system **without Python installed**
 3. **Important**: The target system must have [VJoy driver](http://vjoystick.sourceforge.net/) installed
 
@@ -74,14 +74,14 @@ pip install -r requirements.txt
 - Check that VJoy driver is installed on the target system
 - Try running from command line to see error messages:
   ```batch
-  dist\Project-Nimbus.exe
+  dist\Nimbus-Adaptive-Controller.exe
   ```
 
 ### "Console=False" option
 
 The spec file is configured with `console=False`, which means:
 - No console window appears when running the .exe
-- For debugging, change `console=True` in `Project-Nimbus.spec`
+- For debugging, change `console=True` in `Nimbus-Adaptive-Controller.spec`
 
 ### Antivirus False Positives
 
@@ -93,7 +93,7 @@ Some antivirus software may flag PyInstaller executables as suspicious. This is 
 
 ### Customizing the Build
 
-Edit `Project-Nimbus.spec` to customize:
+Edit `Nimbus-Adaptive-Controller.spec` to customize:
 
 - **Icon**: Change `icon='logo.png'` to use a custom .ico file
 - **Console**: Set `console=True` to show console window for debugging

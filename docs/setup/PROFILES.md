@@ -2,7 +2,7 @@
 
 ## Overview
 
-Project Nimbus uses a profile system to store different controller configurations. Each profile defines:
+Nimbus Adaptive Controller uses a profile system to store different controller configurations. Each profile defines:
 - **Layout type** — which UI layout to use (flight_sim, xbox, adaptive, custom)
 - **Custom layout** — widget positions, sizes, and per-widget configuration
 - **Axis mapping** — which vJoy axes map to which controls
@@ -177,6 +177,6 @@ Each widget in a custom layout profile stores:
 | Context | Profiles Dir | Bundled Profiles | Config File |
 |---------|-------------|-----------------|-------------|
 | Development | `%APPDATA%\ProjectNimbus\profiles\` | `<repo>/profiles/` | `<repo>/controller_config.json` |
-| Installed | `%APPDATA%\ProjectNimbus\profiles\` | Inside `Project-Nimbus.exe` (PyInstaller) | `%LOCALAPPDATA%\Project Nimbus\controller_config.json` |
+| Installed | `%APPDATA%\ProjectNimbus\profiles\` | Inside `Nimbus-Adaptive-Controller.exe` (PyInstaller) | `%LOCALAPPDATA%\Project Nimbus\controller_config.json` |
 
 Both modes use the same `%APPDATA%` profiles directory, so **switching between dev and installed versions shares the same profiles**.

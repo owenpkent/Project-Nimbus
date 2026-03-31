@@ -1,5 +1,5 @@
 """
-Axis Configuration Dialog for Project Nimbus.
+Axis Configuration Dialog for Nimbus Adaptive Controller.
 Allows users to map UI joystick axes to VJoy axes.
 """
 

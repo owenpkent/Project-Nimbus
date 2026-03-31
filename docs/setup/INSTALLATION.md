@@ -6,27 +6,27 @@
 - **vJoy driver** — must be installed separately from [vJoy on GitHub](https://github.com/njz3/vJoy) or [SourceForge](https://sourceforge.net/projects/vjoystick/)
 - Optional: **ViGEmBus driver** for Xbox 360 controller emulation (`pip install vgamepad` installs it)
 
-## Installing Project Nimbus
+## Installing Nimbus Adaptive Controller
 
 ### From Installer (Recommended)
 
-1. Download `Project-Nimbus-Setup-X.Y.Z.exe` from the [Releases page](https://github.com/owenpkent/Project-Nimbus/releases)
+1. Download `Nimbus-Adaptive-Controller-Setup-X.Y.Z.exe` from the [Releases page](https://github.com/owenpkent/Nimbus-Adaptive-Controller/releases)
 2. Run the installer
 3. **UAC admin prompt** — Enter your Windows admin password (required for proper installation)
 4. The installer wizard will:
-   - Check if Project Nimbus is already running and offer to close it
+   - Check if Nimbus Adaptive Controller is already running and offer to close it
    - Detect any previous installation (per-user or system-wide) and offer to remove it
    - Let you choose the installation directory (default: `%LOCALAPPDATA%\Programs\Project Nimbus\`)
    - **Shortcut options page** — Choose whether to create Desktop and/or Start Menu shortcuts
    - Install the executable and create uninstaller
    - Register in Windows Add/Remove Programs
-5. Click "Launch Project Nimbus" on the final page to start
+5. Click "Launch Nimbus Adaptive Controller" on the final page to start
 
 ### From Source (Development)
 
 ```bash
-git clone https://github.com/owenpkent/Project-Nimbus.git
-cd Project-Nimbus
+git clone https://github.com/owenpkent/Nimbus-Adaptive-Controller.git
+cd Nimbus-Adaptive-Controller
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
@@ -48,7 +48,7 @@ If found:
 
 ### Running Instance Detection
 
-If `Project-Nimbus.exe` is already running, the installer offers to close it via `taskkill` before proceeding.
+If `Nimbus-Adaptive-Controller.exe` is already running, the installer offers to close it via `taskkill` before proceeding.
 
 ### Settings Preservation
 
@@ -78,27 +78,27 @@ The uninstaller removes:
 
 Requirements:
 - [NSIS](https://nsis.sourceforge.io/) (Nullsoft Scriptable Install System)
-- PyInstaller-built executable in `dist/Project-Nimbus.exe`
-- Icon file in `build_tools/Project-Nimbus.ico`
+- PyInstaller-built executable in `dist/Nimbus-Adaptive-Controller.exe`
+- Icon file in `build_tools/Nimbus-Adaptive-Controller.ico`
 
 ```bash
 # Build the executable
-pyinstaller Project-Nimbus.spec
+pyinstaller Nimbus-Adaptive-Controller.spec
 
 # Build the installer
 cd build_tools
 makensis installer.nsi
 ```
 
-The installer is output to `dist/Project-Nimbus-Setup-X.Y.Z.exe`.
+The installer is output to `dist/Nimbus-Adaptive-Controller-Setup-X.Y.Z.exe`.
 
 ### Code Signing
 
 The executable and installer should be signed with an EV code certificate for SmartScreen trust:
 
 ```bash
-build_tools\sign_exe.bat dist\Project-Nimbus.exe
-build_tools\sign_exe.bat dist\Project-Nimbus-Setup-X.Y.Z.exe
+build_tools\sign_exe.bat dist\Nimbus-Adaptive-Controller.exe
+build_tools\sign_exe.bat dist\Nimbus-Adaptive-Controller-Setup-X.Y.Z.exe
 ```
 
 ## vJoy Setup
@@ -109,10 +109,10 @@ build_tools\sign_exe.bat dist\Project-Nimbus-Setup-X.Y.Z.exe
    - Device 1 is enabled
    - At least 8 axes are configured (X, Y, Z, RX, RY, RZ, Slider 0, Slider 1)
    - At least 128 buttons are enabled
-4. Launch Project Nimbus — it should detect vJoy automatically
+4. Launch Nimbus Adaptive Controller — it should detect vJoy automatically
 
 ## Troubleshooting
 
 - **"Failed to initialize VJoy device 1"** — vJoy driver not installed, or another application is using device 1. Close other vJoy apps and retry.
-- **"Cannot acquire vJoy Device because it is not in VJD_STAT_FREE"** — Previous instance of Project Nimbus didn't shut down cleanly. Wait a few seconds and try again, or restart vJoy via Device Manager.
+- **"Cannot acquire vJoy Device because it is not in VJD_STAT_FREE"** — Previous instance of Nimbus Adaptive Controller didn't shut down cleanly. Wait a few seconds and try again, or restart vJoy via Device Manager.
 - **SmartScreen warning** — The executable must be signed with an EV code certificate. Unsigned builds will trigger SmartScreen warnings.

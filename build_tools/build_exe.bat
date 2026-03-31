@@ -49,7 +49,7 @@ echo.
 echo Building executable with PyInstaller...
 echo This may take a few minutes...
 echo.
-pyinstaller --clean --noconfirm build_tools\Project-Nimbus.spec
+pyinstaller --clean --noconfirm build_tools\Nimbus-Adaptive-Controller.spec
 
 if errorlevel 1 (
     echo.

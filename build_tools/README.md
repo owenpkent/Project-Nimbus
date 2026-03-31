@@ -1,11 +1,11 @@
 # Build Tools
 
-This directory contains tools for building Project Nimbus as a standalone executable.
+This directory contains tools for building Nimbus Adaptive Controller as a standalone executable.
 
 ## Files
 
 - **`build_exe.bat`** - Automated build script for creating the Windows executable
-- **`Project-Nimbus.spec`** - PyInstaller configuration file
+- **`Nimbus-Adaptive-Controller.spec`** - PyInstaller configuration file
 - **`launcher.py`** - GUI-friendly entry point for the executable (no stdin dependencies)
 - **`BUILD_EXECUTABLE.md`** - Comprehensive build documentation
 - **`create_release.bat`** - Script for creating GitHub releases
@@ -22,7 +22,7 @@ Or from this directory:
 build_exe.bat
 ```
 
-The executable will be created at `dist\Project-Nimbus.exe`
+The executable will be created at `dist\Nimbus-Adaptive-Controller.exe`
 
 ## Documentation
 

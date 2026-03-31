@@ -1,5 +1,5 @@
 """
-Joystick Settings Dialog for Project Nimbus.
+Joystick Settings Dialog for Nimbus Adaptive Controller.
 Allows users to configure sensitivity, deadzone, and extremity deadzone with XY graph visualization.
 """
 

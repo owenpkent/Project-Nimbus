@@ -131,7 +131,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    manifest=str(PROJECT_ROOT / 'build_tools' / 'Project-Nimbus.manifest'),
-    icon=str(PROJECT_ROOT / 'build_tools' / 'Project-Nimbus.ico'),
+    manifest=str(PROJECT_ROOT / 'build_tools' / 'Nimbus-Adaptive-Controller.manifest'),
+    icon=str(PROJECT_ROOT / 'build_tools' / 'Nimbus-Adaptive-Controller.ico'),
     version=str(PROJECT_ROOT / 'build_tools' / 'version_info.txt'),  # Windows version resource
 )

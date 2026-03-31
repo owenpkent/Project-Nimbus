@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Quick launcher script for Project Nimbus Virtual Controller.
+Quick launcher script for Nimbus Adaptive Controller.
 Handles virtual environment setup, dependency checking and provides user-friendly error messages.
 """
 
@@ -94,7 +94,7 @@ def run_in_venv(target_module: str):
 def main():
     """Main launcher function."""
     print("=" * 50)
-    print("Project Nimbus - Virtual Controller Interface")
+    print("Nimbus Adaptive Controller - Virtual Controller Interface")
     print("=" * 50)
     print()
     

@@ -1,4 +1,4 @@
-# Project Nimbus — Telemetry, Analytics & User Accounts
+# Nimbus Adaptive Controller — Telemetry, Analytics & User Accounts
 
 > **Status**: Proposal — not yet implemented  
 > **Last updated**: March 29, 2026  
@@ -8,7 +8,7 @@
 
 ## Overview
 
-As Project Nimbus grows beyond a single-developer tool into a distributed accessibility platform, three capabilities become necessary together:
+As Nimbus Adaptive Controller grows beyond a single-developer tool into a distributed accessibility platform, three capabilities become necessary together:
 
 1. **User accounts** — identity, cloud sync, licensing, and support
 2. **Usage analytics** — understand what people actually use and with which games
@@ -32,7 +32,7 @@ These are deliberately designed around the accessibility-first mission: fully op
 
 ```
 ┌─────────────────────────┐        ┌──────────────────────────────┐
-│   Project Nimbus (local)│  HTTPS │   Nimbus Cloud API           │
+│   Nimbus Adaptive Controller (local)│  HTTPS │   Nimbus Cloud API           │
 │                         │◄──────►│   (Supabase or Firebase)     │
 │  src/cloud_client.py    │        │                              │
 │  - login / logout       │        │  auth.users                  │
@@ -210,7 +210,7 @@ class TelemetryClient:
 
 **Opt-in prompt** (first run, after onboarding):
 
-> *"Help improve Project Nimbus? We'd like to collect anonymous usage data — which features are used, which games people play with, and crash reports. No personal information, no controller inputs. You can change this anytime in Settings → Privacy."*
+> *"Help improve Nimbus Adaptive Controller? We'd like to collect anonymous usage data — which features are used, which games people play with, and crash reports. No personal information, no controller inputs. You can change this anytime in Settings → Privacy."*
 >
 > **[Yes, share analytics]** &nbsp;&nbsp; **[No thanks]**
 
@@ -276,7 +276,7 @@ import sentry_sdk
 if config.get("telemetry.enabled", False):
     sentry_sdk.init(
         dsn="https://...@sentry.io/...",
-        release=f"project-nimbus@{VERSION}",
+        release=f"nimbus-adaptive-controller@{VERSION}",
         environment="production",
         traces_sample_rate=0.0,   # no performance traces (PII risk)
         before_send=_scrub_event, # strip any path/filename info
@@ -335,7 +335,7 @@ In Settings → Privacy:
 #### Layer 3 — winget (Developer Audience)
 
 ```powershell
-winget install ProjectNimbus.Nimbus
+winget install OwenKent.NimbusAdaptiveController
 ```
 
 Submit to `microsoft/winget-pkgs` repo. Reaches developers who are likely to recommend it to others.

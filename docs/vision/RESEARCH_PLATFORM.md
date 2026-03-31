@@ -2,7 +2,7 @@
 
 ## The Idea
 
-Project Nimbus sits at an unusual intersection: it is both a **functional assistive tool** and a **data collection surface** for understanding how people with disabilities interact with games and applications. Every session generates rich, anonymizable behavioral data — which inputs are used, how axes are configured, what profiles are loaded, how long sessions last, where users struggle — that no academic lab or game studio currently has at scale.
+Nimbus Adaptive Controller sits at an unusual intersection: it is both a **functional assistive tool** and a **data collection surface** for understanding how people with disabilities interact with games and applications. Every session generates rich, anonymizable behavioral data — which inputs are used, how axes are configured, what profiles are loaded, how long sessions last, where users struggle — that no academic lab or game studio currently has at scale.
 
 > *"We don't actually know how disabled gamers play. We have surveys. We don't have telemetry."*
 
@@ -128,7 +128,7 @@ Academic partners / published findings / community reports
 A one-time prompt on first launch (after the user has used the app for a session or two):
 
 > *"Help us understand how people with disabilities game.*
-> *Project Nimbus can anonymously share your session data — which inputs you use, how long you play, how you configure your controller — with disability gaming researchers.*
+> *Nimbus Adaptive Controller can anonymously share your session data — which inputs you use, how long you play, how you configure your controller — with disability gaming researchers.*
 > *No personal information is collected. You can opt out at any time.*
 > [**Yes, contribute to research**] [**No thanks**] [**Learn more**]*"
 

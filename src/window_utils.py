@@ -2,7 +2,7 @@
 Windows API utilities for preventing focus loss.
 
 This module provides utilities to keep games focused while interacting
-with Project Nimbus. Uses WS_EX_NOACTIVATE to make the Nimbus window
+with Nimbus Adaptive Controller. Uses WS_EX_NOACTIVATE to make the Nimbus window
 truly non-activating — clicking on Nimbus NEVER steals focus from the
 game, so games like Minecraft won't open the pause menu.
 

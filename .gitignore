@@ -55,6 +55,12 @@ ehthumbs.db
 inspiration/
 reference/
 
+# ---- Website (Next.js) ----
+website/node_modules/
+website/.next/
+website/out/
+website/build_log.txt
+
 # ---- Private admin content (lives in project-nimbus-admin repo) ----
 docs/distribution/
 docs/video/

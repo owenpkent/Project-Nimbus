@@ -211,7 +211,7 @@ class VirtualControllerApp:
         self.width = self.config.get("ui.window_width", 1024)
         self.height = self.config.get("ui.window_height", 850)
         self.screen = pygame.display.set_mode((self.width, self.height))
-        pygame.display.set_caption("Project Nimbus - Virtual Controller")
+        pygame.display.set_caption("Nimbus Adaptive Controller - Virtual Controller")
         
         # Set up font - using serif for better readability
         font_size = self.config.get("ui.font_size", 14)

@@ -44,7 +44,7 @@ class MainWindow(QMainWindow):
 
         # Window geometry from config
         self._apply_window_geometry_from_config()
-        self.setWindowTitle("Project Nimbus - Virtual Controller (Qt Shell)")
+        self.setWindowTitle("Nimbus Adaptive Controller - Virtual Controller (Qt Shell)")
 
         # Initialize debug borders flag early so menus can reflect its state
         self._debug_borders = bool(self.config.get("ui.debug_borders", False))

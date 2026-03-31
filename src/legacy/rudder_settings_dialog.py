@@ -1,5 +1,5 @@
 """
-Rudder Settings Dialog for Project Nimbus.
+Rudder Settings Dialog for Nimbus Adaptive Controller.
 Allows users to configure rudder sensitivity, deadzone, and extremity deadzone with graph visualization.
 """
 

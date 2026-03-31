@@ -1,4 +1,4 @@
-; Project Nimbus NSIS Installer Script
+; Nimbus Adaptive Controller NSIS Installer Script
 ; Windows Installer Best Practices (modeled after GitConnect Pro)
 ; Features: wizard UI, admin/user choice, running app check, previous version detection, shortcut options
 
@@ -33,8 +33,8 @@ Var InstallViGEm
 Var ViGEmInstalled
 
 ; ---- MUI Settings ----
-!define MUI_ICON "Project-Nimbus.ico"
-!define MUI_UNICON "Project-Nimbus.ico"
+!define MUI_ICON "Nimbus-Adaptive-Controller.ico"
+!define MUI_UNICON "Nimbus-Adaptive-Controller.ico"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${PRODUCT_NAME} Setup"
 !define MUI_WELCOMEPAGE_TEXT "This wizard will install ${PRODUCT_NAME} v${PRODUCT_VERSION} on your computer.$\r$\n$\r$\n${PRODUCT_NAME} is a free, open-source modular virtual controller designed for accessibility.$\r$\n$\r$\nRequired virtual controller drivers will be offered on the next page if not already installed.$\r$\n$\r$\nClick Next to continue."
@@ -178,7 +178,7 @@ Function .onInit
     StrCpy $CreateDesktopShortcut 1
     StrCpy $CreateStartMenuShortcut 1
     
-    ; Check if Project Nimbus is currently running
+    ; Check if Nimbus Adaptive Controller is currently running
     nsExec::ExecToStack 'cmd /c tasklist /FI "IMAGENAME eq ${PRODUCT_EXE}" /NH | findstr /I "Nimbus-Adaptive"'
     Pop $0
     ${If} $0 == 0

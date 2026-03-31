@@ -1,7 +1,7 @@
 """
-Borderless window management and mouse cursor release for Project Nimbus.
+Borderless window management and mouse cursor release for Nimbus Adaptive Controller.
 
-Allows users to interact with Project Nimbus even when a game has captured
+Allows users to interact with Nimbus Adaptive Controller even when a game has captured
 the mouse cursor via ClipCursor(). Also provides borderless windowed mode
 conversion for games running in windowed mode with decorations.
 
@@ -158,7 +158,7 @@ def enumerate_windows(include_invisible: bool = False) -> list[WindowInfo]:
                 return True
 
             # Skip our own window title
-            if "Project Nimbus" in title:
+            if "Nimbus Adaptive Controller" in title:
                 return True
 
             # Get PID

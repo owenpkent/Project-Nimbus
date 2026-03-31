@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="logo.png" alt="Project Nimbus Logo" width="300"/>
+  <img src="logo.png" alt="Nimbus Adaptive Controller Logo" width="300"/>
 </div>
 
 # Nimbus Adaptive Controller
@@ -71,7 +71,7 @@ Users build their own controller layout by dragging, dropping, and resizing widg
 - **Proportional Scaling**: All UI elements scale via `controller.scaled()` and View > Size presets; preference persists
 - **Status Display**: vJoy/ViGEm connection status and real-time value monitoring
 - **Keyboard Shortcuts**: ESC to exit, SPACE to center
-- **Game Focus Mode**: Prevents Project Nimbus from stealing focus from games (Windows only)
+- **Game Focus Mode**: Prevents Nimbus Adaptive Controller from stealing focus from games (Windows only)
 - **Borderless Gaming**: Auto-detect games, strip window borders, and continuously release cursor lock (View → Borderless Gaming)
 
 ## Accessibility
@@ -90,11 +90,11 @@ This makes it especially valuable for:
 - **Adaptive Gaming**: Play joystick-only games using a mouse-first input scheme with customizable sensitivity
 - **Research and Prototyping**: Explore new input models for robotics, simulation, or accessibility tools with comprehensive configuration options
 - **Assistive Technology**: Provide joystick functionality for users who cannot operate traditional controllers
-- **Borderless Gaming**: Use Project Nimbus alongside borderless gaming for seamless full-screen gaming with simultaneous mouse and joystick control
+- **Borderless Gaming**: Use Nimbus Adaptive Controller alongside borderless gaming for seamless full-screen gaming with simultaneous mouse and joystick control
 
 ## Borderless Gaming Integration
 
-Project Nimbus includes **built-in borderless gaming integration** — no external tools needed.
+Nimbus Adaptive Controller includes **built-in borderless gaming integration** — no external tools needed.
 
 **How to use**:
 1. Go to **View → Borderless Gaming...**
@@ -113,11 +113,11 @@ Project Nimbus includes **built-in borderless gaming integration** — no extern
 
 ## Game Focus Mode (Windows)
 
-When playing games that pause or lose input when unfocused, enable **Game Focus Mode** to keep your game running while interacting with Project Nimbus.
+When playing games that pause or lose input when unfocused, enable **Game Focus Mode** to keep your game running while interacting with Nimbus Adaptive Controller.
 
 **How it works:**
 1. Go to **View > Game Focus Mode** to enable
-2. When you click on Project Nimbus, it briefly takes focus to register your input
+2. When you click on Nimbus Adaptive Controller, it briefly takes focus to register your input
 3. When you release the mouse, focus is automatically restored to the previous window (your game)
 
 **Technical details:**
@@ -162,7 +162,7 @@ Nimbus Adaptive Controller is and will remain **free for all accessibility use**
 ### Option 1: Standalone Executable (Recommended for End Users)
 
 1. **Download the latest release**:
-   - Go to [Releases](https://github.com/owenpkent/Project-Nimbus/releases)
+   - Go to [Releases](https://github.com/owenpkent/Nimbus-Adaptive-Controller/releases)
    - Download `Nimbus-Adaptive-Controller-Setup-<version>.exe` (installer) or `Nimbus-Adaptive-Controller-<version>.exe` (portable)
 
 2. **Install the ViGEmBus driver** (for Xbox/XInput emulation — recommended):
@@ -188,8 +188,8 @@ Nimbus Adaptive Controller is and will remain **free for all accessibility use**
 
 1. **Clone or download the project**:
    ```bash
-   git clone https://github.com/owenpkent/Project-Nimbus.git
-   cd Project-Nimbus
+   git clone https://github.com/owenpkent/Nimbus-Adaptive-Controller.git
+   cd Nimbus-Adaptive-Controller
    ```
 
 2. **Install Python dependencies**:
@@ -366,7 +366,7 @@ The sensitivity curve system provides precise control over input response:
 
 ### Project Structure
 ```
-Project-Nimbus/
+Nimbus-Adaptive-Controller/
 ├── qml/                               # QML UI (Qt Quick)
 │   ├── Main.qml                       # Main window, menus, layout loader
 │   ├── layouts/                       # Layout QML files
@@ -566,4 +566,4 @@ MIT License — see [LICENSE](LICENSE) for details. Free for all use including a
 
 ---
 
-*Nimbus Adaptive Controller — formerly distributed as Project Nimbus.*
+*Nimbus Adaptive Controller*

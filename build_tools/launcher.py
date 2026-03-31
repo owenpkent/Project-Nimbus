@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Launcher for Project Nimbus executable.
+Launcher for Nimbus Adaptive Controller executable.
 This is a simplified entry point for PyInstaller builds that doesn't use stdin/input.
 """
 
@@ -32,14 +32,14 @@ def main():
             from PySide6.QtWidgets import QApplication, QMessageBox
             app = QApplication.instance() or QApplication(sys.argv)
             
-            error_msg = f"Failed to start Project Nimbus:\n\n{str(e)}\n\n"
+            error_msg = f"Failed to start Nimbus Adaptive Controller:\n\n{str(e)}\n\n"
             error_msg += "Common issues:\n"
             error_msg += "1. ViGEmBus driver not installed (install from ViGEmBus GitHub releases)\n"
-            error_msg += "2. ViGEmClient.dll missing — reinstall Project Nimbus\n"
+            error_msg += "2. ViGEmClient.dll missing — reinstall Nimbus Adaptive Controller\n"
             error_msg += "3. VJoy driver not installed (optional — only needed for vJoy profiles)\n"
             error_msg += "4. Windows Defender blocking the virtual controller driver"
             
-            QMessageBox.critical(None, "Project Nimbus Error", error_msg)
+            QMessageBox.critical(None, "Nimbus Adaptive Controller Error", error_msg)
         except:
             # If even Qt fails, just exit silently
             pass
