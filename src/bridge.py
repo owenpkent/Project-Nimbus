@@ -1548,3 +1548,103 @@ class ControllerBridge(QObject):
                 result["driver_installed"] = False
                 result["driver_query"] = "query failed"
         return result
+
+    # =================================================================
+    # Account, Telemetry & Updater — QML-callable slots
+    # =================================================================
+
+    # ---- Account ----
+
+    @Slot(str, str, result=bool)
+    def loginWithEmail(self, email: str, password: str) -> bool:  # noqa: N802
+        """Sign in with email and password.  Returns True on success."""
+        try:
+            from .cloud_client import CloudClient
+            cloud: CloudClient = self.parent().findChild(CloudClient)
+            if cloud:
+                return cloud.login_with_email(email, password)
+        except Exception:
+            pass
+        return False
+
+    @Slot(str)
+    def loginWithProvider(self, provider: str) -> None:  # noqa: N802
+        """Open the system browser for OAuth login (google / facebook)."""
+        try:
+            from .cloud_client import CloudClient
+            cloud: CloudClient = self.parent().findChild(CloudClient)
+            if cloud:
+                cloud.login_with_browser(provider)
+        except Exception:
+            pass
+
+    @Slot()
+    def logoutAccount(self) -> None:  # noqa: N802
+        """Sign out and clear all stored tokens."""
+        try:
+            from .cloud_client import CloudClient
+            cloud: CloudClient = self.parent().findChild(CloudClient)
+            if cloud:
+                cloud.logout()
+        except Exception:
+            pass
+
+    # ---- Telemetry ----
+
+    @Slot(bool)
+    def setAnalyticsEnabled(self, enabled: bool) -> None:  # noqa: N802
+        """Toggle anonymous usage analytics on or off."""
+        self._config.set("telemetry.analytics_enabled", enabled)
+        self._config.save_config()
+
+    @Slot(bool)
+    def setCrashReportsEnabled(self, enabled: bool) -> None:  # noqa: N802
+        """Toggle crash report collection on or off."""
+        self._config.set("telemetry.crash_reports_enabled", enabled)
+        self._config.save_config()
+
+    @Slot(result=bool)
+    def isAnalyticsEnabled(self) -> bool:  # noqa: N802
+        """Return whether usage analytics is currently enabled."""
+        return bool(self._config.get("telemetry.analytics_enabled", False))
+
+    @Slot(result=bool)
+    def isCrashReportsEnabled(self) -> bool:  # noqa: N802
+        """Return whether crash reporting is currently enabled."""
+        return bool(self._config.get("telemetry.crash_reports_enabled", False))
+
+    # ---- Updater ----
+
+    @Slot()
+    def checkForUpdates(self) -> None:  # noqa: N802
+        """Manually trigger an update check."""
+        try:
+            from .updater import UpdateChecker
+            checker: UpdateChecker = self.parent().findChild(UpdateChecker)
+            if checker:
+                checker.check()
+        except Exception:
+            pass
+
+    @Slot()
+    def openDownloadPage(self) -> None:  # noqa: N802
+        """Open the download page for the latest version."""
+        try:
+            from .updater import UpdateChecker
+            checker: UpdateChecker = self.parent().findChild(UpdateChecker)
+            if checker:
+                checker.open_download_page()
+        except Exception:
+            import webbrowser
+            webbrowser.open("https://github.com/owenpkent/Nimbus-Adaptive-Controller/releases/latest")
+
+    @Slot()
+    def dismissUpdate(self) -> None:  # noqa: N802
+        """Dismiss the current update notification."""
+        try:
+            from .updater import UpdateChecker
+            checker: UpdateChecker = self.parent().findChild(UpdateChecker)
+            if checker:
+                checker.dismiss()
+        except Exception:
+            pass

@@ -242,6 +242,12 @@ Section "Install"
     IntFmt $0 "0x%08X" $0
     WriteRegDWORD HKLM "${PRODUCT_UNINST_KEY}" "EstimatedSize" $0
 
+    ; Register nimbus:// custom URL scheme for OAuth callback
+    WriteRegStr HKCR "nimbus" "" "URL:Nimbus Adaptive Controller"
+    WriteRegStr HKCR "nimbus" "URL Protocol" ""
+    WriteRegStr HKCR "nimbus\DefaultIcon" "" "$INSTDIR\${PRODUCT_EXE},0"
+    WriteRegStr HKCR "nimbus\shell\open\command" "" '"$INSTDIR\${PRODUCT_EXE}" "%1"'
+
     ; Create shortcuts based on user selection
     ${If} $CreateStartMenuShortcut == 1
         CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
@@ -340,6 +346,9 @@ Section "Uninstall"
 
     ; Remove registry entries
     DeleteRegKey HKLM "${PRODUCT_UNINST_KEY}"
+
+    ; Remove nimbus:// custom URL scheme
+    DeleteRegKey HKCR "nimbus"
 
     ; Optionally remove user data (profiles, settings) from %APPDATA%
     MessageBox MB_YESNO|MB_ICONQUESTION "Would you like to remove your saved profiles and settings?$\r$\n$\r$\nThey are stored in:$\r$\n$APPDATA\ProjectNimbus$\r$\n$\r$\nSelect 'No' to keep them for future installations." IDYES removeUserData IDNO keepUserData

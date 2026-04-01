@@ -11,6 +11,9 @@ from PySide6.QtWidgets import QApplication, QSplashScreen
 
 from .bridge import ControllerBridge
 from .config import ControllerConfig
+from .telemetry import TelemetryClient
+from .cloud_client import CloudClient
+from .updater import UpdateChecker
 from . import __version__
 
 
@@ -95,14 +98,29 @@ def main() -> int:
         app.processEvents()
     bridge = ControllerBridge(config)
 
+    # Telemetry (opt-in analytics + crash reporting)
+    if splash:
+        splash.showMessage("  Starting telemetry...", Qt.AlignBottom | Qt.AlignLeft, QColor(120, 120, 120))
+        app.processEvents()
+    telemetry = TelemetryClient(config)
+
+    # Cloud client (user accounts, profile sync)
+    cloud = CloudClient(config)
+
+    # Auto-updater (lightweight version check)
+    updater = UpdateChecker(config)
+
     if splash:
         splash.showMessage("  Loading interface...", Qt.AlignBottom | Qt.AlignLeft, QColor(120, 120, 120))
         app.processEvents()
 
     engine = QQmlApplicationEngine()
-    # Expose bridge and config to QML
+    # Expose bridge, config, and new services to QML
     engine.rootContext().setContextProperty("controller", bridge)
     engine.rootContext().setContextProperty("config", config)
+    engine.rootContext().setContextProperty("telemetry", telemetry)
+    engine.rootContext().setContextProperty("cloud", cloud)
+    engine.rootContext().setContextProperty("updater", updater)
 
     # Load QML
     main_qml = qml_path()
@@ -117,7 +135,17 @@ def main() -> int:
     if splash:
         splash.close()
 
-    return app.exec()
+    # Track session start
+    vjoy_ok = bridge._vjoy.is_connected if bridge._vjoy else False
+    vigem_ok = bridge._vigem.is_connected if bridge._vigem else False
+    output_mode = "vigem" if bridge._use_vigem else "vjoy"
+    telemetry.track_session_start(__version__, output_mode, vjoy_ok, vigem_ok)
+
+    exit_code = app.exec()
+
+    # Graceful shutdown
+    telemetry.shutdown()
+    return exit_code
 
 
 if __name__ == "__main__":

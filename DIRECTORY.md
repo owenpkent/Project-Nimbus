@@ -39,6 +39,9 @@ Python backend — Qt/QML bridge, configuration, hardware interfaces.
 | `borderless.py` | Borderless window mode + ClipCursor release (Windows) |
 | `mouse_hider.py` | Controller Mode Enforcement — keep-alive pulse + mouse hook (Windows) |
 | `window_utils.py` | Game Focus Mode — save/restore foreground window (Windows) |
+| `telemetry.py` | Opt-in anonymous analytics + crash reporting (local buffer, batch flush) |
+| `cloud_client.py` | User accounts (Email/Google/Facebook OAuth), token management, profile sync |
+| `updater.py` | Lightweight auto-update checker with version manifest and update channels |
 | `qt_main.py` | Legacy Qt Widgets main (not used in QML UI) |
 | `legacy/` | Old pygame-based UI (deprecated, kept for reference) |
 
@@ -47,6 +50,9 @@ Python backend — Qt/QML bridge, configuration, hardware interfaces.
 - **`ControllerBridge`** (`bridge.py`) — Singleton exposed to QML as `controller`. All QML↔Python communication goes through here.
 - **`ControllerConfig`** (`config.py`) — Profile management, settings persistence, sensitivity curve calculations.
 - **`VJoyInterface`** (`vjoy_interface.py`) — Low-level vJoy API wrapper.
+- **`TelemetryClient`** (`telemetry.py`) — Opt-in event tracking with local buffer and batch HTTP flush.
+- **`CloudClient`** (`cloud_client.py`) — Supabase auth, OAuth, token vault, profile sync.
+- **`UpdateChecker`** (`updater.py`) — Background version manifest fetch with QML signal integration.
 
 ---
 
@@ -62,6 +68,9 @@ qml/
 │   ├── WidgetPalette.qml    # Floating toolbar for adding widgets (edit mode)
 │   ├── BorderlessGamingDialog.qml  # Borderless gaming & cursor release UI
 │   ├── MacroEditorDialog.qml       # Macro joystick zone editor
+│   ├── AccountDialog.qml           # Sign-in / account management (Email, Google, Facebook)
+│   ├── SettingsPrivacyDialog.qml   # Telemetry opt-in/out with data schema transparency
+│   ├── UpdateNotification.qml      # Non-intrusive update ribbon
 │   └── ...
 └── layouts/                 # Layout implementations
     ├── CustomLayout.qml     # ★ Default — drag-and-drop canvas with widget system
@@ -154,6 +163,9 @@ docs/
 ├── setup/                       # Installation & configuration
 │   ├── INSTALLATION.md          # Install guide, vJoy setup
 │   ├── PROFILES.md              # Profile system, save locations
+│   ├── ACCOUNTS.md              # User accounts setup (Email, Google, Facebook OAuth)
+│   ├── TELEMETRY.md             # Telemetry & privacy guide
+│   ├── UPDATER.md               # Auto-updater setup & hosting
 │   └── PACKAGING.md             # Build & distribute guide
 ├── architecture/                # Technical design
 │   ├── architecture.md          # Codebase structure, data flow
@@ -210,6 +222,9 @@ vJoy Driver → Game/Application
 | Adding QML↔Python features | `src/bridge.py` (add @Slot methods) |
 | Changing settings/profiles | `src/config.py` |
 | Building releases | `docs/setup/PACKAGING.md` |
+| User accounts / auth | `src/cloud_client.py`, `docs/setup/ACCOUNTS.md` |
+| Telemetry / privacy | `src/telemetry.py`, `docs/setup/TELEMETRY.md` |
+| Auto-updater | `src/updater.py`, `docs/setup/UPDATER.md` |
 | Bug fixes / implementation details | `docs/development/LLM_NOTES.md` |
 | Adding new widget types | `docs/development/INTEGRATION_GUIDE.md` |
 

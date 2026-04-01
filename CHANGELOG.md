@@ -8,6 +8,21 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **User Accounts** (`src/cloud_client.py`) — Optional sign-in with Email, Google OAuth, or Facebook OAuth via Supabase. Tokens stored securely in OS credential vault (Windows Credential Manager) via `keyring`. Supports session restore, silent token refresh, and offline fallback.
+- **Cloud Profile Sync** — Nimbus+ subscribers can sync profiles across machines. Last-write-wins merge strategy per profile ID. Push on save, pull on startup.
+- **Telemetry & Crash Reporting** (`src/telemetry.py`) — Opt-in anonymous usage analytics and crash reporting. Events buffered locally and batch-flushed every 5 minutes. No PII collected — all identifiers are SHA-256 hashed. Optional Sentry SDK integration for structured crash reports.
+- **Auto-Updater** (`src/updater.py`) — Lightweight version checker that fetches a JSON manifest on startup. Non-intrusive ribbon notification when a new version is available. Supports stable/beta/dev update channels. Force-update warning when running below minimum supported version.
+- **Account Dialog** (`qml/components/AccountDialog.qml`) — Sign-in UI with Google, Facebook, and email/password options. Shows account status, tier, and sync button when signed in.
+- **Privacy Settings Dialog** (`qml/components/SettingsPrivacyDialog.qml`) — Toggle crash reports and analytics independently. Expandable "What we collect" and "What we NEVER collect" sections for full transparency.
+- **Update Notification Ribbon** (`qml/components/UpdateNotification.qml`) — Non-intrusive top-of-window ribbon with download and dismiss buttons. Connects to `UpdateChecker` signals.
+- **New dependencies**: `httpx>=0.27.0` (async HTTP), `keyring>=25.0.0` (OS credential vault), `sentry-sdk>=2.0.0` (crash reporting)
+- **Documentation**: `docs/setup/ACCOUNTS.md`, `docs/setup/TELEMETRY.md`, `docs/setup/UPDATER.md` — comprehensive setup and usage guides for all three new systems.
+
+---
+
 ## [1.5.0] — 2026-03-29 — *Renamed to Nimbus Adaptive Controller*
 
 ### Added
