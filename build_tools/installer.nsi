@@ -10,9 +10,9 @@
 ; ---- General ----
 !define PRODUCT_NAME "Nimbus Adaptive Controller"
 !define PRODUCT_FILENAME "Nimbus-Adaptive-Controller"
-!define PRODUCT_EXE "${PRODUCT_FILENAME}-1.5.0.exe"
+!define PRODUCT_EXE "${PRODUCT_FILENAME}-1.4.3.exe"
 !define PRODUCT_PUBLISHER "Owen Kent"
-!define PRODUCT_VERSION "1.5.0"
+!define PRODUCT_VERSION "1.4.3"
 !define PRODUCT_GUID "nimbus-adaptive-controller"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_GUID}"
 
@@ -31,6 +31,7 @@ Var InstallVJoy
 Var VJoyInstalled
 Var InstallViGEm
 Var ViGEmInstalled
+Var KeepProfiles
 
 ; ---- MUI Settings ----
 !define MUI_ICON "Nimbus-Adaptive-Controller.ico"
@@ -39,9 +40,15 @@ Var ViGEmInstalled
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${PRODUCT_NAME} Setup"
 !define MUI_WELCOMEPAGE_TEXT "This wizard will install ${PRODUCT_NAME} v${PRODUCT_VERSION} on your computer.$\r$\n$\r$\n${PRODUCT_NAME} is a free, open-source modular virtual controller designed for accessibility.$\r$\n$\r$\nRequired virtual controller drivers will be offered on the next page if not already installed.$\r$\n$\r$\nClick Next to continue."
 
-; vJoy detection registry key
-!define VJOY_UNINST_KEY "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8E31F76F-74C3-47F1-9550-E041EEDC5FBB}_is1"
+; vJoy detection registry keys — Headsoft original and njz3 fork both covered
+!define VJOY_KEY_HEADSOFT "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8E31F76F-74C3-47F1-9550-E041EEDC5FBB}_is1"
+!define VJOY_KEY_FORK    "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{D3B6B8B0-4C9B-4C9B-8A1A-6B3C5E7D8F2A}_is1"
+!define VJOY_KEY_PLAIN   "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\vJoy"
+
+; Finish page — MUI2 requires MUI_FINISHPAGE_RUN to be defined (even as a dummy)
+; to show the checkbox; the actual launch is overridden by RUN_FUNCTION.
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${PRODUCT_EXE}"
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchApplication
 !define MUI_FINISHPAGE_RUN_TEXT "Launch ${PRODUCT_NAME}"
 
 ; ---- Custom Page for Shortcuts ----
@@ -98,17 +105,56 @@ Function VJoyOptionsPage
     Pop $0
     
     ; ---- vJoy Section ----
-    ${NSD_CreateGroupBox} 0 18u 100% 52u "vJoy (DirectInput controller)"
+    ${NSD_CreateGroupBox} 0 18u 100% 40u "vJoy (DirectInput controller)"
     Pop $0
     
-    ReadRegStr $0 HKLM "${VJOY_UNINST_KEY}" "DisplayVersion"
+    ; Check all known vJoy registry locations
+    ; MUST use SetRegView 64 — vJoy is a 64-bit install and registers in the
+    ; native hive; NSIS 32-bit would otherwise silently read WOW6432Node and miss it.
+    StrCpy $VJoyInstalled 0
+    SetRegView 64
+    ReadRegStr $0 HKLM "${VJOY_KEY_HEADSOFT}" "DisplayVersion"
     ${If} $0 != ""
         StrCpy $VJoyInstalled 1
+    ${EndIf}
+    ${If} $VJoyInstalled == 0
+        ReadRegStr $0 HKCU "${VJOY_KEY_HEADSOFT}" "DisplayVersion"
+        ${If} $0 != ""
+            StrCpy $VJoyInstalled 1
+        ${EndIf}
+    ${EndIf}
+    ${If} $VJoyInstalled == 0
+        ReadRegStr $0 HKLM "${VJOY_KEY_FORK}" "DisplayVersion"
+        ${If} $0 != ""
+            StrCpy $VJoyInstalled 1
+        ${EndIf}
+    ${EndIf}
+    ${If} $VJoyInstalled == 0
+        ReadRegStr $0 HKLM "${VJOY_KEY_PLAIN}" "DisplayVersion"
+        ${If} $0 != ""
+            StrCpy $VJoyInstalled 1
+        ${EndIf}
+    ${EndIf}
+    SetRegView lastused
+    ; Fallback: check if vJoyInterface.dll exists on disk
+    ${If} $VJoyInstalled == 0
+        IfFileExists "$PROGRAMFILES\vJoy\x64\vJoyInterface.dll" 0 +2
+            StrCpy $VJoyInstalled 1
+    ${EndIf}
+    ${If} $VJoyInstalled == 0
+        IfFileExists "$PROGRAMFILES64\vJoy\x64\vJoyInterface.dll" 0 +2
+            StrCpy $VJoyInstalled 1
+    ${EndIf}
+    
+    ${If} $VJoyInstalled == 1
         StrCpy $InstallVJoy 0
-        ${NSD_CreateLabel} 10u 32u 90% 12u "Installed (v$0)"
+        ${If} $0 != ""
+            ${NSD_CreateLabel} 10u 32u 90% 12u "Installed (v$0)"
+        ${Else}
+            ${NSD_CreateLabel} 10u 32u 90% 12u "Already installed"
+        ${EndIf}
         Pop $VJoyStatusLabel
     ${Else}
-        StrCpy $VJoyInstalled 0
         StrCpy $InstallVJoy 1
         ${NSD_CreateCheckbox} 10u 32u 90% 12u "Install vJoy driver (recommended)"
         Pop $VJoyCheckbox
@@ -118,7 +164,7 @@ Function VJoyOptionsPage
     ${EndIf}
     
     ; ---- ViGEmBus Section ----
-    ${NSD_CreateGroupBox} 0 76u 100% 52u "ViGEmBus (Xbox 360 controller emulation)"
+    ${NSD_CreateGroupBox} 0 64u 100% 40u "ViGEmBus (Xbox 360 controller emulation)"
     Pop $0
     
     ; Check if ViGEmBus is installed via service query
@@ -128,20 +174,20 @@ Function VJoyOptionsPage
     ${If} $0 == 0
         StrCpy $ViGEmInstalled 1
         StrCpy $InstallViGEm 0
-        ${NSD_CreateLabel} 10u 90u 90% 12u "Installed and running"
+        ${NSD_CreateLabel} 10u 78u 90% 12u "Installed and running"
         Pop $ViGEmStatusLabel
     ${Else}
         StrCpy $ViGEmInstalled 0
         StrCpy $InstallViGEm 1
-        ${NSD_CreateCheckbox} 10u 90u 90% 12u "Install ViGEmBus driver (recommended)"
+        ${NSD_CreateCheckbox} 10u 78u 90% 12u "Install ViGEmBus driver (recommended)"
         Pop $ViGEmCheckbox
         ${NSD_Check} $ViGEmCheckbox
-        ${NSD_CreateLabel} 10u 106u 90% 12u "Required for Game Mode and Xbox controller profiles"
+        ${NSD_CreateLabel} 10u 92u 90% 12u "Required for Game Mode and Xbox controller profiles"
         Pop $ViGEmStatusLabel
     ${EndIf}
     
     ; Info text
-    ${NSD_CreateLabel} 0 136u 100% 20u "Both drivers are safe, open-source, and used by DS4Windows, Steam, etc.$\r$\nAn internet connection is required to download them."
+    ${NSD_CreateLabel} 0 110u 100% 20u "Both drivers are safe, open-source, and used by DS4Windows, Steam, etc.$\r$\nAn internet connection is required to download them."
     Pop $0
     
     nsDialogs::Show
@@ -156,11 +202,61 @@ Function VJoyOptionsLeave
     ${EndIf}
 FunctionEnd
 
+; ---- Custom Page: Keep User Profiles (shown only when upgrading) ----
+Var ProfileDialog
+Var KeepProfilesRadioYes
+Var KeepProfilesRadioNo
+Var ProfilesExist
+
+Function ProfilesPage
+    ; Only show this page if user data exists in %APPDATA%
+    IfFileExists "$APPDATA\ProjectNimbus\*.*" 0 skipPage
+    StrCpy $ProfilesExist 1
+    
+    !insertmacro MUI_HEADER_TEXT "Saved Profiles & Settings" "Your saved controller profiles were found."
+    
+    nsDialogs::Create 1018
+    Pop $ProfileDialog
+    ${If} $ProfileDialog == error
+        Abort
+    ${EndIf}
+    
+    ${NSD_CreateLabel} 0 0 100% 30u "${PRODUCT_NAME} found existing saved profiles and settings at:$\r$\n$APPDATA\ProjectNimbus"
+    Pop $0
+    
+    ${NSD_CreateLabel} 0 38u 100% 12u "What would you like to do with your saved profiles?"
+    Pop $0
+    
+    ${NSD_CreateRadioButton} 20u 58u 100% 12u "Keep my profiles and settings (recommended)"
+    Pop $KeepProfilesRadioYes
+    ${NSD_Check} $KeepProfilesRadioYes
+    
+    ${NSD_CreateRadioButton} 20u 76u 100% 12u "Remove profiles and start fresh"
+    Pop $KeepProfilesRadioNo
+    
+    ${NSD_CreateLabel} 0 100u 100% 30u "Keeping profiles lets you continue right where you left off.$\r$\nYour customizations will survive future upgrades too."
+    Pop $0
+    
+    nsDialogs::Show
+    Goto endPage
+    skipPage:
+        StrCpy $ProfilesExist 0
+        StrCpy $KeepProfiles 1  ; default: keep (nothing to delete anyway)
+    endPage:
+FunctionEnd
+
+Function ProfilesPageLeave
+    ${If} $ProfilesExist == 1
+        ${NSD_GetState} $KeepProfilesRadioYes $KeepProfiles
+    ${EndIf}
+FunctionEnd
+
 ; ---- Pages ----
 !insertmacro MUI_PAGE_WELCOME
 Page custom VJoyOptionsPage VJoyOptionsLeave
 !insertmacro MUI_PAGE_DIRECTORY
 Page custom ShortcutOptionsPage ShortcutOptionsLeave
+Page custom ProfilesPage ProfilesPageLeave
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
@@ -168,6 +264,13 @@ Page custom ShortcutOptionsPage ShortcutOptionsLeave
 !insertmacro MUI_UNPAGE_INSTFILES
 
 !insertmacro MUI_LANGUAGE "English"
+
+; Finish-page launch function — must be defined AFTER MUI_PAGE_FINISH macro
+Function LaunchApplication
+    ; System::Call ShellExecuteW launches at normal user privilege,
+    ; not inheriting the installer's elevated admin token.
+    System::Call 'shell32::ShellExecuteW(i $HWNDPARENT, w "open", w "$INSTDIR\${PRODUCT_EXE}", w "", w "$INSTDIR", i 1)'
+FunctionEnd
 
 ; ---- Init: check if already running ----
 Function .onInit
@@ -249,14 +352,15 @@ Section "Install"
     WriteRegStr HKCR "nimbus\shell\open\command" "" '"$INSTDIR\${PRODUCT_EXE}" "%1"'
 
     ; Create shortcuts based on user selection
+    ; NOTE: icon argument omitted — NSIS silently drops shortcuts when icon path contains spaces
     ${If} $CreateStartMenuShortcut == 1
         CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
-        CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}" "" "$INSTDIR\${PRODUCT_EXE}" 0
+        CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}"
         CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall ${PRODUCT_NAME}.lnk" "$INSTDIR\Uninstall.exe"
     ${EndIf}
     
     ${If} $CreateDesktopShortcut == 1
-        CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}" "" "$INSTDIR\${PRODUCT_EXE}" 0
+        CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_EXE}"
     ${EndIf}
     
     ; ---- vJoy Driver Installation ----
@@ -350,9 +454,8 @@ Section "Uninstall"
     ; Remove nimbus:// custom URL scheme
     DeleteRegKey HKCR "nimbus"
 
-    ; Optionally remove user data (profiles, settings) from %APPDATA%
-    MessageBox MB_YESNO|MB_ICONQUESTION "Would you like to remove your saved profiles and settings?$\r$\n$\r$\nThey are stored in:$\r$\n$APPDATA\ProjectNimbus$\r$\n$\r$\nSelect 'No' to keep them for future installations." IDYES removeUserData IDNO keepUserData
-    removeUserData:
+    ; Remove user data only if user chose to (KeepProfiles == 0 means "remove")
+    ${If} $KeepProfiles == 0
         RMDir /r "$APPDATA\ProjectNimbus"
-    keepUserData:
+    ${EndIf}
 SectionEnd

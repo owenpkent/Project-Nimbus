@@ -24,8 +24,8 @@ REM ---- Configure these paths ----
 set SIGNTOOL="C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe"
 set TIMESTAMP_SHA1=http://timestamp.digicert.com
 set TIMESTAMP_SHA256=http://timestamp.digicert.com
-set EXE_PATH=dist\Nimbus-Adaptive-Controller-1.5.0.exe
-set INSTALLER_PATH=dist\Nimbus-Adaptive-Controller-Setup-1.5.0.exe
+set EXE_PATH=dist\Nimbus-Adaptive-Controller-1.4.3.exe
+set INSTALLER_PATH=dist\Nimbus-Adaptive-Controller-Setup-1.4.3.exe
 
 REM ---- Optional: set your EV cert thumbprint for explicit selection ----
 REM Avoids accidental use of a dev/test cert if multiple certs are on the token.

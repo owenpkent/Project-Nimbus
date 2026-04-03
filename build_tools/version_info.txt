@@ -5,8 +5,8 @@
 #
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 5, 0, 0),
-    prodvers=(1, 5, 0, 0),
+    filevers=(1, 4, 3, 0),
+    prodvers=(1, 4, 3, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -22,12 +22,12 @@ VSVersionInfo(
           [
             StringStruct(u'CompanyName', u'Owen Kent'),
             StringStruct(u'FileDescription', u'Nimbus Adaptive Controller'),
-            StringStruct(u'FileVersion', u'1.5.0.0'),
+            StringStruct(u'FileVersion', u'1.4.3.0'),
             StringStruct(u'InternalName', u'Nimbus-Adaptive-Controller'),
             StringStruct(u'LegalCopyright', u'Copyright (c) 2026 Owen Kent'),
             StringStruct(u'OriginalFilename', u'Nimbus-Adaptive-Controller.exe'),
             StringStruct(u'ProductName', u'Nimbus Adaptive Controller'),
-            StringStruct(u'ProductVersion', u'1.5.0.0'),
+            StringStruct(u'ProductVersion', u'1.4.3.0'),
           ]
         )
       ]

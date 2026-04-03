@@ -6,10 +6,11 @@ This creates a standalone Windows executable with all dependencies bundled.
 
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
 
 # Version info - keep in sync with src/__init__.py
-VERSION = "1.5.0"
-VERSION_TUPLE = (1, 5, 0, 0)
+VERSION = "1.4.3"
+VERSION_TUPLE = (1, 4, 3, 0)
 
 block_cipher = None
 
@@ -67,8 +68,12 @@ if src_path.exists():
         rel_path = py_file.relative_to(PROJECT_ROOT)
         src_datas.append((str(py_file), str(rel_path.parent)))
 
+# Collect all numpy submodules — numpy 2.x restructured internals (e.g. numpy._core._exceptions)
+# that PyInstaller cannot auto-detect; collect_all ensures nothing is missed.
+numpy_datas, numpy_binaries, numpy_hidden = collect_all('numpy')
+
 # Combine all data files
-datas = qml_datas + logo_datas + config_datas + profile_datas + src_datas + vgamepad_extra_datas
+datas = qml_datas + logo_datas + config_datas + profile_datas + src_datas + vgamepad_extra_datas + numpy_datas
 
 # Hidden imports for PySide6 and other dependencies
 hiddenimports = [
@@ -79,6 +84,12 @@ hiddenimports = [
     'PySide6.QtQuick',
     'PySide6.QtQuickControls2',
     'numpy',
+    'numpy._core',
+    'numpy._core._exceptions',
+    'numpy._core._multiarray_umath',
+    'numpy._core.multiarray',
+    'numpy.lib',
+    'numpy.lib.stride_tricks',
     'pyvjoy',
     'src.qt_qml_app',
     'src.qt_main',
@@ -96,9 +107,9 @@ hiddenimports = [
 a = Analysis(
     [main_script],
     pathex=[str(PROJECT_ROOT)],  # Add project root so 'src' package is found
-    binaries=vgamepad_binaries,  # vgamepad ViGEmClient.dll (ctypes-loaded, not auto-detected)
+    binaries=vgamepad_binaries + numpy_binaries,
     datas=datas,
-    hiddenimports=hiddenimports,
+    hiddenimports=hiddenimports + numpy_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -118,7 +129,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Nimbus-Adaptive-Controller-1.5.0',
+    name='Nimbus-Adaptive-Controller-1.4.3',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

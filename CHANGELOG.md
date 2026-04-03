@@ -23,6 +23,21 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.4.3] — 2026-04-02
+
+### Fixed
+- **Installer vJoy detection** — Added `SetRegView 64` before registry reads so NSIS checks the native 64-bit hive instead of WOW6432Node. Now correctly detects installed vJoy and disables the install checkbox.
+- **Start Menu shortcut creation** — Removed icon argument from `CreateShortCut` to prevent silent failure when install path contains spaces. Shortcuts now appear correctly in Start Menu and "Recently installed".
+- **Finish-page "Run program"** — Replaced `MUI_FINISHPAGE_RUN` with `MUI_FINISHPAGE_RUN_FUNCTION` using `System::Call ShellExecuteW` to launch the app at normal user privilege instead of inheriting the installer's elevated admin token.
+- **NumPy import crash** — Added `collect_all('numpy')` and explicit numpy submodules to PyInstaller spec to bundle all numpy 2.x internals, preventing `No module named 'numpy._core._exceptions'` on startup.
+- **Driver page text clipping** — Reduced group box heights and repositioned elements so all text fits within the MUI2 dialog area without being cut off.
+
+### Changed
+- **Xbox Controller profile** — Removed Xbox Guide button and added dedicated Left Stick Click and Right Stick Click buttons for a cleaner layout.
+- **Version consistency** — Updated `src/__init__.py` to show 1.4.3 throughout the application.
+
+---
+
 ## [1.5.0] — 2026-03-29 — *Renamed to Nimbus Adaptive Controller*
 
 ### Added

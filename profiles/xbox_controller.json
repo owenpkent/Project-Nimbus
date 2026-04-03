@@ -1,0 +1,267 @@
+{
+    "name": "Xbox Controller",
+    "description": "Default Xbox 360 / Xbox One layout. All standard buttons, triggers, bumpers, sticks, D-Pad, and system buttons pre-placed in a classic gamepad arrangement.",
+    "layout_type": "custom",
+    "output_mode": "vigem",
+    "custom_layout": {
+        "canvas_width": 1024,
+        "canvas_height": 620,
+        "grid_snap": 10,
+        "show_grid": true,
+        "widgets": [
+            {
+                "id": "lt_trigger",
+                "type": "slider",
+                "x": 80,
+                "y": 50,
+                "width": 170,
+                "height": 50,
+                "label": "LT",
+                "orientation": "horizontal",
+                "mapping": {
+                    "axis": "z"
+                },
+                "sensitivity": 50.0,
+                "deadzone": 5.0,
+                "extremity_deadzone": 2.0
+            },
+            {
+                "id": "rt_trigger",
+                "x": 774,
+                "y": 50,
+                "width": 170,
+                "height": 50,
+                "type": "slider",
+                "label": "RT",
+                "orientation": "horizontal",
+                "mapping": {
+                    "axis": "rz"
+                },
+                "sensitivity": 50.0,
+                "deadzone": 5.0,
+                "extremity_deadzone": 2.0
+            },
+            {
+                "id": "btn_lb",
+                "type": "button",
+                "x": 80,
+                "y": 115,
+                "width": 130,
+                "height": 45,
+                "label": "LB",
+                "button_id": 5,
+                "vigem_button": "LEFT_SHOULDER",
+                "color": "#3a3a3a",
+                "shape": "rounded"
+            },
+            {
+                "id": "btn_rb",
+                "type": "button",
+                "x": 814,
+                "y": 115,
+                "width": 130,
+                "height": 45,
+                "label": "RB",
+                "button_id": 6,
+                "vigem_button": "RIGHT_SHOULDER",
+                "color": "#3a3a3a",
+                "shape": "rounded"
+            },
+            {
+                "id": "left_stick",
+                "type": "joystick",
+                "x": 70,
+                "y": 200,
+                "width": 190,
+                "height": 190,
+                "label": "Left Stick",
+                "mapping": {
+                    "axis_x": "x",
+                    "axis_y": "y"
+                },
+                "click_button_id": 9,
+                "vigem_click_button": "LEFT_THUMB",
+                "sensitivity": 50.0,
+                "deadzone": 10.0,
+                "extremity_deadzone": 5.0
+            },
+            {
+                "id": "dpad",
+                "type": "dpad",
+                "x": 310,
+                "y": 390,
+                "width": 150,
+                "height": 150,
+                "label": "D-Pad",
+                "button_up": 11,
+                "button_down": 12,
+                "button_left": 13,
+                "button_right": 14,
+                "vigem_dpad": true
+            },
+            {
+                "id": "btn_back",
+                "type": "button",
+                "x": 387,
+                "y": 220,
+                "width": 80,
+                "height": 38,
+                "label": "Back",
+                "button_id": 7,
+                "vigem_button": "BACK",
+                "color": "#2a2a2a",
+                "shape": "rounded"
+            },
+            {
+                "id": "btn_start",
+                "type": "button",
+                "x": 557,
+                "y": 220,
+                "width": 80,
+                "height": 38,
+                "label": "Start",
+                "button_id": 8,
+                "vigem_button": "START",
+                "color": "#2a2a2a",
+                "shape": "rounded"
+            },
+            {
+                "id": "btn_x",
+                "type": "button",
+                "x": 604,
+                "y": 290,
+                "width": 65,
+                "height": 65,
+                "label": "X",
+                "button_id": 3,
+                "vigem_button": "X",
+                "color": "#1d4ed8",
+                "shape": "circle"
+            },
+            {
+                "id": "btn_y",
+                "type": "button",
+                "x": 669,
+                "y": 225,
+                "width": 65,
+                "height": 65,
+                "label": "Y",
+                "button_id": 4,
+                "vigem_button": "Y",
+                "color": "#a16207",
+                "shape": "circle"
+            },
+            {
+                "id": "btn_b",
+                "type": "button",
+                "x": 734,
+                "y": 290,
+                "width": 65,
+                "height": 65,
+                "label": "B",
+                "button_id": 2,
+                "vigem_button": "B",
+                "color": "#b91c1c",
+                "shape": "circle"
+            },
+            {
+                "id": "btn_a",
+                "type": "button",
+                "x": 669,
+                "y": 355,
+                "width": 65,
+                "height": 65,
+                "label": "A",
+                "button_id": 1,
+                "vigem_button": "A",
+                "color": "#15803d",
+                "shape": "circle"
+            },
+            {
+                "id": "right_stick",
+                "type": "joystick",
+                "x": 520,
+                "y": 390,
+                "width": 190,
+                "height": 190,
+                "label": "Right Stick",
+                "mapping": {
+                    "axis_x": "rx",
+                    "axis_y": "ry"
+                },
+                "click_button_id": 10,
+                "vigem_click_button": "RIGHT_THUMB",
+                "sensitivity": 50.0,
+                "deadzone": 10.0,
+                "extremity_deadzone": 5.0
+            },
+            {
+                "id": "btn_ls",
+                "type": "button",
+                "x": 70,
+                "y": 410,
+                "width": 190,
+                "height": 45,
+                "label": "Left Stick Click",
+                "button_id": 9,
+                "vigem_button": "LEFT_THUMB",
+                "color": "#3a3a3a",
+                "shape": "rounded"
+            },
+            {
+                "id": "btn_rs",
+                "type": "button",
+                "x": 520,
+                "y": 590,
+                "width": 190,
+                "height": 45,
+                "label": "Right Stick Click",
+                "button_id": 10,
+                "vigem_button": "RIGHT_THUMB",
+                "color": "#3a3a3a",
+                "shape": "rounded"
+            }
+        ]
+    },
+    "axis_mapping": {
+        "left_x": "x",
+        "left_y": "y",
+        "right_x": "rx",
+        "right_y": "ry",
+        "left_trigger": "z",
+        "right_trigger": "rz"
+    },
+    "buttons": {
+        "button_1":  {"label": "A",     "toggle_mode": false},
+        "button_2":  {"label": "B",     "toggle_mode": false},
+        "button_3":  {"label": "X",     "toggle_mode": false},
+        "button_4":  {"label": "Y",     "toggle_mode": false},
+        "button_5":  {"label": "LB",    "toggle_mode": false},
+        "button_6":  {"label": "RB",    "toggle_mode": false},
+        "button_7":  {"label": "Back",  "toggle_mode": false},
+        "button_8":  {"label": "Start", "toggle_mode": false},
+        "button_9":  {"label": "LS",    "toggle_mode": false},
+        "button_10": {"label": "RS",    "toggle_mode": false},
+        "button_11": {"label": "D-Up",    "toggle_mode": false},
+        "button_12": {"label": "D-Down",  "toggle_mode": false},
+        "button_13": {"label": "D-Left",  "toggle_mode": false},
+        "button_14": {"label": "D-Right", "toggle_mode": false}
+    },
+    "joystick_settings": {
+        "sensitivity": 50.0,
+        "deadzone": 10.0,
+        "extremity_deadzone": 5.0
+    },
+    "rudder_settings": {
+        "sensitivity": 50.0,
+        "deadzone": 10.0,
+        "extremity_deadzone": 5.0
+    },
+    "accessibility_options": {
+        "larger_deadzones": true,
+        "sticky_buttons": false,
+        "haptic_feedback": true,
+        "high_contrast_ui": false,
+        "large_text": false
+    }
+}
