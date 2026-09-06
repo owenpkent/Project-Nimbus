@@ -97,6 +97,14 @@ WATCHDOG_MS = 2000      # NIMBUS_MOUFILTER_WATCHDOG_MS: release when no read arr
 TICK_MS = 1000          # NIMBUS_MOUFILTER_TICK_MS: a parked read is completed empty after this long
 
 HOTKEY_POLL_MS = 100    # how often the reader thread checks Ctrl+Alt+F12 while a read is parked
+# The reader thread runs at THREAD_PRIORITY_TIME_CRITICAL (15). It has to
+# answer the driver's heartbeat within the watchdog window whatever else the
+# machine is doing, and a game at HIGH_PRIORITY_CLASS saturating every core
+# starved a normal-priority reader past 2 s in the stress probe (B6 in
+# tests/probe_mouse_filter_stress_windows.py), which handed the mouse back
+# mid-session. At 15 it kept up. The thread mostly waits on the read event,
+# so the priority costs nothing while idle.
+READER_THREAD_PRIORITY = 15
 _HOTKEY_HIT = -1        # internal: the read wait ended because the hotkey was held
 
 # MOUSE_INPUT_DATA (ntddmou.h), x64 packing is natural with no padding here.
@@ -193,6 +201,9 @@ if _IS_WINDOWS:
     _k32.CancelIoEx.restype = wintypes.BOOL
     _k32.CloseHandle.argtypes = [wintypes.HANDLE]
     _k32.CloseHandle.restype = wintypes.BOOL
+    _k32.GetCurrentThread.restype = wintypes.HANDLE
+    _k32.SetThreadPriority.argtypes = [wintypes.HANDLE, ctypes.c_int]
+    _k32.SetThreadPriority.restype = wintypes.BOOL
     _u32.GetSystemMetrics.argtypes = [ctypes.c_int]
     _u32.GetSystemMetrics.restype = ctypes.c_int
     _k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
@@ -709,6 +720,7 @@ class MouseIsolation:
 
     def _reader(self) -> None:
         reason = "reader exited"
+        _k32.SetThreadPriority(_k32.GetCurrentThread(), READER_THREAD_PRIORITY)
         # 256 packets per read keeps a burst in one syscall (256 * 24 bytes).
         buf = ctypes.create_string_buffer(256 * _MOUSE_INPUT_DATA.size)
         ov = _OVERLAPPED()

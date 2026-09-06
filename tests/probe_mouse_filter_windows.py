@@ -446,7 +446,13 @@ def child() -> int:
     except Exception as exc:
         print(f"ERROR {exc}", flush=True)
         return 1
+    # The reader thread issues its first read right after start() returns;
+    # give it a moment so READY reports the parked read (U10 checks for it).
     st = m.status()
+    deadline = time.monotonic() + 1.0
+    while st["pending_reads"] == 0 and time.monotonic() < deadline:
+        time.sleep(0.01)
+        st = m.status()
     print(f"READY pid={os.getpid()} isolating={st['isolating']} pending_reads={st['pending_reads']} "
           f"watchdog_releases={st['watchdog_releases']}", flush=True)
     for line in sys.stdin:

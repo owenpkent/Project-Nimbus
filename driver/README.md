@@ -34,8 +34,21 @@ Nimbus app passed the relay harness 8/8 against the fake Raw Input game
 (`tests/probe_nimbus_relay_windows.py`), and a first hands-on run of Game
 Mode through TeamViewer worked once two usability gaps were closed (the game
 comes to the foreground by itself; a cursor found over the game is parked
-onto Nimbus). Not attestation-signed, not
-validated against an anti-cheat game, not in any release. Do not ship it yet.
+onto Nimbus). On 2026-09-06 the unattended battle test
+(`tests/probe_mouse_filter_stress_windows.py`: IOCTL and read storms, a
+512-read flood, open/close storms in threads and across processes with random
+kills, chaos kills, an inherited-handle leak, CPU starvation, a fuzz of every
+file API the device can receive, a 120 s soak) passed 14/14 against the loaded
+build, and the static checks ran: Code Analysis found three warnings (two
+paging violations, one false positive), fixed in the source; that rebuild was
+installed the same afternoon and passed the three suites again (17/17, 14/14,
+8/8), then once more under Driver Verifier with no bugcheck. One client-side
+finding was fixed the
+same day: with the machine saturated by HIGH-priority processes the reader
+thread was starved past the watchdog and lost the mouse, so it now runs at
+time-critical priority. Details in the plan doc, section 5 items 7 and 11.
+Not attestation-signed, not validated against an anti-cheat game, not in any
+release. Do not ship it yet.
 
 ## Layout
 
@@ -126,6 +139,13 @@ attestation-signed build.
   suspended cannot, so it loses the mouse within 2 s of its last read (on v2
   a parked read kept isolation alive by design; on v3 a client frozen with
   `NtSuspendProcess` was released 2 s after its last read, probe check U11).
+  The stall a live client survives is 2 s minus the age of its parked read,
+  which it re-issues after each tick, so between about 0.75 and 2 s (stress
+  probe B5); the client's reader thread therefore runs at
+  `THREAD_PRIORITY_TIME_CRITICAL`, which kept the mouse through a
+  HIGH-priority CPU burn that starved a normal-priority reader past the
+  watchdog (B6). A client that parks N reads and freezes is released after
+  max(2 s, 1 s + N x 250 ms), one tick per watchdog period (B2b).
   Once isolation is off, every read fails with `ERROR_NOT_READY`, so
   the client notices a watchdog release at its next read and reports the
   stop. Every release path (IOCTL, handle cleanup, watchdog) drains reads

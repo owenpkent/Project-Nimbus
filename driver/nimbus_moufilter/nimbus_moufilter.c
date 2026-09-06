@@ -48,9 +48,13 @@
 #pragma alloc_text (PAGE, NimbusFilter_EvtDeviceSelfManagedIoCleanup)
 #pragma alloc_text (PAGE, NimbusFilter_EvtDeviceContextCleanup)
 #pragma alloc_text (PAGE, NimbusFilter_EvtIoInternalDeviceControl)
-#pragma alloc_text (PAGE, NimbusControl_Create)
-#pragma alloc_text (PAGE, NimbusControl_Delete)
 #pragma alloc_text (PAGE, NimbusControl_EvtFileCleanup)
+/*
+ * NimbusControl_Create and NimbusControl_Delete stay nonpaged: both hold
+ * g.Lock (a spin lock, DISPATCH_LEVEL) inline, and code that runs at
+ * DISPATCH_LEVEL must not be pageable (Code Analysis C28150). They still
+ * require PASSIVE_LEVEL on entry for the wait lock and the device calls.
+ */
 #endif
 
 #pragma warning(push)
@@ -128,28 +132,32 @@ NimbusCompleteRead(
     )
 {
     NTSTATUS status;
-    PMOUSE_INPUT_DATA out = NULL;
+    PUCHAR out = NULL;
     size_t outLength = 0;
-    ULONG capacity;
-    ULONG n = 0;
+    size_t used = 0;
 
     status = WdfRequestRetrieveOutputBuffer(Request, sizeof(MOUSE_INPUT_DATA), (PVOID *)&out, &outLength);
     if (!NT_SUCCESS(status)) {
         WdfRequestComplete(Request, status);
         return;
     }
-    capacity = (ULONG)(outLength / sizeof(MOUSE_INPUT_DATA));
 
+    /*
+     * Whole packets only, copied by byte offset so the bound on the output
+     * buffer is the loop condition itself (Code Analysis C6386 cannot follow
+     * an element count derived by division).
+     */
     WdfSpinLockAcquire(g.Lock);
-    while (n < capacity && g.RingCount > 0) {
-        out[n++] = g.Ring[g.RingHead];
+    while (used + sizeof(MOUSE_INPUT_DATA) <= outLength && g.RingCount > 0) {
+        RtlCopyMemory(out + used, &g.Ring[g.RingHead], sizeof(MOUSE_INPUT_DATA));
+        used += sizeof(MOUSE_INPUT_DATA);
         g.RingHead = (g.RingHead + 1) % NIMBUS_RING_CAPACITY;
         g.RingCount--;
     }
     g.LastReadActivity = KeQueryInterruptTime();
     WdfSpinLockRelease(g.Lock);
 
-    WdfRequestCompleteWithInformation(Request, STATUS_SUCCESS, (ULONG_PTR)n * sizeof(MOUSE_INPUT_DATA));
+    WdfRequestCompleteWithInformation(Request, STATUS_SUCCESS, (ULONG_PTR)used);
 }
 
 /*
@@ -585,7 +593,8 @@ NimbusControl_Create(
     /* SYSTEM and Administrators: full. Interactive users: read/write (Nimbus runs as the user). */
     DECLARE_CONST_UNICODE_STRING(sddl, L"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)");
 
-    PAGED_CODE();
+    /* Nonpaged (holds g.Lock below), but the device calls need PASSIVE_LEVEL. */
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 
     deviceInit = WdfControlDeviceInitAllocate(Driver, &sddl);
     if (deviceInit == NULL) {
@@ -668,7 +677,8 @@ NimbusControl_Delete(
     WDFDEVICE controlDevice = g.ControlDevice;
     PCONTROL_EXTENSION ctl;
 
-    PAGED_CODE();
+    /* Nonpaged (holds g.Lock below); the rundown wait and the delete need PASSIVE_LEVEL. */
+    NT_ASSERT(KeGetCurrentIrql() == PASSIVE_LEVEL);
 
     if (controlDevice == NULL) {
         return;
