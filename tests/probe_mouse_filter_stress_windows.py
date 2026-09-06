@@ -46,6 +46,9 @@ gone (closed, killed, or inherited and released) the driver must report
   B12  synchronous reads: CancelSynchronousIo, CloseHandle from another thread,
        TerminateThread on the reading thread (watchdog must then release), and
        an overlapped read whose thread exits (cancelled, isolation continues)
+  B13  the input switched to a private desktop (the unattended stand-in for the
+       lock screen and UAC): the client pauses isolation within the poll
+       interval, keeps the device, and resumes when the desktop comes back
 
 Run::
 
@@ -83,8 +86,18 @@ from probe_mouse_filter_windows import (  # noqa: E402
     _Child, _Read, _handle_count, _parse_kv, _wait_device_free, ERROR_IO_INCOMPLETE, PACKET, WAIT_OBJECT_0)
 
 _k32 = iso._k32
+_u32 = iso._u32
 _ntdll = base._ntdll
 _psapi = ctypes.WinDLL("psapi", use_last_error=True)
+_u32.CreateDesktopW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
+                                ctypes.c_void_p]
+_u32.CreateDesktopW.restype = wintypes.HANDLE
+_u32.OpenDesktopW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+_u32.OpenDesktopW.restype = wintypes.HANDLE
+_u32.SwitchDesktop.argtypes = [wintypes.HANDLE]
+_u32.SwitchDesktop.restype = wintypes.BOOL
+DESKTOP_SWITCHDESKTOP = 0x0100
+GENERIC_ALL = 0x10000000
 
 ERROR_INVALID_FUNCTION = 1
 ERROR_ACCESS_DENIED = 5
@@ -205,6 +218,7 @@ class PERFORMANCE_INFORMATION(ctypes.Structure):
 
 RESULTS: List[Dict[str, object]] = []
 SPAWNED: List["Role"] = []
+EXPECTED_VERSION_DEFAULT = iso.INTERFACE_VERSION
 
 
 def record(name: str, ok: bool, note: str = "") -> None:
@@ -311,6 +325,8 @@ class Role:
 
     def __init__(self, role: str, *extra: str, inherit: bool = False) -> None:
         cmd = [sys.executable, os.path.abspath(__file__), "--role", role, *extra]
+        if iso.INTERFACE_VERSION != EXPECTED_VERSION_DEFAULT:
+            cmd += ["--expect-version", str(iso.INTERFACE_VERSION)]
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, text=True, bufsize=1, close_fds=not inherit)
         self.lines: "queue.Queue[Optional[str]]" = queue.Queue()
@@ -596,7 +612,7 @@ def role_sync_terminate() -> int:
 
     th = threading.Thread(target=blocked_read, daemon=True)
     th.start()
-    time.sleep(0.3)
+    time.sleep(min(0.3, iso.TICK_MS / 1000.0 * 0.4))   # before the heartbeat completes the read
     t_read = float(outcome.get("t_read", t_on))
     hthread = _k32.OpenThread(0x0001 | 0x0002, False, tid.value)   # TERMINATE | SUSPEND_RESUME
     killed = bool(_k32.TerminateThread(hthread, 0)) if hthread else False
@@ -833,7 +849,8 @@ def check_read_flood() -> None:
            f"{clean}, watchdog_releases {before['watchdog_releases']} -> {st['watchdog_releases'] if st else '?'}")
 
     # the heartbeat's cost with N parked reads and a frozen client
-    name2 = "B2b watchdog release with N parked reads and no re-issue (1 s + N x 250 ms expected)"
+    tick = iso.TICK_MS / 1000.0
+    name2 = f"B2b watchdog release with N parked reads and no re-issue (max(2 s, {tick:.2g} s + N x 250 ms) expected)"
     rows: List[str] = []
     ok2 = True
     for count in (1, 8, 24):
@@ -856,15 +873,15 @@ def check_read_flood() -> None:
                 ticks += 1
             rd.close()
         _k32.CloseHandle(h)
-        # One tick per 250 ms period once idle > 1 s, and the release needs the
-        # queue empty and idle > 2 s: max(2.0, 1.0 + N x 0.25) plus one period.
-        expected = max(2.0, 1.0 + count * 0.25)
+        # One tick per 250 ms period once idle > the tick length, and the release
+        # needs the queue empty and idle > 2 s: max(2.0, tick + N x 0.25) plus one period.
+        expected = max(2.0, tick + count * 0.25)
         rows.append(f"N={count}: release {t_release:.2f} s, {ticks} ticks" if t_release is not None
                     else f"N={count}: NOT released within {deadline - t0:.1f} s")
         ok2 = ok2 and t_release is not None and expected - 0.1 <= t_release <= expected + 0.6
     st, clean = free_and_clean()
     record(name2, ok2 and st is not None, "; ".join(rows) + f". Each parked read costs one 250 ms watchdog period "
-           f"before the release (max(2 s, 1 s + N x 250 ms)); Nimbus parks exactly one, so its bound stays 2.25 s. {clean}")
+           f"before the release; Nimbus parks exactly one, so its bound stays 2.25 s. {clean}")
 
 
 def check_open_close_storm(seconds: float) -> None:
@@ -988,7 +1005,12 @@ def check_suspend_precision() -> None:
     at 1.25 s) and 2 s. Each case sets the age deliberately.
     """
     name = "B5 stall tolerance: parked-read age + stall under 2 s keeps the mouse, over 2 s loses it"
-    plan = [(0.05, 1.80, True), (0.40, 1.50, True), (0.80, 1.00, True), (0.80, 1.60, False), (0.30, 2.10, False)]
+    # The parked read is at most tick + one 250 ms period old, so the ages
+    # tried stay under the tick length (1 s on v3, 250 ms on v4).
+    tick = iso.TICK_MS / 1000.0
+    a = min(0.8, tick * 0.6)
+    b = min(0.8, tick * 0.9)
+    plan = [(0.05, 1.80, True), (a, 1.90 - a, True), (b, 1.80 - b, True), (a, 2.40 - a, False), (0.05, 2.35, False)]
     rows: List[str] = []
     ok = True
     client: Optional[Role] = None
@@ -1002,15 +1024,20 @@ def check_suspend_precision() -> None:
                     return
                 phandle = client.process_handle()
             client.flush()
-            tick = client.expect("TICK", 3.0)
-            if tick is None:
+            tick_line = client.expect("TICK", 3.0)
+            if tick_line is None:
                 rows.append("no heartbeat tick within 3 s")
                 ok = False
                 break
-            t_tick = float(_parse_kv(tick)["t"])
+            t_tick = float(_parse_kv(tick_line)["t"])
             delay = t_tick + age - time.time()
             if delay > 0:
                 time.sleep(delay)
+            # another tick may have landed meanwhile; the age is measured from the newest
+            client.flush()
+            newest = [ln for ln in client.seen if ln.startswith("TICK")]
+            if newest:
+                t_tick = float(_parse_kv(newest[-1])["t"])
             t_s = time.time()
             _ntdll.NtSuspendProcess(phandle)
             time.sleep(hold)
@@ -1044,7 +1071,7 @@ def check_suspend_precision() -> None:
             client.close()
     st, clean = free_and_clean()
     record(name, ok and st is not None, "; ".join(rows) + f". A client stalled longer than 2 s minus the age of "
-           f"its parked read (up to 1.25 s) loses the mouse; {clean}")
+           f"its parked read (up to {tick + 0.25:.2f} s with a {iso.TICK_MS} ms tick) loses the mouse; {clean}")
 
 
 def check_cpu_starvation(seconds: float) -> None:
@@ -1432,10 +1459,11 @@ def check_soak(seconds: float) -> None:
     elapsed = samples[-1][0] if samples else 0.0
     rate = ticks / elapsed if elapsed else 0.0
     st, clean = free_and_clean()
+    per_second = 1000.0 / iso.TICK_MS
     ok = (bad == 0 and stops == ["soak done"] and st is not None and st["watchdog_releases"] == wd0
-          and 0.7 <= rate <= 1.05 and h1 - h0 <= 2)
-    record(name, ok, f"{len(samples)} samples over {elapsed:.0f} s, bad={bad}; ticks={ticks} ({rate:.2f}/s, about 0.8 to "
-                     f"1.0 expected); stops={stops}; process handles {h0} -> {h1}; kernel nonpaged pool "
+          and per_second * 0.45 <= rate <= per_second + 0.1 and h1 - h0 <= 2)
+    record(name, ok, f"{len(samples)} samples over {elapsed:.0f} s, bad={bad}; ticks={ticks} ({rate:.2f}/s, about "
+                     f"{per_second * 0.5:.1f} to {per_second:.1f} expected); stops={stops}; process handles {h0} -> {h1}; kernel nonpaged pool "
                      f"{np0 / 1e6:.1f} -> {np1 / 1e6:.1f} MB, paged {pp0 / 1e6:.1f} -> {pp1 / 1e6:.1f} MB (system-wide, "
                      f"informational); {clean}")
 
@@ -1536,20 +1564,28 @@ def check_sync_reads() -> None:
         out["err"] = 0 if got else ctypes.get_last_error()
         out["dt"] = time.perf_counter() - t0
 
+    # The heartbeat completes a parked read after TICK_MS, so the cancel and the
+    # close below have to come sooner than that to find the read still blocked;
+    # if the tick wins the race anyway, the read returns 0 bytes, which proves
+    # the same thing (a synchronous reader is never stuck).
+    settle = min(0.3, iso.TICK_MS / 1000.0 * 0.4)
+
     # (a) CancelSynchronousIo
     h = sync_open()
     set_iso(h, True)
     out: Dict[str, object] = {}
     th = threading.Thread(target=blocked_read, args=(h, out), daemon=True)
     th.start()
-    time.sleep(0.3)
+    time.sleep(settle)
     hthread = _k32.OpenThread(0x0001, False, int(out["tid"]))
     cancelled = bool(_k32.CancelSynchronousIo(hthread))
     _k32.CloseHandle(hthread)
     th.join(timeout=3)
     still = status_of(h)["isolating"]
-    a_ok = cancelled and out.get("err") == ERROR_OPERATION_ABORTED and still == 1 and not th.is_alive()
-    rows.append(f"(a) CancelSynchronousIo={cancelled}, read error {out.get('err')} (995 expected), isolation still {still}")
+    a_ok = (((cancelled and out.get("err") == ERROR_OPERATION_ABORTED) or (not cancelled and out.get("err") == 0))
+            and still == 1 and not th.is_alive())
+    rows.append(f"(a) CancelSynchronousIo={cancelled}, read error {out.get('err')} (995 cancelled, or 0 if the "
+                f"tick got there first), isolation still {still}")
     ok = ok and a_ok
     set_iso(h, False)
     _k32.CloseHandle(h)
@@ -1560,7 +1596,7 @@ def check_sync_reads() -> None:
     out = {}
     th = threading.Thread(target=blocked_read, args=(h, out), daemon=True)
     th.start()
-    time.sleep(0.3)
+    time.sleep(settle)
     t0 = time.perf_counter()
     closed = bool(_k32.CloseHandle(h))
     t_close = time.perf_counter() - t0
@@ -1574,7 +1610,7 @@ def check_sync_reads() -> None:
                                                                  ERROR_INVALID_HANDLE) and t_close < 1.5
             and st is not None)
     rows.append(f"(b) CloseHandle from another thread returned {closed} after {t_close * 1000:.0f} ms (it waits for "
-                f"the synchronous read, which the heartbeat tick completed: error {out.get('err')}), {clean}")
+                f"the synchronous read, which the heartbeat tick completes: error {out.get('err')}), {clean}")
     ok = ok and b_ok
 
     # (c) TerminateThread on the reading thread, in a child process (the interpreter cannot recover from it)
@@ -1627,6 +1663,75 @@ def check_sync_reads() -> None:
     record(name, ok and st is not None, "; ".join(rows) + f"; {clean}")
 
 
+def check_desktop_pause() -> None:
+    """Switch the input to a private desktop for a second: isolation must pause, then resume.
+
+    The lock screen and the UAC prompt live on the Winlogon desktop, which a
+    user process cannot switch to, so this uses a desktop of its own: the
+    client sees "not my desktop" either way. The screen goes blank for the
+    duration; a timer switches back after 6 s no matter what, and
+    Ctrl+Alt+Del would recover a stuck switch by hand.
+    """
+    name = "B13 isolation pauses while another desktop has the input, resumes when it returns"
+    stops: List[str] = []
+    m = iso.MouseIsolation(lambda dx, dy: None, lambda c, p: None, on_stopped=stops.append)
+    with contextlib.redirect_stdout(io.StringIO()):
+        m.start()
+    time.sleep(0.5)
+    before = m.status()
+    own = _u32.OpenDesktopW("Default", 0, False, DESKTOP_SWITCHDESKTOP)
+    priv = _u32.CreateDesktopW("NimbusProbeDesktop", None, None, 0, GENERIC_ALL, None)
+    if not own or not priv:
+        with contextlib.redirect_stdout(io.StringIO()):
+            m.stop("probe")
+        record(name, False, f"could not open the desktops: own={own} private={priv} error={ctypes.get_last_error()}")
+        return
+    guard = threading.Timer(6.0, lambda: _u32.SwitchDesktop(own))
+    guard.daemon = True
+    guard.start()
+    t_paused: Optional[float] = None
+    t_resumed: Optional[float] = None
+    switched = back = still = False
+    try:
+        t0 = time.perf_counter()
+        switched = bool(_u32.SwitchDesktop(priv))
+        while switched and time.perf_counter() - t0 < 2.0:
+            if m.status()["isolating"] == 0:
+                t_paused = time.perf_counter() - t0
+                break
+            time.sleep(0.02)
+        time.sleep(1.0)
+        mid = m.status()
+        still = mid["isolating"] == 0 and m.active and m.paused and not stops
+    finally:
+        back = bool(_u32.SwitchDesktop(own))
+        guard.cancel()
+    t1 = time.perf_counter()
+    while time.perf_counter() - t1 < 2.0:
+        if m.status()["isolating"] == 1:
+            t_resumed = time.perf_counter() - t1
+            break
+        time.sleep(0.02)
+    time.sleep(0.6)
+    st = m.status()
+    paused_after = m.paused
+    ticks = m.ticks
+    with contextlib.redirect_stdout(io.StringIO()):
+        m.stop("probe")
+    _u32.CloseDesktop(priv)
+    _u32.CloseDesktop(own)
+    stf, clean = free_and_clean()
+    ok = (switched and back and t_paused is not None and still and t_resumed is not None and not paused_after
+          and st["isolating"] == 1 and stops == ["probe"] and stf is not None
+          and stf["watchdog_releases"] == before["watchdog_releases"])
+    record(name, ok, f"switched to a private desktop={switched}: isolation off after "
+                     f"{'never' if t_paused is None else f'{t_paused * 1000:.0f} ms'}, still paused with the client "
+                     f"active 1 s later={still}; switched back={back}: isolation on again after "
+                     f"{'never' if t_resumed is None else f'{t_resumed * 1000:.0f} ms'}, paused flag cleared="
+                     f"{not paused_after}, ticks={ticks}, stops={stops}; watchdog_releases "
+                     f"{before['watchdog_releases']} -> {stf['watchdog_releases'] if stf else '?'}; {clean}")
+
+
 # ---- main ---------------------------------------------------------------------------
 
 CHECKS: List[Tuple[str, Callable[[argparse.Namespace], None]]] = [
@@ -1634,6 +1739,7 @@ CHECKS: List[Tuple[str, Callable[[argparse.Namespace], None]]] = [
     ("B2", lambda a: check_read_flood()),
     ("B3", lambda a: check_open_close_storm(3.0 if a.quick else 8.0)),
     ("B12", lambda a: check_sync_reads()),
+    ("B13", lambda a: check_desktop_pause()),
     ("B8", lambda a: check_fuzz(1000 if a.quick else 4000)),
     ("B4", lambda a: check_chaos_kill(10 if a.quick else 30)),
     ("B5", lambda a: check_suspend_precision()),
@@ -1671,6 +1777,8 @@ def main() -> int:
     ap.add_argument("--only", help="comma-separated subset, e.g. B1,B8")
     ap.add_argument("--quick", action="store_true", help="shorter storms and fewer iterations")
     ap.add_argument("--soak", type=float, default=120.0, help="length of the soak (B9)")
+    ap.add_argument("--expect-version", type=int, default=0,
+                    help="run against a driver of this interface version instead of the client's own")
     ap.add_argument("--role", help=argparse.SUPPRESS)
     ap.add_argument("--reader-priority", default="default", help=argparse.SUPPRESS)
     ap.add_argument("--deadline", type=float, default=0.0, help=argparse.SUPPRESS)
@@ -1679,6 +1787,9 @@ def main() -> int:
     ap.add_argument("--seconds", type=float, default=5.0, help=argparse.SUPPRESS)
     ap.add_argument("--handle", type=int, default=0, help=argparse.SUPPRESS)
     args = ap.parse_args()
+    if args.expect_version:
+        iso.INTERFACE_VERSION = args.expect_version
+        iso.TICK_MS = {3: 1000}.get(args.expect_version, iso.TICK_MS)
 
     if args.role == "client":
         return role_client(args.reader_priority)

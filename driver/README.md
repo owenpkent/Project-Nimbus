@@ -46,7 +46,11 @@ installed the same afternoon and passed the three suites again (17/17, 14/14,
 finding was fixed the
 same day: with the machine saturated by HIGH-priority processes the reader
 thread was starved past the watchdog and lost the mouse, so it now runs at
-time-critical priority. Details in the plan doc, section 5 items 7 and 11.
+time-critical priority. The same evening brought **interface v4**: the
+heartbeat tick went from 1 s to 250 ms, so a live client survives a stall of
+at least 1.5 s instead of 0.75 s, and the client pauses isolation while the
+secure desktop has the input (lock screen, UAC) and resumes after. v4 is
+built and installed and validated the same evening (17/17, 15/15 with the new desktop-pause check, 8/8). Details in the plan doc, section 5 items 7 and 11.
 Not attestation-signed, not validated against an anti-cheat game, not in any
 release. Do not ship it yet.
 
@@ -134,18 +138,26 @@ attestation-signed build.
 - Isolation is cleared when the client's handle closes (crash, kill, exit).
 - A watchdog clears isolation if no read has arrived for 2 s while isolating.
   It runs only while isolating. Since interface v3 a read that has been
-  parked for 1 s with nothing to deliver is completed empty (a heartbeat
-  tick) and the client issues the next one; a client that is frozen or
+  parked with nothing to deliver is completed empty after
+  `NIMBUS_MOUFILTER_TICK_MS` (a heartbeat tick: 1 s on v3, 250 ms since v4)
+  and the client issues the next one; a client that is frozen or
   suspended cannot, so it loses the mouse within 2 s of its last read (on v2
   a parked read kept isolation alive by design; on v3 a client frozen with
   `NtSuspendProcess` was released 2 s after its last read, probe check U11).
   The stall a live client survives is 2 s minus the age of its parked read,
-  which it re-issues after each tick, so between about 0.75 and 2 s (stress
-  probe B5); the client's reader thread therefore runs at
+  which it re-issues after each tick: 0.75 to 2 s on v3, 1.5 to 2 s on v4
+  (stress probe B5). The client's reader thread also runs at
   `THREAD_PRIORITY_TIME_CRITICAL`, which kept the mouse through a
   HIGH-priority CPU burn that starved a normal-priority reader past the
   watchdog (B6). A client that parks N reads and freezes is released after
-  max(2 s, 1 s + N x 250 ms), one tick per watchdog period (B2b).
+  max(2 s, tick + N x 250 ms), one tick per watchdog period (B2b).
+- While the secure desktop has the input (lock screen, UAC prompt,
+  Ctrl+Alt+Del) the cursor relay cannot reach the cursor and the hotkey
+  cannot be seen, so the client checks the input desktop every 100 ms and
+  gives the mouse back for as long as another desktop has it, keeping the
+  handle and taking the mouse again when its desktop returns (off within
+  40 ms, on again at once, stress probe B13). The driver itself is unaware
+  of desktops.
   Once isolation is off, every read fails with `ERROR_NOT_READY`, so
   the client notices a watchdog release at its next read and reports the
   stop. Every release path (IOCTL, handle cleanup, watchdog) drains reads
@@ -179,5 +191,6 @@ attestation-signed build.
 | Mouse dead, no rollback (script interrupted, or `-NoRollback`) | `UpperFilters` still names a driver that will not start | Keyboard: `Win+X`, `A` for an elevated PowerShell, run `driver\uninstall-dev.ps1`, replug the mouse. Or in `regedit`, under `HKLM\SYSTEM\CurrentControlSet\Control\Class\{4D36E96F-E325-11CE-BFC1-08002BE10318}`, edit `UpperFilters` so it reads only `mouclass` (the list normally holds `nimbus_moufilter` above `mouclass`; **`mouclass` must stay**, it is the mouse class driver itself). |
 | Blue screen when a mouse starts (possibly at every boot) | A bug in the filter | Windows opens the recovery environment after two failed boots (or hold Shift while clicking Restart). Troubleshoot, Advanced options, System Restore, pick the "Before Nimbus Mouse Filter dev install" point. Alternative from the recovery Command Prompt: `reg load HKLM\sys C:\Windows\System32\config\SYSTEM`, then `reg add "HKLM\sys\ControlSet001\Control\Class\{4D36E96F-E325-11CE-BFC1-08002BE10318}" /v UpperFilters /t REG_MULTI_SZ /d mouclass /f`, then `reg unload HKLM\sys`. Never delete the value outright: `mouclass` has to remain in it. |
 | Cursor frozen while Nimbus is running | Isolation is on without the cursor relay, or the relay's reader thread is stuck | With the relay the cursor should keep moving; frozen means the reader is not running. `Ctrl+Alt+F12` releases (polled by the client). Or close Nimbus (Alt+F4 or Task Manager from the keyboard); closing the handle releases immediately. The watchdog releases within 2 s if Nimbus stops issuing reads, including when it is frozen (interface v3). |
+| Mouse dead on the lock screen or a UAC prompt while Nimbus is in Game Mode | The client's secure-desktop pause did not kick in (it checks the input desktop every 100 ms) | The keyboard works: unlock or dismiss the prompt from it and the mouse is back on the desktop. Then file the bug; `Ctrl+Alt+F12` cannot reach the secure desktop. |
 | Cursor frozen and Nimbus is gone | Should not happen (handle cleanup clears isolation) | Replug the mouse (a fresh device instance), or reboot; the flag does not survive a driver reload. Then file the bug with the output of `--status`. |
 | "Test Mode" watermark, anti-cheat games refuse to start | Test signing is on | `bcdedit /set testsigning off` from an elevated prompt, reboot. Do this before playing EAC/BattlEye/Vanguard titles; the unsigned dev driver cannot load without it. |

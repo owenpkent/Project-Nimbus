@@ -32,7 +32,7 @@ happy path: process death, a hung client, races, and malformed requests.
   U15  malformed IOCTLs, reads and writes fail cleanly (any interactive user can
        open the device, so this is the local denial-of-service surface)
   U16  idle soak (``--soak``, default 30 s): isolation with a parked read and no
-       motion stays on, the watchdog never fires (v3: heartbeat ticks, about 1/s)
+       motion stays on, the watchdog never fires (heartbeat ticks: about 1/s on v3, 3/s on v4)
   U17  Ctrl+Alt+F12, injected with SendInput, releases from the reader thread
 
 Attended phases (``--attended``): a fake Raw Input game and a Nimbus stand-in
@@ -568,11 +568,15 @@ def check_reads_keep_isolation() -> None:
         iso._set_isolation(h, False)
     finally:
         _k32.CloseHandle(h)
+    # A read parked 0.9 s is cancelled (995) on v3; on v4 the 250 ms heartbeat
+    # has already completed it empty (0) by then. Either way it arrived, which
+    # is what keeps the watchdog quiet.
     ok = (len(samples) == 6 and all(s == 1 for s in samples) and st["watchdog_releases"] == before
-          and all(c == iso.ERROR_OPERATION_ABORTED for c in cancels))
+          and all(c in (iso.ERROR_OPERATION_ABORTED, 0) for c in cancels))
     record("U9 reads cycling inside the window keep isolation", ok,
            f"6 reads each parked 0.9 s then cancelled, {held:.1f} s total: isolating samples={samples}, "
-           f"cancel results={cancels} (995 expected), watchdog_releases {before} -> {st['watchdog_releases']}")
+           f"cancel results={cancels} (995 cancelled, or 0 if the heartbeat ticked it first), "
+           f"watchdog_releases {before} -> {st['watchdog_releases']}")
 
 
 def check_hard_kill() -> None:
@@ -878,15 +882,17 @@ def check_soak(seconds: float) -> None:
         parked = sum(1 for s in samples if s[1] >= 1)
         early = list(stops)                 # anything here means the driver let go before we did
         ticks = m.ticks
-        # v3 hands an idle read back empty 1.0 to 1.25 s after it arrived and the
-        # reader re-issues at once; v2 never completes an idle read.
-        ticks_ok = (seconds * 0.7 <= ticks <= seconds + 1) if version >= 3 else ticks == 0
+        # v3 and later hand an idle read back empty one watchdog period after it
+        # has been parked for TICK_MS (1 s on v3, 250 ms on v4) and the reader
+        # re-issues at once; v2 never completes an idle read.
+        per_second = 1000.0 / iso.TICK_MS
+        ticks_ok = (seconds * per_second * 0.45 <= ticks <= seconds * per_second + 2) if version >= 3 else ticks == 0
         ok = m.active and steady and not early and len(samples) >= int(seconds) - 1 and ticks_ok
         m.stop("soak done")
         record(name, ok,
                f"{seconds:.0f} s, {len(samples)} samples: isolating stayed 1 and watchdog_releases stayed "
                f"{before}: {steady}; a read was parked in {parked}/{len(samples)} samples; heartbeat ticks={ticks} "
-               f"(v{version}: {'about one per second expected' if version >= 3 else 'none expected'}); "
+               f"(v{version}: {f'about {per_second:.0f} per second expected' if version >= 3 else 'none expected'}); "
                f"early stops={early}; motion events={motion['n']}")
     except Exception as exc:
         record(name, False, f"{type(exc).__name__}: {exc}")

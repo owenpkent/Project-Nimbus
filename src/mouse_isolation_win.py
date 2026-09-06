@@ -84,17 +84,18 @@ import atexit
 import struct
 import sys
 import threading
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 _IS_WINDOWS = sys.platform == "win32"
 
 # Must match driver/nimbus_moufilter/nimbus_moufilter_ioctl.h
 DEVICE_PATH = r"\\.\NimbusMouseFilter"
-INTERFACE_VERSION = 3
+INTERFACE_VERSION = 4
 IOCTL_NIMBUS_SET_ISOLATION = 0x00222000
 IOCTL_NIMBUS_GET_STATUS = 0x00222004
 WATCHDOG_MS = 2000      # NIMBUS_MOUFILTER_WATCHDOG_MS: release when no read arrives for this long
-TICK_MS = 1000          # NIMBUS_MOUFILTER_TICK_MS: a parked read is completed empty after this long
+TICK_MS = 250           # NIMBUS_MOUFILTER_TICK_MS: a parked read is completed empty after this long (v4; 1000 on v3)
 
 HOTKEY_POLL_MS = 100    # how often the reader thread checks Ctrl+Alt+F12 while a read is parked
 # The reader thread runs at THREAD_PRIORITY_TIME_CRITICAL (15). It has to
@@ -105,7 +106,16 @@ HOTKEY_POLL_MS = 100    # how often the reader thread checks Ctrl+Alt+F12 while 
 # mid-session. At 15 it kept up. The thread mostly waits on the read event,
 # so the priority costs nothing while idle.
 READER_THREAD_PRIORITY = 15
+# While the secure desktop has the input (lock screen, UAC prompt, Ctrl+Alt+Del)
+# the cursor relay cannot reach the cursor and the hotkey cannot be seen, so
+# the physical mouse would be dead there. The reader thread therefore checks
+# the input desktop every HOTKEY_POLL_MS, gives the mouse back while another
+# desktop has the input, and takes it again when its own desktop returns.
+SECURE_DESKTOP_PAUSE = True
+DESKTOP_READOBJECTS = 0x0001
+UOI_NAME = 2
 _HOTKEY_HIT = -1        # internal: the read wait ended because the hotkey was held
+_DESKTOP_AWAY = -2      # internal: the read wait ended because another desktop took the input
 
 # MOUSE_INPUT_DATA (ntddmou.h), x64 packing is natural with no padding here.
 #   USHORT UnitId, Flags, ButtonFlags, ButtonData; ULONG RawButtons;
@@ -206,6 +216,16 @@ if _IS_WINDOWS:
     _k32.SetThreadPriority.restype = wintypes.BOOL
     _u32.GetSystemMetrics.argtypes = [ctypes.c_int]
     _u32.GetSystemMetrics.restype = ctypes.c_int
+    _u32.OpenInputDesktop.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    _u32.OpenInputDesktop.restype = wintypes.HANDLE
+    _u32.CloseDesktop.argtypes = [wintypes.HANDLE]
+    _u32.CloseDesktop.restype = wintypes.BOOL
+    _u32.GetThreadDesktop.argtypes = [wintypes.DWORD]
+    _u32.GetThreadDesktop.restype = wintypes.HANDLE
+    _u32.GetUserObjectInformationW.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+                                               ctypes.POINTER(wintypes.DWORD)]
+    _u32.GetUserObjectInformationW.restype = wintypes.BOOL
+    _k32.GetCurrentThreadId.restype = wintypes.DWORD
     _k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
     _k32.WaitForSingleObject.restype = wintypes.DWORD
     _u32.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
@@ -353,6 +373,39 @@ def pointer_speed_multiplier() -> float:
     if not _u32.SystemParametersInfoW(SPI_GETMOUSESPEED, 0, ctypes.byref(speed), 0):
         return 1.0
     return _MOUSE_SPEED_MULTIPLIER[min(max(speed.value, 1), 20) - 1]
+
+
+def _desktop_name(hdesk: int) -> str:
+    buf = ctypes.create_unicode_buffer(256)
+    needed = wintypes.DWORD(0)
+    if not hdesk or not _u32.GetUserObjectInformationW(hdesk, UOI_NAME, buf, ctypes.sizeof(buf),
+                                                        ctypes.byref(needed)):
+        return ""
+    return buf.value
+
+
+def _own_desktop_name() -> str:
+    """Name of the calling thread's desktop, normally ``Default``."""
+    return _desktop_name(_u32.GetThreadDesktop(_k32.GetCurrentThreadId()))
+
+
+def _input_desktop_is_ours(own_name: str) -> bool:
+    """True while the desktop that receives input is the caller's own.
+
+    The Winlogon desktop (lock screen, UAC prompt, Ctrl+Alt+Del) refuses
+    ``OpenInputDesktop`` to user processes, and any other desktop answers
+    with a different name. With no own name to compare against, the check
+    is disabled and answers True.
+    """
+    if not own_name:
+        return True
+    hdesk = _u32.OpenInputDesktop(0, False, DESKTOP_READOBJECTS)
+    if not hdesk:
+        return False
+    try:
+        return _desktop_name(hdesk).lower() == own_name.lower()
+    finally:
+        _u32.CloseDesktop(hdesk)
 
 
 def _hotkey_down() -> bool:
@@ -602,6 +655,12 @@ class MouseIsolation:
         # Wheel travel below one notch, carried to the next packet: [horizontal, vertical].
         self._wheel_rem = [0, 0]
         self.stop_reason = ""
+        #: True while isolation is suspended because another desktop (lock
+        #: screen, UAC) has the input; :attr:`active` stays True meanwhile.
+        self.paused = False
+        self._desktop = ""
+        self._next_desktop_check = 0.0
+        self._pause_error = ""
 
     @property
     def active(self) -> bool:
@@ -726,8 +785,18 @@ class MouseIsolation:
         ov = _OVERLAPPED()
         ov.hEvent = self._read_event
         handle = self._handle
+        self._desktop = _own_desktop_name() if SECURE_DESKTOP_PAUSE else ""
         try:
             while self._active:
+                # A mouse that never stops moving completes every read at once,
+                # so the desktop is also checked here, not only while parked.
+                if self._desktop and time.monotonic() >= self._next_desktop_check:
+                    self._next_desktop_check = time.monotonic() + HOTKEY_POLL_MS / 1000.0
+                    if not _input_desktop_is_ours(self._desktop):
+                        if not self._pause_while_desktop_away(handle):
+                            reason = self._pause_error
+                            break
+                        continue
                 returned = wintypes.DWORD(0)
                 ok = _k32.ReadFile(handle, buf, ctypes.sizeof(buf), ctypes.byref(returned), ctypes.byref(ov))
                 if not ok:
@@ -737,6 +806,11 @@ class MouseIsolation:
                     if err == _HOTKEY_HIT:
                         reason = "emergency hotkey"
                         break
+                    if err == _DESKTOP_AWAY:
+                        if not self._pause_while_desktop_away(handle):
+                            reason = self._pause_error
+                            break
+                        continue
                     if err:
                         reason = _read_failure_reason(err)
                         break
@@ -766,6 +840,44 @@ class MouseIsolation:
                 _k32.CancelIoEx(handle, ctypes.byref(ov))
                 _k32.GetOverlappedResult(handle, ctypes.byref(ov), ctypes.byref(returned), True)
                 return _HOTKEY_HIT
+            if self._desktop and self._active and not _input_desktop_is_ours(self._desktop):
+                _k32.CancelIoEx(handle, ctypes.byref(ov))
+                _k32.GetOverlappedResult(handle, ctypes.byref(ov), ctypes.byref(returned), True)
+                return _DESKTOP_AWAY
+
+    def _pause_while_desktop_away(self, handle: int) -> bool:
+        """Give the mouse back while another desktop has the input, take it again after.
+
+        Called on the reader thread with no read pending. The handle stays
+        open, so the device remains this client's and :attr:`active` stays
+        True; only the driver's isolation flag is dropped. Returns False if
+        isolation could not be restored (or :meth:`stop` ran meanwhile), in
+        which case the reader stops with :attr:`_pause_error` as the reason.
+        """
+        try:
+            _set_isolation(handle, False)
+        except Exception as exc:
+            self._pause_error = f"error: {exc}"
+            return False
+        self.paused = True
+        print("[mouse_isolation_win] paused: another desktop has the input (lock screen, UAC, Ctrl+Alt+Del); "
+              "the mouse is back until it closes")
+        while self._active and not _input_desktop_is_ours(self._desktop):
+            time.sleep(HOTKEY_POLL_MS / 1000.0)
+        if not self._active:
+            self.paused = False
+            self._pause_error = "stopped while paused"
+            return False
+        try:
+            _set_isolation(handle, True)
+        except Exception as exc:
+            self.paused = False
+            self._pause_error = f"error: {exc}"
+            return False
+        self.paused = False
+        self._next_desktop_check = time.monotonic() + HOTKEY_POLL_MS / 1000.0
+        print("[mouse_isolation_win] resumed: the desktop is back, isolating again")
+        return True
 
     def _dispatch(self, data: Any, length: int) -> None:
         # ``data`` is the ctypes read buffer itself; unpacking in place avoids
