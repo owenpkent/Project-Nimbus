@@ -156,8 +156,11 @@ attestation-signed build.
   cannot be seen, so the client checks the input desktop every 100 ms and
   gives the mouse back for as long as another desktop has it, keeping the
   handle and taking the mouse again when its desktop returns (off within
-  40 ms, on again at once, stress probe B13). The driver itself is unaware
-  of desktops.
+  40 ms, on again at once, stress probe B13; by hand, the sign-in prompt
+  and UAC prompts paused it within about 100 ms and it resumed within
+  about 100 ms of their closing). The Windows 11 lock screen itself sits on
+  the Default desktop, so isolation stays on there and the relay keeps the
+  cursor working. The driver itself is unaware of desktops.
   Once isolation is off, every read fails with `ERROR_NOT_READY`, so
   the client notices a watchdog release at its next read and reports the
   stop. Every release path (IOCTL, handle cleanup, watchdog) drains reads

@@ -24,6 +24,7 @@ Free, open-source modular virtual controller for Windows. Turns mouse/GUI input 
 - Deps: `pip install -r requirements.txt`.
 - Package: follow `build_tools/BUILD_EXECUTABLE.md` (PyInstaller via `build_tools/Nimbus-Adaptive-Controller.spec`).
 - Tests: the `tests/` files are vJoy/driver diagnostics that need a real vJoy install (for example `python tests/test_vjoy.py`), not an automated suite. pytest is not a dependency and some scripts use stale imports. There is no CI.
+- Driver changes: run `tests/probe_mouse_filter_windows.py` and `tests/probe_mouse_filter_stress_windows.py` (the battle test, about four minutes, unattended, needs the filter installed) after any change to `driver/` or `src/mouse_isolation_win.py`, and WDK Code Analysis plus CodeQL before a driver commit. The commands and the results log live in `docs/vision/WINDOWS_MOUSE_FILTER_PLAN.md`, section 5.
 
 ## Conventions
 - PEP 8, type hints, and numpy-style docstrings on public classes and methods (match src/bridge.py). No linter or formatter is configured, so keep the existing style and avoid ruff/black reformatting churn.
