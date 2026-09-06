@@ -50,7 +50,7 @@ time-critical priority. The same evening brought **interface v4**: the
 heartbeat tick went from 1 s to 250 ms, so a live client survives a stall of
 at least 1.5 s instead of 0.75 s, and the client pauses isolation while the
 secure desktop has the input (lock screen, UAC) and resumes after. v4 is
-built and installed and validated the same evening (17/17, 15/15 with the new desktop-pause check, 8/8). Details in the plan doc, section 5 items 7 and 11.
+built and installed and validated the same evening (17/17, 15/15 with the new desktop-pause check, 8/8, then the same three under Driver Verifier with no bugcheck). Details in the plan doc, section 5 items 7 and 11.
 Not attestation-signed, not validated against an anti-cheat game, not in any
 release. Do not ship it yet.
 
