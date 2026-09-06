@@ -167,17 +167,16 @@ Nimbus Adaptive Controller is and will remain **free for all accessibility use**
    - Go to [Releases](https://github.com/owenpkent/Nimbus-Adaptive-Controller/releases)
    - Download `Nimbus-Adaptive-Controller-Setup-<version>.exe` (installer) or `Nimbus-Adaptive-Controller-<version>.exe` (portable)
 
-2. **Install the ViGEmBus driver** (for Xbox/XInput emulation — recommended):
-   - Download from [ViGEmBus Releases](https://github.com/nefarius/ViGEmBus/releases)
-   - Run the installer, reboot if prompted
+2. **Run the installer**:
+   - The drivers page shows whether **vJoy** (DirectInput) and **ViGEmBus** (Xbox/XInput) are already on the machine and offers to install whichever is missing. Both are included in the installer, so no internet connection or manual download is needed, and vJoy device 1 is configured for you (8 axes, 128 buttons)
+   - Untick either driver to skip it. Nimbus still starts; the matching profile types are simply unavailable
+   - Restart if the installer asks for one
 
-3. **Install VJoy Driver** (optional — for DirectInput / legacy games):
-   - Download and install from [VJoy Official Site](http://vjoystick.sourceforge.net/)
-   - Configure VJoy device #1 with at least 6 axes (X, Y, Z, RX, RY, RZ)
+3. **Start Nimbus**:
+   - Launch it from the finish page, the Start Menu, or the desktop shortcut
+   - No Python installation required
 
-4. **Run the application**:
-   - Run the installer, or double-click the portable `.exe`
-   - No Python installation required!
+The portable `.exe` installs nothing, so it needs the drivers already present. Use the installer if you are not sure.
 
 ### Option 2: Run from Source (For Developers)
 

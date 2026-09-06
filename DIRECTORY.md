@@ -134,7 +134,8 @@ Everything needed to package and distribute the app.
 |------|---------|
 | `Project-Nimbus.spec` | PyInstaller spec — defines bundling, paths, hidden imports |
 | `launcher.py` | Entry point for frozen executable |
-| `installer.nsi` | NSIS installer script — wizard, shortcuts, version detection |
+| `installer.nsi` | NSIS installer script: wizard, shortcuts, version detection, bundled vJoy and ViGEmBus install |
+| `fetch_redist.ps1` | Downloads the vJoy and ViGEmBus setups the installer bundles, pinned by SHA-256 and publisher signature, into the gitignored `redist/`. Run before `makensis` |
 | `sign_exe.bat` | Code signing script (EV certificate) |
 | `Project-Nimbus.ico` | Application icon (multi-resolution) |
 | `Project-Nimbus.manifest` | Windows manifest (UIAccess, DPI awareness) |
@@ -145,6 +146,9 @@ Everything needed to package and distribute the app.
 ```powershell
 # Build executable
 venv\Scripts\pyinstaller.exe build_tools\Project-Nimbus.spec --noconfirm
+
+# Fetch the bundled driver setups (required before makensis)
+powershell -ExecutionPolicy Bypass -File build_tools\fetch_redist.ps1
 
 # Build installer
 & "C:\Program Files (x86)\NSIS\makensis.exe" build_tools\installer.nsi
@@ -162,10 +166,12 @@ The Nimbus Mouse Filter, a KMDF upper filter on the mouse class that hands the p
 | File | Purpose |
 |------|---------|
 | `README.md` | Build, test-signing, and dev-install instructions |
+| `SIGNING.md` | Release path: Partner Center registration, attestation signing, and where that stands after the April 2026 driver policy |
 | `nimbus_moufilter/nimbus_moufilter.c` | The driver: filter callback, control device, isolation IOCTLs, watchdog |
 | `nimbus_moufilter/nimbus_moufilter_ioctl.h` | User/kernel contract, mirrored by `src/mouse_isolation_win.py` |
 | `nimbus_moufilter/nimbus_moufilter.inx` | INF template (service install; class filter entry is added by the install script) |
 | `build.ps1` | Build and collect outputs into `driver/out/` (gitignored) |
+| `package.ps1` | Build and EV-sign the attestation submission CAB; `-VerifySigned` checks the package Microsoft returns |
 | `enable-testsigning.ps1`, `install-dev.ps1`, `uninstall-dev.ps1` | Elevated dev loop; the installer verifies the load and rolls back automatically |
 | `pnp-common.ps1` | Shared helper: restarts every mouse with `pnputil /restart-device` so the filter attaches or detaches without a reboot |
 
