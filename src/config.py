@@ -4,6 +4,7 @@ Handles sensitivity curves, dead zones, and other controller parameters.
 """
 
 import json
+import math
 import os
 import shutil
 import sys
@@ -13,6 +14,148 @@ import numpy as np
 
 # App name for user data directory
 APP_NAME = "ProjectNimbus"
+
+# The inner deadzones XInput documents for its two sticks, as fractions of
+# the 16-bit axis range. Games that follow the documentation discard stick
+# input below these magnitudes, so they are the output anti-deadzone
+# defaults when Nimbus presents an XInput (ViGEm) controller. Games override
+# them freely, which is why the value is a per-widget setting and not a
+# constant of the pipeline.
+XINPUT_LEFT_THUMB_DEADZONE = 7849 / 32767.0     # 0.2395
+XINPUT_RIGHT_THUMB_DEADZONE = 8689 / 32767.0    # 0.2652
+
+# Per-widget shaping defaults, shared by the bridge (which resolves a widget's
+# parameters) and the QML config dialog (which shows them). Percent units
+# match the sliders in the dialog; anti-deadzone values are fractions of the
+# output range.
+DEFAULT_SENSITIVITY_PCT = 50.0
+DEFAULT_DEAD_ZONE_PCT = 0.0
+DEFAULT_EXTREMITY_PCT_STICK = 5.0
+DEFAULT_EXTREMITY_PCT_AXIS = 0.0
+DEFAULT_ANTI_DEADZONE_BUFFER = 0.02
+DEFAULT_TREMOR_FILTER = 0.0
+DEFAULT_PRECISION_GAIN = 0.25
+
+
+def sensitivity_power(sensitivity_pct: float) -> float:
+    """
+    Map the sensitivity slider to the exponent of the response curve.
+
+    50 is linear. Below 50 the curve flattens near the centre (exponent up
+    to 4.0 at 0); above 50 it steepens (exponent down to 0.1 at 100). This
+    is the one place the mapping lives; the curve preview asks the bridge
+    for its points rather than re-implementing it.
+
+    Parameters
+    ----------
+    sensitivity_pct : float
+        Slider value, 0 to 100.
+
+    Returns
+    -------
+    float
+        Exponent applied to the normalised magnitude.
+    """
+    sensitivity = max(0.0, min(100.0, float(sensitivity_pct))) / 100.0
+    if abs(sensitivity - 0.5) < 1e-9:
+        return 1.0
+    if sensitivity < 0.5:
+        return 1.0 + (0.5 - sensitivity) * 6.0
+    return max(0.1, 1.0 - (sensitivity - 0.5) * 1.8)
+
+
+def shape_magnitude(magnitude: float,
+                    sensitivity: float = DEFAULT_SENSITIVITY_PCT,
+                    dead_zone: float = DEFAULT_DEAD_ZONE_PCT,
+                    extremity_dead_zone: float = DEFAULT_EXTREMITY_PCT_STICK,
+                    anti_deadzone: float = 0.0,
+                    anti_deadzone_buffer: float = 0.0,
+                    gain: float = 1.0) -> float:
+    """
+    Shape a non-negative input magnitude into an output magnitude.
+
+    This is the single response formula for every axis Nimbus drives. In
+    order: inner deadzone, gain, response curve, then a remap of anything
+    non-zero onto ``[anti_deadzone + anti_deadzone_buffer, 1 - extremity]``.
+    The floor is applied inside the ceiling so that the smallest real
+    movement always lands at exactly the floor the user calibrated, whatever
+    the extremity cap is set to.
+
+    Parameters
+    ----------
+    magnitude : float
+        Input magnitude, 0 to 1 (clamped).
+    sensitivity : float
+        Response curve, percent; 50 is linear (see :func:`sensitivity_power`).
+    dead_zone : float
+        Inner deadzone, percent of the slider; 100 percent is a quarter of
+        the input range, matching the historical dialog units.
+    extremity_dead_zone : float
+        Percent taken off the top of the output range (a maximum-output cap).
+    anti_deadzone : float
+        Output floor, 0 to 1: the game's own inner deadzone to skip past.
+    anti_deadzone_buffer : float
+        Added to the floor so the user can re-introduce a small margin above
+        the game's threshold. Only counts when ``anti_deadzone`` is non-zero:
+        a margin above nothing is nothing.
+    gain : float
+        Multiplier on the post-deadzone magnitude; the precision modifier
+        passes a value below 1 here.
+
+    Returns
+    -------
+    float
+        Output magnitude in [0, 1]. Exactly 0 inside the deadzone.
+    """
+    m = max(0.0, min(1.0, float(magnitude)))
+    dz = max(0.0, min(100.0, float(dead_zone))) / 100.0 * 0.25
+    if m <= dz:
+        return 0.0
+    normalized = (m - dz) / max(1e-6, 1.0 - dz)
+    normalized = max(0.0, min(1.0, normalized * max(0.0, float(gain))))
+    if normalized <= 0.0:
+        return 0.0
+    curved = math.pow(normalized, sensitivity_power(sensitivity))
+    ceiling = 1.0 - max(0.0, min(100.0, float(extremity_dead_zone))) / 100.0
+    floor = max(0.0, min(1.0, float(anti_deadzone)))
+    if floor > 0.0:
+        floor += max(0.0, min(1.0, float(anti_deadzone_buffer)))
+    floor = min(floor, ceiling)
+    return floor + curved * (ceiling - floor)
+
+
+def shape_vector(x: float, y: float, **params: float) -> Tuple[float, float]:
+    """
+    Shape a raw stick vector radially.
+
+    The vector is clamped to the unit circle, its magnitude is passed
+    through :func:`shape_magnitude`, and the direction is preserved. Radial
+    rather than per-axis so the dead region is a circle, diagonals respond
+    like cardinals, and the output magnitude never exceeds 1.
+
+    Parameters
+    ----------
+    x, y : float
+        Raw normalised deflection, before any shaping.
+    **params
+        Keyword arguments for :func:`shape_magnitude`.
+
+    Returns
+    -------
+    Tuple[float, float]
+        Shaped output per axis, each in [-1, 1], magnitude at most 1.
+    """
+    fx, fy = float(x), float(y)
+    mag = math.hypot(fx, fy)
+    if mag <= 0.0:
+        return 0.0, 0.0
+    if mag > 1.0:
+        fx, fy, mag = fx / mag, fy / mag, 1.0
+    out = shape_magnitude(mag, **params)
+    if out <= 0.0:
+        return 0.0, 0.0
+    scale = out / mag
+    return fx * scale, fy * scale
 
 
 class ControllerConfig:
@@ -260,148 +403,98 @@ class ControllerConfig:
         
         config_ref[keys[-1]] = value
     
-    def apply_sensitivity_curve(self, value: float, joystick: str, axis: str) -> float:
+    def _settings_params(self, section: str, joystick: str = "left",
+                         output_mode: str = "vjoy") -> Dict[str, float]:
         """
-        Apply sensitivity curve to input value.
-        
-        Args:
-            value: Raw input value (-1.0 to 1.0)
-            joystick: Joystick identifier ("left" or "right")
-            axis: Axis identifier ("x" or "y")
-            
-        Returns:
-            Processed value with sensitivity curve applied
+        Shaping parameters from a profile-level settings block.
+
+        Used by the legacy (non-custom) layouts, whose sticks carry no
+        per-widget settings: ``joystick_settings`` for the sticks and
+        ``rudder_settings`` for the rudder axis. The anti-deadzone default
+        follows the output backend and the stick, and may be overridden by
+        ``anti_deadzone`` / ``anti_deadzone_buffer`` keys in the block.
+
+        Parameters
+        ----------
+        section : str
+            ``"joystick_settings"`` or ``"rudder_settings"``.
+        joystick : str
+            ``"left"`` or ``"right"``; picks the XInput default.
+        output_mode : str
+            ``"vigem"`` or ``"vjoy"``; only ViGEm gets an XInput default.
+
+        Returns
+        -------
+        Dict[str, float]
+            Keyword arguments for :func:`shape_magnitude`.
         """
-        # If the new dialog-based settings exist, prefer them for QML path so
-        # runtime behavior matches the Joystick Settings preview exactly.
-        try:
-            if self.get("joystick_settings.sensitivity", None) is not None:
-                return self.apply_joystick_dialog_curve(value)
-        except Exception:
-            pass
-        if abs(value) < self.get(f"joysticks.{joystick}.dead_zone", 0.1):
-            return 0.0
-        
-        # Remove dead zone
-        sign = 1 if value >= 0 else -1
-        abs_value = abs(value)
-        dead_zone = self.get(f"joysticks.{joystick}.dead_zone", 0.1)
-        
-        # Scale to remove dead zone
-        if abs_value > dead_zone:
-            scaled_value = (abs_value - dead_zone) / (1.0 - dead_zone)
-        else:
-            return 0.0
-        
-        # Apply sensitivity curve
-        curve_type = self.get(f"joysticks.{joystick}.curve_type", "linear")
-        curve_power = self.get(f"joysticks.{joystick}.curve_power", 2.0)
-        
-        if curve_type == "exponential":
-            processed_value = np.power(scaled_value, curve_power)
-        elif curve_type == "logarithmic":
-            processed_value = np.log(1 + scaled_value * (np.e - 1)) / np.log(np.e)
-        else:  # linear
-            processed_value = scaled_value
-        
-        # Apply sensitivity multiplier
-        sensitivity = self.get(f"joysticks.{joystick}.sensitivity", 1.0)
-        processed_value *= sensitivity
-        
-        # Apply inversion if needed
-        invert_key = f"joysticks.{joystick}.invert_{axis}"
-        if self.get(invert_key, False):
-            sign *= -1
-        
-        # Clamp to max range
-        max_range = self.get(f"joysticks.{joystick}.max_range", 1.0)
-        processed_value = min(processed_value, max_range)
-        
-        return sign * processed_value
+        default_adz = 0.0
+        if output_mode == "vigem" and section == "joystick_settings":
+            default_adz = XINPUT_RIGHT_THUMB_DEADZONE if joystick == "right" else XINPUT_LEFT_THUMB_DEADZONE
+        return {
+            "sensitivity": float(self.get(f"{section}.sensitivity", DEFAULT_SENSITIVITY_PCT)),
+            "dead_zone": float(self.get(f"{section}.deadzone", 10.0)),
+            "extremity_dead_zone": float(self.get(f"{section}.extremity_deadzone", DEFAULT_EXTREMITY_PCT_STICK)),
+            "anti_deadzone": float(self.get(f"{section}.anti_deadzone", default_adz)),
+            "anti_deadzone_buffer": float(self.get(f"{section}.anti_deadzone_buffer", DEFAULT_ANTI_DEADZONE_BUFFER)),
+        }
+
+    def shape_stick(self, x: float, y: float, joystick: str,
+                    output_mode: str = "vjoy", gain: float = 1.0) -> Tuple[float, float]:
+        """
+        Shape a raw stick vector with the profile's global joystick settings.
+
+        This is the path for the legacy layouts (``adaptive``, ``xbox``,
+        ``flight_sim``), whose sticks have no per-widget settings. Custom
+        layout widgets are shaped by the bridge from their own settings with
+        the same :func:`shape_vector`.
+
+        Parameters
+        ----------
+        x, y : float
+            Raw normalised deflection from the widget, before any shaping.
+        joystick : str
+            ``"left"`` or ``"right"``; selects the anti-deadzone default.
+        output_mode : str
+            ``"vigem"`` or ``"vjoy"``, for the anti-deadzone default.
+        gain : float
+            Multiplier on the post-deadzone magnitude (precision modifier).
+
+        Returns
+        -------
+        Tuple[float, float]
+            Shaped output in [-1, 1] per axis, magnitude never exceeding 1.
+        """
+        params = self._settings_params("joystick_settings", joystick, output_mode)
+        return shape_vector(x, y, gain=gain, **params)
 
     def apply_joystick_dialog_curve(self, value: float) -> float:
         """
-        Apply curve using percent-based settings from the Joystick Settings dialog.
+        Shape a single bipolar value with the profile's ``joystick_settings``.
 
-        Matches the math in qt_dialogs._CurvePreview._calc_output so the live
-        preview and runtime feel identical.
+        Kept for the Qt Widgets settings dialogs; the same formula as
+        :func:`shape_magnitude` without any anti-deadzone.
         """
-        try:
-            sensitivity_pct = float(self.get("joystick_settings.sensitivity", 50.0))
-            deadzone_pct = float(self.get("joystick_settings.deadzone", 10.0))
-            extremity_pct = float(self.get("joystick_settings.extremity_deadzone", 5.0))
-
-            # Convert percentages to the preview's internal units
-            deadzone = (deadzone_pct / 100.0) * 0.25
-            extremity_deadzone = extremity_pct / 100.0
-            sensitivity = sensitivity_pct / 100.0
-
-            v = float(value)
-            if abs(v) < deadzone:
-                return 0.0
-
-            sign = 1.0 if v >= 0 else -1.0
-            abs_input = abs(v)
-            available_range = 1.0 - deadzone
-            normalized_input = (abs_input - deadzone) / max(1e-6, available_range)
-
-            if abs(sensitivity - 0.5) < 1e-9:
-                output = normalized_input
-            elif sensitivity < 0.5:
-                power = 1.0 + (0.5 - sensitivity) * 6.0
-                output = float(np.power(normalized_input, power))
-            else:
-                power = 1.0 - (sensitivity - 0.5) * 1.8
-                output = float(np.power(normalized_input, max(0.1, power)))
-
-            if extremity_deadzone > 0:
-                max_output = 1.0 - extremity_deadzone
-                output *= max_output
-
-            return output * sign
-        except Exception:
-            # Fallback to identity on any error
-            return float(value)
+        v = float(value)
+        params = self._settings_params("joystick_settings")
+        params["anti_deadzone"] = 0.0
+        params["anti_deadzone_buffer"] = 0.0
+        out = shape_magnitude(abs(v), **params)
+        return out if v >= 0 else -out
 
     def apply_rudder_sensitivity_curve(self, value: float) -> float:
         """
-        Apply curve using percent-based settings from the Rudder Settings dialog.
-        Mirrors apply_joystick_dialog_curve but reads rudder_settings.* keys.
+        Shape a single bipolar value with the profile's ``rudder_settings``.
+
+        Mirrors :meth:`apply_joystick_dialog_curve` for the rudder axis of
+        the legacy layouts.
         """
-        try:
-            sensitivity_pct = float(self.get("rudder_settings.sensitivity", 50.0))
-            deadzone_pct = float(self.get("rudder_settings.deadzone", 10.0))
-            extremity_pct = float(self.get("rudder_settings.extremity_deadzone", 5.0))
-
-            deadzone = (deadzone_pct / 100.0) * 0.25
-            extremity_deadzone = extremity_pct / 100.0
-            sensitivity = sensitivity_pct / 100.0
-
-            v = float(value)
-            if abs(v) < deadzone:
-                return 0.0
-
-            sign = 1.0 if v >= 0 else -1.0
-            abs_input = abs(v)
-            available_range = 1.0 - deadzone
-            normalized_input = (abs_input - deadzone) / max(1e-6, available_range)
-
-            if abs(sensitivity - 0.5) < 1e-9:
-                output = normalized_input
-            elif sensitivity < 0.5:
-                power = 1.0 + (0.5 - sensitivity) * 6.0
-                output = float(np.power(normalized_input, power))
-            else:
-                power = 1.0 - (sensitivity - 0.5) * 1.8
-                output = float(np.power(normalized_input, max(0.1, power)))
-
-            if extremity_deadzone > 0:
-                max_output = 1.0 - extremity_deadzone
-                output *= max_output
-
-            return output * sign
-        except Exception:
-            return float(value)
+        v = float(value)
+        params = self._settings_params("rudder_settings")
+        params["anti_deadzone"] = 0.0
+        params["anti_deadzone_buffer"] = 0.0
+        out = shape_magnitude(abs(v), **params)
+        return out if v >= 0 else -out
     
     def get_vjoy_value(self, normalized_value: float) -> int:
         """

@@ -19,8 +19,11 @@ underlying subsystems:
 Bridge responsibilities
 -----------------------
 * Translate QML method calls (``Slot``\\ s) into back-end operations.
-* Apply per-axis sensitivity curves and optional smoothing before forwarding
-  values to the active controller interface.
+* Shape every axis before it reaches a driver: the tremor filter, the
+  precision modifier, the radial deadzone and response curve, the output
+  anti-deadzone, the extremity cap, and per-widget inversion all happen
+  here (:meth:`ControllerBridge.setStickInput`,
+  :meth:`ControllerBridge.setAxisInput`). QML sends raw geometry only.
 * Persist UI state (scale factor, debug borders, recent profiles, etc.) via
   :class:`ControllerConfig`.
 * Emit Qt signals (``profileChanged``, ``vjoyConnectionChanged`` ...) so QML
@@ -40,16 +43,30 @@ property ``controller``.
 """
 from __future__ import annotations
 
+import json
 import sys
 import time
-from typing import Optional
+from typing import Any, Dict, Optional, Tuple
 
 from PySide6.QtCore import QObject, Slot, Signal, Property, QTimer
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QGuiApplication, QMouseEvent, QWheelEvent
 from PySide6.QtGui import QCursor, QWindow
 
-from .config import ControllerConfig
+from .config import (
+    ControllerConfig,
+    DEFAULT_ANTI_DEADZONE_BUFFER,
+    DEFAULT_DEAD_ZONE_PCT,
+    DEFAULT_EXTREMITY_PCT_AXIS,
+    DEFAULT_EXTREMITY_PCT_STICK,
+    DEFAULT_PRECISION_GAIN,
+    DEFAULT_SENSITIVITY_PCT,
+    DEFAULT_TREMOR_FILTER,
+    XINPUT_LEFT_THUMB_DEADZONE,
+    XINPUT_RIGHT_THUMB_DEADZONE,
+    shape_magnitude,
+    shape_vector,
+)
 from .vjoy_interface import VJoyInterface
 from .qt_dialogs import AxisMappingQt, JoystickSettingsQt, ButtonSettingsQt, SliderSettingsQt, AxisSettingsQt
 
@@ -223,6 +240,14 @@ class ControllerBridge(QObject):
         self._buttons_version = 0
         # Axis smoothing state: per-axis current and target in [-1,1]
         self._axis_state: dict[str, dict[str, float]] = {}
+        # Per-widget shaping: the current profile's custom_layout widgets by
+        # id, the tremor filter's EMA state, the last raw input (so a modifier
+        # change can re-shape a held stick), and the held modifiers.
+        self._widget_shaping: Dict[str, Dict[str, Any]] = {}
+        self._ema: Dict[str, Tuple[float, float]] = {}
+        self._last_raw: Dict[str, Tuple[float, float]] = {}
+        self._modifiers: Dict[str, bool] = {}
+        self._reload_widget_shaping()
         # Timer to apply smoothing at vJoy update rate
         self._smooth_timer = QTimer(self)
         try:
@@ -518,12 +543,300 @@ class ControllerBridge(QObject):
         except Exception:
             return int(base)
 
-    # High-level control slots that apply curves and mapping, mirroring widget UI behavior
+    # ----- Stick and axis shaping -----
+    # Every axis value the QML sends is raw geometry. The bridge resolves the
+    # widget's settings, shapes the value, and forwards it to the driver.
+
+    def _reload_widget_shaping(self, widgets: Optional[list] = None) -> None:
+        """Rebuild the per-widget settings cache from the current profile.
+
+        Args:
+            widgets: The widget list to cache. When omitted it is read from
+                the current profile's ``custom_layout``.
+        """
+        try:
+            if widgets is None:
+                profile = self._config.get_current_profile_data() or {}
+                widgets = (profile.get("custom_layout") or {}).get("widgets", []) or []
+            cache: Dict[str, Dict[str, Any]] = {}
+            for w in widgets:
+                if isinstance(w, dict) and w.get("id"):
+                    cache[str(w["id"])] = w
+            self._widget_shaping = cache
+        except Exception:
+            self._widget_shaping = {}
+        self._ema.clear()
+        self._last_raw.clear()
+
+    def _default_anti_deadzone(self, axis: str) -> float:
+        """The output anti-deadzone a widget gets when it sets none.
+
+        The documented XInput stick deadzones when the output is ViGEm, zero
+        for vJoy (DirectInput games vary too much to guess) and for
+        trigger axes.
+        """
+        if not self._use_vigem:
+            return 0.0
+        a = str(axis or "").lower()
+        if a in ("x", "y"):
+            return XINPUT_LEFT_THUMB_DEADZONE
+        if a in ("rx", "ry"):
+            return XINPUT_RIGHT_THUMB_DEADZONE
+        return 0.0
+
+    def _widget_params(self, w: Dict[str, Any]) -> Dict[str, float]:
+        """Resolve a widget's shaping parameters, filling in the defaults."""
+        wtype = str(w.get("type", "joystick"))
+        mapping = w.get("mapping") or {}
+        if wtype == "joystick":
+            axis = str(mapping.get("axis_x") or "")
+            ext_default = DEFAULT_EXTREMITY_PCT_STICK
+        else:
+            axis = str(mapping.get("axis") or "")
+            ext_default = DEFAULT_EXTREMITY_PCT_AXIS
+        return {
+            "sensitivity": float(w.get("sensitivity", DEFAULT_SENSITIVITY_PCT)),
+            "dead_zone": float(w.get("dead_zone", DEFAULT_DEAD_ZONE_PCT)),
+            "extremity_dead_zone": float(w.get("extremity_dead_zone", ext_default)),
+            "anti_deadzone": float(w.get("anti_deadzone", self._default_anti_deadzone(axis))),
+            "anti_deadzone_buffer": float(w.get("anti_deadzone_buffer", DEFAULT_ANTI_DEADZONE_BUFFER)),
+        }
+
+    @staticmethod
+    def _params_from_json(params_json: str) -> Dict[str, float]:
+        """Shaping parameters from the config dialog's unsaved slider values."""
+        raw = json.loads(params_json) if params_json else {}
+        out: Dict[str, float] = {}
+        for key, default in (("sensitivity", DEFAULT_SENSITIVITY_PCT),
+                             ("dead_zone", DEFAULT_DEAD_ZONE_PCT),
+                             ("extremity_dead_zone", DEFAULT_EXTREMITY_PCT_STICK),
+                             ("anti_deadzone", 0.0),
+                             ("anti_deadzone_buffer", DEFAULT_ANTI_DEADZONE_BUFFER)):
+            try:
+                out[key] = float(raw.get(key, default))
+            except (TypeError, ValueError):
+                out[key] = float(default)
+        return out
+
+    def _filter_tremor(self, key: str, tremor_filter: float, nx: float, ny: float) -> Tuple[float, float]:
+        """Apply the per-widget EMA tremor filter to a raw input vector.
+
+        An input of exactly (0, 0) is a release: the filter state is dropped
+        and the output snaps to centre, so a heavily filtered stick can never
+        be left holding a residual deflection after the pointer lets go.
+        """
+        if nx == 0.0 and ny == 0.0:
+            self._ema.pop(key, None)
+            return 0.0, 0.0
+        tf = max(0.0, min(10.0, float(tremor_filter)))
+        if tf <= 0.0:
+            self._ema.pop(key, None)
+            return nx, ny
+        alpha = 1.0 - (tf / 10.0) * 0.9   # 1.0 = no smoothing, 0.1 = heavy
+        sx, sy = self._ema.get(key, (0.0, 0.0))
+        fx = sx + (nx - sx) * alpha
+        fy = sy + (ny - sy) * alpha
+        self._ema[key] = (fx, fy)
+        return fx, fy
+
+    def _precision_gain(self, w: Dict[str, Any]) -> float:
+        """Gain to apply right now: the widget's precision gain while the modifier is held."""
+        if not self._modifiers.get("precision"):
+            return 1.0
+        try:
+            return max(0.0, min(1.0, float(w.get("precision_gain", DEFAULT_PRECISION_GAIN))))
+        except (TypeError, ValueError):
+            return DEFAULT_PRECISION_GAIN
+
+    def _dispatch_stick(self, w: Dict[str, Any], ox: float, oy: float) -> None:
+        """Send a shaped stick vector to the axes a joystick widget maps."""
+        if not self._is_controller_connected():
+            return
+        mapping = w.get("mapping") or {}
+        ax = str(mapping.get("axis_x") or "none").lower()
+        ay = str(mapping.get("axis_y") or "none").lower()
+        if self._use_vigem and self._vigem:
+            if (ax, ay) == ("x", "y"):
+                self._vigem.set_left_stick(ox, oy)
+                return
+            if (ax, ay) == ("rx", "ry"):
+                self._vigem.set_right_stick(ox, oy)
+                return
+            if ax != "none":
+                self._vigem.update_axis(ax, ox)
+            if ay != "none":
+                self._vigem.update_axis(ay, oy)
+        else:
+            if ax != "none":
+                self._set_axis_target(ax, ox)
+            if ay != "none":
+                self._set_axis_target(ay, oy)
+
+    def _drive_stick(self, widget_id: str, w: Dict[str, Any], nx: float, ny: float) -> Tuple[float, float]:
+        """Shape a raw stick vector for a widget and send it to the driver.
+
+        Returns the shaped vector in the widget's screen orientation (before
+        the y-axis flip and inversion), which is what the UI displays.
+        """
+        fx, fy = self._filter_tremor(widget_id, float(w.get("tremor_filter", DEFAULT_TREMOR_FILTER)), nx, ny)
+        ox, oy = shape_vector(fx, fy, gain=self._precision_gain(w), **self._widget_params(w))
+        # ny is screen-down positive; controller Y is up positive, so flip,
+        # then apply the widget's own inversion on top.
+        out_x = -ox if w.get("invert_x") else ox
+        out_y = oy if w.get("invert_y") else -oy
+        self._dispatch_stick(w, out_x, out_y)
+        return ox, oy
+
+    @Slot(str, float, float)
+    def setStickInput(self, widget_id: str, nx: float, ny: float) -> None:  # noqa: N802
+        """Raw deflection from a custom-layout joystick widget.
+
+        Args:
+            widget_id: The widget's profile id; selects its settings and mapping.
+            nx: Normalised deflection, right positive, before any shaping.
+            ny: Normalised deflection, screen-down positive, before any shaping.
+                (0, 0) is a release and always centres the output.
+        """
+        try:
+            w = self._widget_shaping.get(str(widget_id))
+            if w is None:
+                return
+            raw = (float(nx), float(ny))
+            if raw == (0.0, 0.0):
+                self._last_raw.pop(str(widget_id), None)
+            else:
+                self._last_raw[str(widget_id)] = raw
+            self._drive_stick(str(widget_id), w, raw[0], raw[1])
+        except Exception:
+            pass
+
+    @Slot(str, float)
+    def setAxisInput(self, widget_id: str, value: float) -> None:  # noqa: N802
+        """Raw value from a custom-layout slider or wheel widget.
+
+        A slider that holds or returns to zero is a unipolar control, so
+        ``value`` is 0 to 1 and is shaped from its bottom end: triggers (z
+        and rz under ViGEm) take the shaped value directly, any other axis
+        gets it spread over the full range. A centre-sprung slider and a
+        wheel are bipolar, so ``value`` is -1 to 1 and is shaped around the
+        centre.
+        """
+        try:
+            w = self._widget_shaping.get(str(widget_id))
+            if w is None:
+                return
+            mapping = w.get("mapping") or {}
+            axis = str(mapping.get("axis") or "none").lower()
+            if axis == "none":
+                return
+            params = self._widget_params(w)
+            gain = self._precision_gain(w) if w.get("type") == "wheel" else 1.0
+            unipolar = w.get("type") == "slider" and str(w.get("snap_mode", "none")) != "center"
+            v = float(value)
+            if unipolar:
+                fv, _ = self._filter_tremor(str(widget_id), float(w.get("tremor_filter", DEFAULT_TREMOR_FILTER)), v, 0.0)
+                m = shape_magnitude(max(0.0, min(1.0, fv)), gain=gain, **params)
+                if not self._is_controller_connected():
+                    return
+                if self._use_vigem and self._vigem and axis in ("z", "rz"):
+                    if axis == "z":
+                        self._vigem.set_left_trigger(m)
+                    else:
+                        self._vigem.set_right_trigger(m)
+                    return
+                out = m * 2.0 - 1.0
+            else:
+                fv, _ = self._filter_tremor(str(widget_id), float(w.get("tremor_filter", DEFAULT_TREMOR_FILTER)), v, 0.0)
+                m = shape_magnitude(abs(fv), gain=gain, **params)
+                out = m if fv >= 0 else -m
+            iface = self._get_active_interface()
+            if iface:
+                iface.update_axis(axis, out)
+        except Exception:
+            pass
+
+    @Slot(str, bool)
+    def setModifier(self, name: str, active: bool) -> None:  # noqa: N802
+        """Hold or release a modifier such as ``"precision"``.
+
+        A held stick is re-shaped immediately so the change is felt without
+        waiting for the next pointer event.
+        """
+        try:
+            key = str(name).lower()
+            active = bool(active)
+            if self._modifiers.get(key, False) == active:
+                return
+            self._modifiers[key] = active
+            for widget_id, (nx, ny) in list(self._last_raw.items()):
+                w = self._widget_shaping.get(widget_id)
+                if w is not None:
+                    self._drive_stick(widget_id, w, nx, ny)
+        except Exception:
+            pass
+
+    @Slot(str, result=bool)
+    def isModifierActive(self, name: str) -> bool:  # noqa: N802
+        """Whether a modifier is currently held or latched."""
+        return bool(self._modifiers.get(str(name).lower(), False))
+
+    @Slot(str, result=float)
+    def defaultAntiDeadzone(self, axis: str) -> float:  # noqa: N802
+        """The anti-deadzone default for an axis under the current output mode."""
+        return float(self._default_anti_deadzone(axis))
+
+    @Slot(str, result="QVariantList")
+    def shapeCurve(self, params_json: str) -> list:  # noqa: N802
+        """Output magnitudes for inputs 0.00 to 1.00 in steps of 0.01.
+
+        The config dialog's curve preview draws these so the preview and the
+        runtime share one formula.
+
+        Args:
+            params_json: JSON object with any of ``sensitivity``,
+                ``dead_zone``, ``extremity_dead_zone`` (percent),
+                ``anti_deadzone``, ``anti_deadzone_buffer`` (fractions).
+        """
+        try:
+            params = self._params_from_json(params_json)
+            return [float(shape_magnitude(i / 100.0, **params)) for i in range(101)]
+        except Exception:
+            return [i / 100.0 for i in range(101)]
+
+    @Slot(str, float, float, str, bool, result="QVariantList")
+    def previewStick(self, widget_id: str, nx: float, ny: float, params_json: str, drive: bool) -> list:  # noqa: N802
+        """Shape a test vector with unsaved dialog settings, optionally driving the output.
+
+        Lets the user calibrate the anti-deadzone against a running game: the
+        dialog's test pad sends its deflection here, shows the numbers that
+        come back, and, when ``drive`` is set, the shaped vector also goes to
+        the widget's mapped axes. No tremor filter or modifier is applied.
+
+        Returns:
+            ``[out_x, out_y, magnitude]`` in the widget's screen orientation.
+        """
+        try:
+            params = self._params_from_json(params_json)
+            ox, oy = shape_vector(float(nx), float(ny), **params)
+            if drive:
+                w = self._widget_shaping.get(str(widget_id))
+                if w is not None:
+                    out_x = -ox if w.get("invert_x") else ox
+                    out_y = oy if w.get("invert_y") else -oy
+                    self._dispatch_stick(w, out_x, out_y)
+            return [float(ox), float(oy), float((ox * ox + oy * oy) ** 0.5)]
+        except Exception:
+            return [0.0, 0.0, 0.0]
+
+    # Legacy layouts (adaptive, xbox, flight_sim): sticks without per-widget
+    # settings, shaped with the profile's global joystick_settings.
     @Slot(float, float)
     def setLeftStick(self, x: float, y: float) -> None:  # noqa: N802
         try:
-            px = self._config.apply_sensitivity_curve(float(x), 'left', 'x')
-            py = self._config.apply_sensitivity_curve(float(y), 'left', 'y')
+            gain = 1.0
+            if self._modifiers.get("precision"):
+                gain = float(self._config.get("joystick_settings.precision_gain", DEFAULT_PRECISION_GAIN))
+            px, py = self._config.shape_stick(float(x), float(y), 'left', self.getOutputMode(), gain)
             if self._is_controller_connected():
                 # For ViGEm, use direct stick control
                 if self._use_vigem and self._vigem:
@@ -541,8 +854,10 @@ class ControllerBridge(QObject):
     @Slot(float, float)
     def setRightStick(self, x: float, y: float) -> None:  # noqa: N802
         try:
-            px = self._config.apply_sensitivity_curve(float(x), 'right', 'x')
-            py = self._config.apply_sensitivity_curve(float(y), 'right', 'y')
+            gain = 1.0
+            if self._modifiers.get("precision"):
+                gain = float(self._config.get("joystick_settings.precision_gain", DEFAULT_PRECISION_GAIN))
+            px, py = self._config.shape_stick(float(x), float(y), 'right', self.getOutputMode(), gain)
             if self._is_controller_connected():
                 # For ViGEm, use direct stick control
                 if self._use_vigem and self._vigem:
@@ -956,6 +1271,7 @@ class ControllerBridge(QObject):
         """Switch to a different profile."""
         success = self._config.switch_profile(profile_id)
         if success:
+            self._reload_widget_shaping()
             self.profileChanged.emit(profile_id)
             self.layoutTypeChanged.emit(self._config.get_layout_type())
             self._buttons_version += 1
@@ -1007,6 +1323,7 @@ class ControllerBridge(QObject):
         success = self._config.reset_profile(profile_id)
         if success and profile_id == self._config.get_current_profile():
             # Refresh UI if we reset the current profile
+            self._reload_widget_shaping()
             self._buttons_version += 1
             self.buttonsVersionChanged.emit(self._buttons_version)
         return success
@@ -1085,9 +1402,9 @@ class ControllerBridge(QObject):
     def saveCustomLayout(self, widgets_json: str, grid_snap: int, show_grid: bool) -> None:  # noqa: N802
         """Save custom layout widgets from QML (silent — no profileSaved signal)."""
         try:
-            import json
             widgets = json.loads(widgets_json)
             self._config.save_custom_layout(widgets, int(grid_snap), bool(show_grid))
+            self._reload_widget_shaping(widgets)
         except Exception as e:
             print(f"Error saving custom layout: {e}")
 
@@ -1095,9 +1412,9 @@ class ControllerBridge(QObject):
     def saveCustomLayoutAs(self, name: str, widgets_json: str, grid_snap: int, show_grid: bool) -> None:  # noqa: N802
         """Save custom layout as a new profile with a custom name."""
         try:
-            import json
             import copy
             widgets = json.loads(widgets_json)
+            self._reload_widget_shaping(widgets)
             # Duplicate current profile with new name
             profile_data = copy.deepcopy(self._config.get_current_profile_data() or {})
             profile_id = name.lower().replace(" ", "_").replace("-", "_")
