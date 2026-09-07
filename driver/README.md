@@ -52,7 +52,8 @@ at least 1.5 s instead of 0.75 s, and the client pauses isolation while the
 secure desktop has the input (lock screen, UAC) and resumes after. v4 is
 built and installed and validated the same evening (17/17, 15/15 with the new desktop-pause check, 8/8, then the same three under Driver Verifier with no bugcheck). Details in the plan doc, section 5 items 7 and 11.
 Not attestation-signed, not validated against an anti-cheat game, not in any
-release. Do not ship it yet.
+release. Do not ship it yet. The route to a signed build, and what it does and
+does not buy, is in [SIGNING.md](SIGNING.md).
 
 ## Layout
 
@@ -64,6 +65,7 @@ release. Do not ship it yet.
 | `nimbus_moufilter/nimbus_moufilter.inx` | INF template (service + file only; the class filter entry is added by `install-dev.ps1`). |
 | `nimbus_moufilter/nimbus_moufilter.vcxproj` | KMDF driver project, `WindowsKernelModeDriver10.0` toolset. |
 | `build.ps1` | Build and collect outputs into `out/`. |
+| `package.ps1` | Build the CAB for Partner Center attestation signing, and verify the package that comes back. See [SIGNING.md](SIGNING.md). |
 | `enable-testsigning.ps1` | Install the test cert and turn on test signing (elevated, one reboot). |
 | `install-dev.ps1` / `uninstall-dev.ps1` | Register/unregister the class filter for development (elevated). `install-dev.ps1` also updates a loaded build: it detaches the filter, replaces the file, and re-attaches. |
 | `pnp-common.ps1` | Shared by the two scripts above: `Restart-Mice`, which restarts every mouse with `pnputil /restart-device` so the filter attaches or detaches without a reboot. |
@@ -81,6 +83,21 @@ driver\build.ps1              # Release x64 -> driver\out\
 `build.ps1` passes the kit root explicitly and uses the 64-bit MSBuild, because
 the 64-bit `KitsRoot10` registry value can point at the wrong folder and the
 32-bit MSBuild cannot load `InfVerif`. See the plan doc, section 6.
+
+## Release signing
+
+The dev build is test-signed and loads only with `testsigning` on, which is
+exactly the state anti-cheat refuses to start in. A build users can load needs a
+Microsoft signature through Partner Center attestation signing:
+
+```powershell
+driver\package.ps1 -SkipSign -DriverVersion 1.0.0.4    # dry run, no token needed
+driver\package.ps1 -DriverVersion 1.0.0.4 -Thumbprint <EV cert thumbprint>
+```
+
+Registration prerequisites, the submission rules, how to verify the package that
+comes back, and where attestation signing stands after the April 2026 driver
+policy are all in [SIGNING.md](SIGNING.md). None of it has been done yet.
 
 ## Install for development (elevated, at the machine)
 
