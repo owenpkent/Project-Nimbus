@@ -34,14 +34,15 @@ $redist = Join-Path $PSScriptRoot 'redist'
 # BrunnerInnovation 2.2.2.0 build is reported failing the same way. The 2.1.9.1
 # build's vJoy.sys and catalog are signed by the Microsoft Windows Hardware
 # Compatibility Publisher (attestation), so it is also on the right side of the
-# April 2026 driver policy. Bumping either item means a new hash here and a new
-# version in installer.nsi.
+# April 2026 driver policy. Bumping either item means a new hash and
+# thumbprint here and a new version in installer.nsi.
 $items = @(
     @{
         Name      = 'vJoySetup-2.1.9.1.exe'
         Url       = 'https://github.com/jshafer817/vJoy/releases/download/v2.1.9.1/vJoySetup.exe'
         Sha256    = 'F103CED4E7FF7CCB49C8415A542C56768ED4DA4FEA252B8F4FFDAC343074654A'
         Signer    = 'On-site Dental Systems'
+        Thumbprint = '6B05E5CC0DB88A0D8962482ECB9CD959E1B05790'   # CN=On-site Dental Systems (Justin Shafer)
         Purpose   = 'vJoy 2.1.9.1, jshafer817 build, Microsoft-attestation-signed driver (Inno Setup, /VERYSILENT /SUPPRESSMSGBOXES /NORESTART)'
     },
     @{
@@ -49,6 +50,7 @@ $items = @(
         Url       = 'https://github.com/nefarius/ViGEmBus/releases/download/v1.22.0/ViGEmBus_1.22.0_x64_x86_arm64.exe'
         Sha256    = '89220A7865076B342892F98865F3499FB7C4CFD673159E89D352C360FD014C6A'
         Signer    = 'Nefarius Software Solutions'
+        Thumbprint = '1F431092EC96A80B41AB5317F53AC02EA6F9B89B'   # CN=Nefarius Software Solutions e.U.
         Purpose   = 'ViGEmBus 1.22.0 (Advanced Installer bootstrapper, silent flags /exenoui /qn /norestart)'
     }
 )
@@ -65,6 +67,15 @@ function Test-Redist($Item, $Path) {
         Write-Warning "$($Item.Name): Authenticode status is $($sig.Status)"
         return $false
     }
+    # The SHA-256 pin above is the real gate; these two are defence in depth for
+    # the day someone bumps a version and has to re-pin. Thumbprint is exact.
+    # The subject check is a substring match on the whole DN, so it would also
+    # accept an unrelated certificate whose DN happens to contain the name:
+    # keep it as a readable second opinion, not as the thing being trusted.
+    if ($sig.SignerCertificate.Thumbprint -ne $Item.Thumbprint) {
+        Write-Warning "$($Item.Name): signer thumbprint is $($sig.SignerCertificate.Thumbprint), expected $($Item.Thumbprint)"
+        return $false
+    }
     if ($sig.SignerCertificate.Subject -notlike "*$($Item.Signer)*") {
         Write-Warning "$($Item.Name): signed by '$($sig.SignerCertificate.Subject)', expected $($Item.Signer)"
         return $false
@@ -73,7 +84,9 @@ function Test-Redist($Item, $Path) {
 }
 
 New-Item -ItemType Directory -Force $redist | Out-Null
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+# Add TLS 1.2 rather than assigning it, so a host that already negotiates 1.3
+# keeps it. Older PowerShell defaults to SSL3/TLS1.0 and needs this.
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 foreach ($item in $items) {
     $path = Join-Path $redist $item.Name
