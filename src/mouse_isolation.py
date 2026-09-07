@@ -43,7 +43,7 @@ import select
 import sys
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from .uinput_interface import (
     _ioc, _IOC_READ, _IOC_WRITE, _INPUT_EVENT, _UINPUT_SETUP,
@@ -178,6 +178,18 @@ class MouseIsolation:
         on_wheel: ``(horizontal, vertical)`` wheel notches.
         on_stopped: ``(reason)`` when the grab ends for any reason.
         hotkey: Release on ``Ctrl+Alt+F12`` when True.
+        cursor_relay: Accepted for signature parity with the Windows class in
+            ``src/mouse_isolation_win.py``, and ignored here. On Windows the
+            kernel filter can hand motion straight to the real cursor with
+            ``SetCursorPos``, so the caller can ask for that instead of a
+            software cursor. X11 and Wayland have no equivalent that a grabbed
+            client can use without the compositor seeing it, so Linux always
+            uses the bridge's software cursor. It is a parameter rather than
+            an error because ``src/bridge.py`` is shared: it passes its relay
+            policy unconditionally, and the two classes have to accept the
+            same call (see ``docs/vision/WINDOWS_MOUSE_FILTER_PLAN.md``
+            section 2.2), the same way ``start(nodes=...)`` is accepted and
+            ignored on Windows.
     """
 
     def __init__(
@@ -187,12 +199,18 @@ class MouseIsolation:
         on_wheel: Optional[Callable[[int, int], None]] = None,
         on_stopped: Optional[Callable[[str], None]] = None,
         hotkey: bool = True,
+        cursor_relay: Union[bool, Callable[[int, int], bool]] = False,
     ) -> None:
         self._on_motion = on_motion
         self._on_button = on_button
         self._on_wheel = on_wheel
         self._on_stopped = on_stopped
         self._hotkey = hotkey
+        #: Always False on Linux; see the constructor docstring.
+        self._relay = False
+        if cursor_relay:
+            print("[mouse_isolation] cursor_relay is not available on Linux; "
+                  "using the software cursor")
         self._lock = threading.Lock()
         self._active = False
         self._thread: Optional[threading.Thread] = None
