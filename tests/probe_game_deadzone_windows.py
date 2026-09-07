@@ -25,12 +25,17 @@ nimbus
     anti-deadzone floor clears the game's threshold. Run this in a separate
     invocation so the sweep's pad is gone and Nimbus's pad is player one.
 
-The game must already be in a map with its view following the right stick.
+The game must be in a map with its view following the right stick, and the
+pad must exist before the game starts (Source decides at launch whether an
+XInput controller is present; one plugged in later is never read). So start
+the probe with ``--wait-for-window``, then launch the game:
 
-Run (from the repo root, venv with PySide6 and vgamepad)::
+    venv\\Scripts\\python tests\\probe_game_deadzone_windows.py --title "Left 4 Dead 2" --wait-for-window 300 --warmup 75
+    "C:\\Program Files (x86)\\Steam\\steam.exe" -applaunch 550 -novid -windowed -noborder -w 1280 -h 720 +map c1m2_streets +exec 360controller
 
-    venv\\Scripts\\python tests\\probe_game_deadzone_windows.py --title "Left 4 Dead 2"
-    venv\\Scripts\\python tests\\probe_game_deadzone_windows.py --title "Left 4 Dead 2" --mode nimbus
+and the same with ``--mode nimbus`` (quit the game in between so the sweep's
+pad is gone and Nimbus's pad is player one). Without the flags the probe
+expects the game to be running already.
 """
 from __future__ import annotations
 
@@ -104,9 +109,10 @@ def on_qt(fn: Callable[[], Any], timeout: float = 10.0) -> Any:
 class Scene:
     """The game window: capture, differencing, foreground, and the result rows."""
 
-    def __init__(self, args: argparse.Namespace, capture: Callable[[Callable[[], Any]], Any]) -> None:
+    def __init__(self, args: argparse.Namespace, capture: Callable[[Callable[[], Any]], Any],
+                 hwnd: Optional[int] = None) -> None:
         self.args = args
-        self.hwnd = find_window(args.title)
+        self.hwnd = hwnd or find_window(args.title)
         if not self.hwnd:
             raise SystemExit(f"no visible window with '{args.title}' in its title")
         self.x, self.y, self.w, self.h = client_rect_on_screen(self.hwnd)
@@ -162,16 +168,44 @@ class Scene:
         print(f"wrote {out}")
 
 
+def wait_for_game(args: argparse.Namespace) -> Optional[int]:
+    """Find the game window, waiting up to ``--wait-for-window`` seconds for it
+    to appear and then ``--warmup`` seconds for the map to load.
+
+    The pad (or Nimbus) must exist before the game starts: Source decides at
+    start-up whether an XInput controller is present, and a pad created after
+    launch is never read (measured on Left 4 Dead 2 on 2026-09-06: the mouse
+    moved the camera, the pad did not, and the HUD showed the generic JOY3
+    glyph). So start the probe first, then launch the game.
+    """
+    t0 = time.time()
+    hwnd = find_window(args.title)
+    while not hwnd and time.time() - t0 < args.wait_for_window:
+        time.sleep(2.0)
+        hwnd = find_window(args.title)
+    if not hwnd:
+        return None
+    if args.warmup > 0:
+        print(f"game window found after {time.time() - t0:.0f}s; waiting {args.warmup:.0f}s for the map", flush=True)
+        time.sleep(args.warmup)
+    return hwnd
+
+
 # ---- sweep mode ------------------------------------------------------------------
 def run_sweep(args: argparse.Namespace) -> int:
     app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841  (grab needs a GUI app)
-    scene = Scene(args, lambda fn: fn())
     magnitudes = [float(m) for m in args.magnitudes.split(",") if m.strip()]
-    pad = Pad()
+    pad = Pad()   # before the game starts; see wait_for_game
     if not pad.pad:
         print("vgamepad unavailable; nothing to sweep")
         return 2
-    time.sleep(1.5)  # let the game notice the pad
+    hwnd = wait_for_game(args)
+    if not hwnd:
+        pad.close()
+        print(f"no visible window with '{args.title}' in its title")
+        return 2
+    scene = Scene(args, lambda fn: fn(), hwnd)
+    time.sleep(1.5)
     try:
         scene.noise = scene.measure("idle", lambda: None, lambda: None, args.hold)
         hi, _lo = scene.thresholds()
@@ -216,6 +250,7 @@ def run_nimbus(args: argparse.Namespace) -> int:
     from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtGui import QMouseEvent
     from PySide6.QtQml import QQmlApplicationEngine
+    from PySide6.QtQuick import QQuickWindow  # noqa: F401  (without it the root object wraps as a bare QWindow)
     from src.bridge import ControllerBridge
     from src.cloud_client import CloudClient
     from src.config import ControllerConfig
@@ -229,7 +264,7 @@ def run_nimbus(args: argparse.Namespace) -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Nimbus Adaptive Controller")
     _QT = _QtCall()
-    scene = Scene(args, lambda fn: on_qt(fn))
+    scene_box: Dict[str, Scene] = {}
     config = ControllerConfig()
     bridge = ControllerBridge(config)
     telemetry = TelemetryClient(config)
@@ -279,9 +314,22 @@ def run_nimbus(args: argparse.Namespace) -> int:
             if bridge._window is None:
                 print("the QML window never registered with the bridge")
                 return
-            # Beside the game, never over its client area (that would freeze the capture)
+            # Nimbus's pad exists now; the game may start (see wait_for_game)
+            hwnd = wait_for_game(args)
+            if not hwnd:
+                print(f"no visible window with '{args.title}' in its title")
+                return
+            scene = scene_box["s"] = Scene(args, lambda fn: on_qt(fn), hwnd)
+            # Beside the game, never over its client area (that would freeze the
+            # capture). If there is no room to the right, move the game to the
+            # top-left of the screen first.
             screen_w = user32.GetSystemMetrics(0)
-            nx = scene.x + scene.w + 10 if scene.x + scene.w + 10 + 900 < screen_w else 10
+            if scene.x + scene.w + 10 + 1024 > screen_w:
+                user32.SetWindowPos(scene.hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0004)   # SWP_NOSIZE | SWP_NOZORDER
+                time.sleep(0.5)
+                scene.x, scene.y, scene.w, scene.h = client_rect_on_screen(scene.hwnd)
+                print(f"moved the game to ({scene.x},{scene.y})", flush=True)
+            nx = scene.x + scene.w + 10
             on_qt(lambda: (bridge._window.setPosition(nx, max(0, scene.y)), bridge._window.raise_()))
             time.sleep(1.0)
             widget = on_qt(aim_widget)
@@ -336,7 +384,8 @@ def run_nimbus(args: argparse.Namespace) -> int:
                     on_qt(lambda: bridge._vigem._reset_axes())
             except Exception:
                 pass
-            bring_to_front(scene.hwnd)
+            if "s" in scene_box:
+                bring_to_front(scene_box["s"].hwnd)
             on_qt(app.quit)
 
     QTimer.singleShot(1500, lambda: threading.Thread(target=scenario, daemon=True, name="ProbeScenario").start())
@@ -361,6 +410,9 @@ def main() -> int:
     ap.add_argument("--hold", type=float, default=0.8, help="seconds to hold each stimulus")
     ap.add_argument("--settle", type=float, default=0.5, help="seconds to wait around each capture")
     ap.add_argument("--nudge", type=float, default=1.0, help="nimbus mode: pixels of drag for the floor check")
+    ap.add_argument("--wait-for-window", type=float, default=0.0,
+                    help="seconds to wait for the game window to appear (start the probe, then launch the game)")
+    ap.add_argument("--warmup", type=float, default=0.0, help="seconds to wait after the window appears, for the map")
     ap.add_argument("--skip-top", type=int, default=0)
     ap.add_argument("--frames", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "probe_frames"))
     args = ap.parse_args()
