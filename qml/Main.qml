@@ -108,6 +108,27 @@ ApplicationWindow {
         function onOutputModeChanged(mode) {
             root.outputMode = mode
         }
+        function onNoUpdateAvailable() {
+            saveNotification.show("Nimbus is up to date")
+        }
+        function onCheckFailed(message) {
+            saveNotification.show("Update check failed")
+        }
+        function onSyncCompleted(success) {
+            saveNotification.show(success ? "Profiles synchronized" : "Profile sync failed")
+        }
+    }
+
+    Comp.AccountDialog {
+        id: accountDialog
+        objectName: "accountDialog"
+    }
+    Comp.SettingsPrivacyDialog {
+        id: privacyDialog
+        objectName: "privacyDialog"
+    }
+    header: Comp.UpdateNotification {
+        objectName: "updateNotification"
     }
     
     // Simple notification popup
@@ -512,8 +533,8 @@ ApplicationWindow {
                     fileMenu.close()
                     Qt.callLater(function() {
                         if (controller) {
-                            controller.resetProfile(root.currentProfile)
-                            saveNotification.show("Profile reset to defaults")
+                            var success = controller.resetProfile(root.currentProfile)
+                            saveNotification.show(success ? "Profile reset to defaults" : "Failed to reset profile")
                         }
                     })
                 }
@@ -568,6 +589,23 @@ ApplicationWindow {
         Menu {
             id: settingsMenu
             title: qsTr("Settings")
+            MenuItem {
+                objectName: "accountMenuItem"
+                text: qsTr("Account...")
+                onTriggered: {
+                    settingsMenu.close()
+                    Qt.callLater(function() { accountDialog.open() })
+                }
+            }
+            MenuItem {
+                objectName: "privacyMenuItem"
+                text: qsTr("Privacy...")
+                onTriggered: {
+                    settingsMenu.close()
+                    Qt.callLater(function() { privacyDialog.open() })
+                }
+            }
+            MenuSeparator {}
             
             Menu {
                 id: outputDeviceMenu
@@ -664,6 +702,15 @@ ApplicationWindow {
         Menu {
             id: helpMenu
             title: qsTr("Help")
+            MenuItem {
+                objectName: "checkUpdatesMenuItem"
+                text: qsTr("Check for Updates")
+                onTriggered: {
+                    helpMenu.close()
+                    Qt.callLater(function() { if (controller) controller.checkForUpdates() })
+                }
+            }
+            MenuSeparator {}
             MenuItem {
                 text: qsTr("Getting Started...")
                 onTriggered: {

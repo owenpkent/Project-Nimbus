@@ -1,5 +1,14 @@
 # Project Nimbus Architecture
 
+## Current Ownership Boundaries
+
+The application now composes `ApplicationServices`, `ControllerOutput`, and
+`ProfileRepository` behind the existing `ControllerBridge`. See
+[Application Ownership Restructuring](APPLICATION_OWNERSHIP.md) for the current
+responsibilities, compatibility constraints, test commands, and deferred work.
+QML service commands and properties go through `controller`; cloud, telemetry,
+and updater implementations are no longer separate production context objects.
+
 ## High-Level Overview
 
 Project Nimbus is a Python-based modular virtual controller that converts mouse/GUI input into joystick commands via **vJoy** (DirectInput) or **ViGEm** (Xbox 360 XInput emulation). The UI is implemented with **Qt Quick (PySide6 + QML)**, backed by a Python core that manages configuration, sensitivity curves, profiles, and controller I/O.

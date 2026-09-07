@@ -6,10 +6,10 @@ Handles sensitivity curves, dead zones, and other controller parameters.
 import json
 import math
 import os
-import shutil
 import sys
 from pathlib import Path
 from typing import Dict, Any, Tuple, List, Optional
+from .profile_repository import ProfileRepository
 
 # App name for user data directory
 APP_NAME = "ProjectNimbus"
@@ -180,6 +180,7 @@ class ControllerConfig:
         self._bundled_profiles_dir = self._get_bundled_profiles_dir()
         self._user_data_dir = self._get_user_data_dir()
         self._user_profiles_dir = self._user_data_dir / "profiles"
+        self.profiles = ProfileRepository(self._user_profiles_dir, self._bundled_profiles_dir)
         
         # Ensure user profiles directory exists and has default profiles
         self._ensure_user_profiles()
@@ -246,25 +247,7 @@ class ControllerConfig:
         Copies bundled profiles to user directory if they don't exist.
         Also removes deprecated bundled profiles that are no longer shipped.
         """
-        # Create user profiles directory
-        self._user_profiles_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Remove deprecated bundled profiles that are no longer shipped
-        for old_id in self._DEPRECATED_BUNDLED_PROFILES:
-            old_path = self._user_profiles_dir / f"{old_id}.json"
-            if old_path.exists():
-                try:
-                    old_path.unlink()
-                    print(f"Removed deprecated profile: {old_id}")
-                except OSError:
-                    pass
-        
-        # Copy bundled profiles if they don't exist in user directory
-        if self._bundled_profiles_dir.exists():
-            for profile_file in self._bundled_profiles_dir.glob("*.json"):
-                user_profile_path = self._user_profiles_dir / profile_file.name
-                if not user_profile_path.exists():
-                    shutil.copy2(profile_file, user_profile_path)
+        self.profiles.ensure_defaults(self._DEPRECATED_BUNDLED_PROFILES)
     
     def _load_default_config(self) -> Dict[str, Any]:
         """
@@ -625,30 +608,7 @@ class ControllerConfig:
         Returns:
             List of dicts with 'id', 'name', 'description', 'layout_type', 'is_builtin' keys
         """
-        profiles = []
-        if not self._user_profiles_dir.exists():
-            return profiles
-        
-        # Get list of built-in profile IDs
-        builtin_ids = set()
-        if self._bundled_profiles_dir.exists():
-            builtin_ids = {f.stem for f in self._bundled_profiles_dir.glob("*.json")}
-        
-        for profile_file in self._user_profiles_dir.glob("*.json"):
-            try:
-                with open(profile_file, 'r') as f:
-                    data = json.load(f)
-                    profiles.append({
-                        "id": profile_file.stem,
-                        "name": data.get("name", profile_file.stem),
-                        "description": data.get("description", ""),
-                        "layout_type": data.get("layout_type", "flight_sim"),
-                        "is_builtin": profile_file.stem in builtin_ids
-                    })
-            except (json.JSONDecodeError, IOError):
-                continue
-        
-        return profiles
+        return self.profiles.list_profiles()
 
     def get_current_profile(self) -> str:
         """Get the current profile ID."""
@@ -668,15 +628,7 @@ class ControllerConfig:
         Returns:
             Profile data dict or None if not found
         """
-        profile_path = self._user_profiles_dir / f"{profile_id}.json"
-        if not profile_path.exists():
-            return None
-        
-        try:
-            with open(profile_path, 'r') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            return None
+        return self.profiles.load(profile_id)
 
     def switch_profile(self, profile_id: str) -> bool:
         """
@@ -768,7 +720,6 @@ class ControllerConfig:
             True if save was successful, False otherwise
         """
         profile_id = self.get_current_profile()
-        profile_path = self._user_profiles_dir / f"{profile_id}.json"
         
         # Load existing profile data to preserve structure
         profile_data = self.load_profile(profile_id)
@@ -802,13 +753,7 @@ class ControllerConfig:
                 if value is not None:
                     profile_data["axis_mapping"][axis_key] = value
         
-        # Save to file
-        try:
-            with open(profile_path, 'w') as f:
-                json.dump(profile_data, f, indent=4)
-            return True
-        except IOError:
-            return False
+        return self.profiles.save(profile_id, profile_data)
 
     def save_custom_layout(self, widgets: list, grid_snap: int = 10, show_grid: bool = True) -> bool:
         """
@@ -823,7 +768,6 @@ class ControllerConfig:
             True if save was successful, False otherwise
         """
         profile_id = self.get_current_profile()
-        profile_path = self._user_profiles_dir / f"{profile_id}.json"
         
         profile_data = self.load_profile(profile_id)
         if profile_data is None:
@@ -837,12 +781,7 @@ class ControllerConfig:
         profile_data["custom_layout"]["grid_snap"] = grid_snap
         profile_data["custom_layout"]["show_grid"] = show_grid
         
-        try:
-            with open(profile_path, 'w') as f:
-                json.dump(profile_data, f, indent=4)
-            return True
-        except IOError:
-            return False
+        return self.profiles.save(profile_id, profile_data)
 
     def save_profile_as(self, profile_id: str, profile_data: dict) -> bool:
         """
@@ -855,13 +794,7 @@ class ControllerConfig:
         Returns:
             True if save was successful, False otherwise
         """
-        profile_path = self._user_profiles_dir / f"{profile_id}.json"
-        try:
-            with open(profile_path, 'w') as f:
-                json.dump(profile_data, f, indent=4)
-            return True
-        except IOError:
-            return False
+        return self.profiles.save(profile_id, profile_data)
 
     def reset_profile(self, profile_id: str) -> bool:
         """
@@ -875,25 +808,14 @@ class ControllerConfig:
         Returns:
             True if reset was successful, False otherwise
         """
-        bundled_path = self._bundled_profiles_dir / f"{profile_id}.json"
-        user_path = self._user_profiles_dir / f"{profile_id}.json"
-        
-        if not bundled_path.exists():
-            return False  # Can't reset non-built-in profiles
-        
-        try:
-            shutil.copy2(bundled_path, user_path)
-            
-            # If this is the current profile, reload settings
-            if profile_id == self._current_profile:
-                profile_data = self.load_profile(profile_id)
-                if profile_data:
-                    self._apply_profile_settings(profile_data)
-                    self.save_config()
-            
-            return True
-        except IOError:
+        if not self.profiles.reset(profile_id):
             return False
+        if profile_id == self._current_profile:
+            profile_data = self.load_profile(profile_id)
+            if profile_data:
+                self._apply_profile_settings(profile_data)
+                self.save_config()
+        return True
 
     def duplicate_profile(self, source_id: str, new_name: str) -> Optional[str]:
         """
@@ -910,29 +832,14 @@ class ControllerConfig:
         if source_data is None:
             return None
         
-        # Generate new ID from name
-        new_id = new_name.lower().replace(" ", "_")
-        new_id = "".join(c for c in new_id if c.isalnum() or c == "_")
-        
-        # Ensure unique ID
-        base_id = new_id
-        counter = 1
-        while (self._user_profiles_dir / f"{new_id}.json").exists():
-            new_id = f"{base_id}_{counter}"
-            counter += 1
+        new_id = self.profiles.unique_id(new_name)
         
         # Create new profile
         new_data = source_data.copy()
         new_data["name"] = new_name
         new_data["description"] = f"Custom profile based on {source_data.get('name', source_id)}"
         
-        new_path = self._user_profiles_dir / f"{new_id}.json"
-        try:
-            with open(new_path, 'w') as f:
-                json.dump(new_data, f, indent=4)
-            return new_id
-        except IOError:
-            return None
+        return new_id if self.profiles.save(new_id, new_data) else None
 
     def create_profile_as(self, name: str, description: str = "") -> Optional[str]:
         """
@@ -945,19 +852,7 @@ class ControllerConfig:
         Returns:
             New profile ID if successful, None otherwise
         """
-        # Generate new ID from name
-        new_id = name.lower().replace(" ", "_")
-        new_id = "".join(c for c in new_id if c.isalnum() or c == "_")
-
-        if not new_id:
-            new_id = "custom_profile"
-
-        # Ensure unique ID
-        base_id = new_id
-        counter = 1
-        while (self._user_profiles_dir / f"{new_id}.json").exists():
-            new_id = f"{base_id}_{counter}"
-            counter += 1
+        new_id = self.profiles.unique_id(name)
 
         # Build a blank custom profile — empty canvas, no widgets
         new_data = {
@@ -985,13 +880,7 @@ class ControllerConfig:
             }
         }
 
-        new_path = self._user_profiles_dir / f"{new_id}.json"
-        try:
-            with open(new_path, 'w') as f:
-                json.dump(new_data, f, indent=4)
-            return new_id
-        except IOError:
-            return None
+        return new_id if self.profiles.save(new_id, new_data) else None
 
     def delete_profile(self, profile_id: str) -> bool:
         """
@@ -1005,30 +894,15 @@ class ControllerConfig:
         Returns:
             True if deleted, False if not allowed or failed
         """
-        # Check if it's a built-in profile
-        bundled_path = self._bundled_profiles_dir / f"{profile_id}.json"
-        if bundled_path.exists():
-            return False  # Can't delete built-in profiles
-        
-        user_path = self._user_profiles_dir / f"{profile_id}.json"
-        if not user_path.exists():
+        if not self.profiles.delete(profile_id):
             return False
-        
-        try:
-            user_path.unlink()
-            
-            # If we deleted the current profile, switch to default
-            if profile_id == self._current_profile:
-                self.switch_profile("adaptive_platform_2")
-            
-            return True
-        except IOError:
-            return False
+        if profile_id == self._current_profile:
+            self.switch_profile("adaptive_platform_2")
+        return True
 
     def is_builtin_profile(self, profile_id: str) -> bool:
         """Check if a profile is a built-in (bundled) profile."""
-        bundled_path = self._bundled_profiles_dir / f"{profile_id}.json"
-        return bundled_path.exists()
+        return self.profiles.is_builtin(profile_id)
 
     def get_user_profiles_path(self) -> str:
         """Get the path to the user profiles directory."""
