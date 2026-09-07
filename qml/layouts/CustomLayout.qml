@@ -7,6 +7,7 @@ import "../components" as Comp
 
 Item {
     id: root
+    objectName: "customLayout"   // lets tests find the layout
     property real scaleFactor: 1.0
     property string outputMode: "vjoy"
     property var mainWindow: null
@@ -409,6 +410,7 @@ Item {
     // ==================== WIDGET CONFIG DIALOG ====================
     Rectangle {
         id: configDialog
+        objectName: "widgetConfigDialog"   // lets tests find the dialog
         anchors.centerIn: parent
         width: 360
         height: Math.min(configContent.height + 60, root.height - 40)
@@ -536,6 +538,7 @@ Item {
 
         Flickable {
             id: configFlickable
+            objectName: "configFlickable"
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
@@ -725,6 +728,7 @@ Item {
                     Text { text: "Action:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
                     Basic.ComboBox {
                         id: modifierCombo
+                        objectName: "modifierCombo"
                         width: 160
                         model: ["Gamepad button", "Precision aim"]
                         background: Rectangle { color: "#1a1a1a"; border.color: "#444"; radius: 4 }
@@ -915,6 +919,7 @@ Item {
                     Text { text: "Travel:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
                     Basic.Slider {
                         id: travelSlider
+                        objectName: "travelSlider"
                         width: 140
                         from: 0; to: 600; stepSize: 10
                         value: 0
@@ -943,6 +948,7 @@ Item {
                     Text { text: "Precision:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
                     Basic.Slider {
                         id: precisionSlider
+                        objectName: "precisionSlider"
                         width: 140
                         from: 5; to: 100; stepSize: 5
                         value: 25
@@ -1334,6 +1340,7 @@ Item {
                     Text { text: "Anti-DZ:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
                     Basic.Slider {
                         id: antiDzSlider
+                        objectName: "antiDzSlider"
                         width: 140
                         from: 0; to: 50; stepSize: 0.5
                         value: 0
@@ -1356,6 +1363,7 @@ Item {
                     Text { text: "Buffer:"; color: "#ccc"; font.pixelSize: 12; width: 70; verticalAlignment: Text.AlignVCenter; height: 30 }
                     Basic.Slider {
                         id: antiDzBufferSlider
+                        objectName: "antiDzBufferSlider"
                         width: 140
                         from: 0; to: 10; stepSize: 0.5
                         value: 2
@@ -1379,6 +1387,7 @@ Item {
 
                     Canvas {
                         id: responseCurve
+                        objectName: "responseCurve"
                         anchors.fill: parent
                         anchors.margins: 4
                         property real floorValue: 0     // smallest non-zero output
@@ -1456,6 +1465,7 @@ Item {
                     visible: configDialog.targetWidget ? configDialog.targetWidget.type === "joystick" : false
                     Rectangle {
                         id: testPad
+                        objectName: "testPad"
                         width: 90; height: 90; radius: 45
                         color: "#1e1e1e"; border.color: testDriveSwitch.checked ? "#22c55e" : "#3d3d3d"; border.width: 2
                         property real nx: 0
@@ -1502,6 +1512,7 @@ Item {
                             spacing: 8
                             Rectangle {
                                 id: testDriveSwitch
+                                objectName: "testDriveSwitch"
                                 property bool checked: false
                                 width: 44; height: 22; radius: 11
                                 color: checked ? "#22c55e" : "#555"
@@ -1556,6 +1567,7 @@ Item {
                 Text { anchors.centerIn: parent; text: "Apply"; color: "white"; font.pixelSize: 12; font.bold: true }
                 MouseArea {
                     id: applyConfigArea
+                    objectName: "applyConfigButton"
                     anchors.fill: parent
                     hoverEnabled: true
                     onClicked: {
