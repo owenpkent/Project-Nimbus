@@ -283,12 +283,62 @@ Steps 1 and 2 are a behavior change for every existing profile. They need a note
 
 ## 12. How to verify
 
-There is no automated suite, so this is manual, in the style of the probes in `tests/`:
+Five layers, in order of how much each tells us. The first three are unattended scripts in `tests/`, in the style of the driver probes; the last two need a person. Results go in section 14.
 
-- A gamepad tester (web or `tests/test_vjoy.py` for the vJoy path) to confirm the shaped output curve matches the dialog preview and that magnitude never exceeds 1.
-- A game with a visible sensitivity setting, to confirm the anti-deadzone value at which the smallest movement produces motion, and that it matches the documented XInput constant.
-- Measure travel-to-full-deflection with a ruler on screen before and after step 4.
-- Re-run `tests/probe_nimbus_relay_windows.py` after any bridge change, since it exercises the real stick path end to end through ViGEm.
+| Layer | What it proves | Tool | Needs |
+|---|---|---|---|
+| 1. Shaping math | The formula's properties: radial symmetry, magnitude never above 1, floor and ceiling, deadzone, gain | `tests/test_stick_shaping.py` | nothing |
+| 2. The app end to end | Raw geometry in the QML becomes the right driver output: floor, ceiling, travel, radial, precision, tremor release, triggers, vJoy, lock mode, the config dialog, cache refresh | `tests/probe_stick_shaping_windows.py` | ViGEmBus; safe over TeamViewer |
+| 3. The game's real deadzone | The magnitude at which a real game starts to move its camera, and that a 1 px Nimbus drag lands above it | `tests/probe_game_deadzone_windows.py` | a running game whose view follows the right stick |
+| 4. Gamepad tester | A human sanity check of layer 2 | joy.cpl or a browser gamepad tester | a person; TeamViewer is enough |
+| 5. Hands on | Whether aiming feels better | the game, the widget dialog's test pad | a person at the console |
+
+### 12.1 Shaping math
+
+```
+venv\Scripts\python tests\test_stick_shaping.py
+```
+
+Pure Python, no Qt, no driver. Linear defaults land at 0.95 and the old double chain at 0.901; the smallest movement lands at floor = anti-deadzone + buffer and full deflection still hits the ceiling; the floor never exceeds the ceiling and a buffer above a zero anti-deadzone adds nothing; the radial deadzone zeroes a diagonal that is inside it; diagonals match cardinals in magnitude across the sensitivity range and nothing exceeds 1, including convex curves and input that overflows the circle; the slider-to-exponent mapping is unchanged; gain scales the post-deadzone magnitude; direction and sign are preserved.
+
+### 12.2 The app end to end
+
+```
+venv\Scripts\python tests\probe_stick_shaping_windows.py
+```
+
+Loads the real QML app in-process as the relay probe does, writes a throwaway profile (`nimbus_probe_shaping`: an auto-travel stick on x/y, a 160 px-travel aim stick and a tremor stick on rx/ry, an RT slider, a plain button and a precision button) into the user profiles folder, switches to it, drives the widgets with synthesized Qt mouse events, and reads what the bridge sent to ViGEm. Expected values come from the bridge's own resolved parameters through `shape_magnitude`, so the checks are about wiring, not the formula. The profile is deleted and `controller_config.json` restored afterwards.
+
+- S0 a plain button still presses and releases a gamepad button
+- S1 floor: a 2 px drag on the aim stick reads the anti-deadzone plus buffer (about 0.29), not 0.01
+- S2 ceiling: a full drag reads 0.95, the widget's own cap
+- S3 travel: 80 px on the 160 px stick is well under 80 px on the auto stick (this is the ruler test, in code)
+- S4 radial: a diagonal drag has the magnitude of a cardinal one, and screen-down is controller-down
+- S5 release recentres exactly
+- S6 precision: the modifier button sets the bridge modifier, and holding the modifier re-shapes a held stick without a new pointer event
+- S7 tremor: a filtered stick lags its input, rises with more samples, and a release still reads exactly 0
+- S8 triggers: the RT slider reads 1.00 pulled and 0.00 released
+- S9 vJoy output has no anti-deadzone by default, and switching back restores it
+- S10 lock mode: triple-click, a hover offset drives the stick, triple-click again centres it
+- S11 the config dialog: opens by double-click in edit mode, shows the resolved defaults (Anti-DZ 26.5 for a right stick under ViGEm, Travel 160, Precision 25), the bridge-drawn preview reports floor and ceiling, the test pad reports the shaped vector and, with Drive on, moves the real stick, Apply writes the profile; a screenshot lands in `tests/probe_frames/shaping_dialog.png`
+- S12 the value applied in S11 is what the bridge shapes with next (the cache refreshed through `saveCustomLayout`)
+
+### 12.3 The game's real deadzone
+
+```
+venv\Scripts\python tests\probe_game_deadzone_windows.py --title "Left 4 Dead 2"
+venv\Scripts\python tests\probe_game_deadzone_windows.py --title "Left 4 Dead 2" --mode nimbus
+```
+
+The game must be in a map with its view following the right stick. The sweep holds a ViGEm right stick at each magnitude in `--magnitudes` (0.10 to 0.40 by default) for `--hold` seconds, game in the foreground, and counts changed frame samples against the idle noise floor, reusing the capture and differencing of `probe_game_mouselook_windows.py`. The first magnitude that moves the camera is the game's inner deadzone: the number the anti-deadzone has to clear, to compare with the XInput constant of 0.265. `--mode nimbus` runs the real app in-process beside the game, finds the current profile's rx/ry stick, and checks that a full drag moves the camera (control) and a `--nudge` px drag (default 1) does too: the floor clears the threshold. Left 4 Dead 2 is the candidate while test signing is on; Elden Ring is the reference XInput title once EAC can start.
+
+### 12.4 Gamepad tester
+
+Open joy.cpl (Set up USB game controllers, Xbox 360 Controller for Windows, Properties) or a browser gamepad tester, then nudge a Nimbus stick one pixel. The axis should jump to about 0.29 rather than creep from zero, a full drag should stop at 0.95, and a diagonal should stay inside the circle. Works over TeamViewer, since the drag path only needs the injected pointer.
+
+### 12.5 Hands on
+
+Play with the default profile, then the calibration loop of section 4.2: Edit Layout, double-click the aim stick, turn on "Drive the controller" on the test pad, nudge until the crosshair moves, and raise or lower Anti-DZ until the smallest movement is the smallest the game accepts. Set a button's Action to Precision aim and hold it on a target. For a before-and-after comparison, check out `main` and this branch with the same profile.
 
 ## 13. Open questions
 
