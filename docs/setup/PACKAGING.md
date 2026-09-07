@@ -221,6 +221,24 @@ or from the wrong publisher. Cached files are re-verified, not blindly reused.
 | vJoy (Shaul Eizikovich / njz3 fork) | 2.2.1 | Inno Setup | `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART` |
 | ViGEmBus (Nefarius Software Solutions) | 1.22.0, final | Advanced Installer bootstrapper | `/exenoui /qn /norestart` |
 
+**What counts as installed.** Neither driver is trusted on the strength of its
+files, uninstall key or service entry, because all three survive a removal or a
+failed device start. Both detectors require the driver's service AND a device
+attached to it (the `Enum\Count` under the service key). This came out of the
+first probe run on 2026-09-06: a ViGEmBus removed minutes earlier still
+answered `sc query` with 0 while every client failed with
+`VIGEM_ERROR_BUS_NOT_FOUND`, and a vJoy reinstalled in the same boot as its
+removal kept its uninstall key while `vJoyInstall.exe` rolled back the device
+(it failed to start with `STATUS_INSUFFICIENT_RESOURCES` because the old
+`vjoy.sys` was still resident). In both states the page now offers a **Repair**
+checkbox instead of reporting "Already installed", and the reinstall recreates
+the device.
+
+**Never remove and reinstall a kernel driver in one boot.** The removed driver
+stays resident until the restart, and the reinstall fails in ways that look
+like installer bugs. The probe enforces this: `-Teardown` records the boot
+time and the install run refuses to continue until the machine has rebooted.
+
 **How the install behaves.** The driver page detects what is already present
 and only offers what is missing, with a checkbox the user can untick. After each
 silent install the installer re-detects the driver rather than trusting the exit
@@ -356,7 +374,7 @@ signtool verify /pa /v "dist\Project-Nimbus-Setup-1.2.1.exe"
 
 ### Test
 
-- [ ] Run the driver probe from an **elevated** PowerShell: `tests\probe_installer_drivers_windows.ps1 -Fresh` (11 checks, unattended after the elevation prompt: removes vJoy and ViGEmBus, installs silently, verifies both came back, checks vJoy device 1 for 8 axes and 128 buttons, starts and closes the app, then uninstalls the app and confirms the drivers survive). `-Fresh` removes drivers the machine may be using, so run it where that is acceptable
+- [ ] Run the driver probe from an **elevated** PowerShell, in two steps with a reboot between: `tests\probe_installer_drivers_windows.ps1 -Teardown` (removes vJoy and ViGEmBus), reboot, then `tests\probe_installer_drivers_windows.ps1` (11 checks, unattended: installs silently, verifies both drivers came back with devices attached, checks vJoy device 1 for 8 axes and 128 buttons, opens a ViGEm pad from vgamepad, starts and closes the app, then uninstalls the app and confirms the drivers survive). The teardown removes drivers the machine may be using, so run it where that is acceptable
 - [ ] Run installer on clean Windows VM
 - [ ] On a machine that already has both drivers: the page reads "Already installed" for both and installs neither
 - [ ] Untick both on the drivers page: install completes, the summary dialog names what will not work, and Nimbus still starts

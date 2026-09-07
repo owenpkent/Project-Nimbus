@@ -8,33 +8,54 @@
     unattended; the only interaction is the elevation prompt on this script
     itself, because the installer requires admin and this account is not one.
 
-    Start it from an elevated PowerShell:
+    Two runs, with a reboot between them, exercise the install path on a
+    machine that already has the drivers:
 
         Set-ExecutionPolicy -Scope Process Bypass -Force
-        tests\probe_installer_drivers_windows.ps1 -Fresh
+        tests\probe_installer_drivers_windows.ps1 -Teardown     # removes both drivers, then asks for a reboot
+        # reboot
+        tests\probe_installer_drivers_windows.ps1               # installs, verifies, launches, uninstalls the app
+
+    The reboot is not optional and the script enforces it: a kernel driver
+    removed in this boot is still resident, and a reinstall on top of it fails
+    in ways that look like installer bugs. Measured on the dev machine on
+    2026-09-06: vJoy's device failed to start with STATUS_INSUFFICIENT_RESOURCES
+    and vJoyInstall.exe rolled its own device back, leaving files, an uninstall
+    key, and 0 buttons. The teardown records the boot time and the install run
+    refuses to continue in the same boot.
+
+    On a machine that never had the drivers, run it once without -Teardown.
+
+    Two files land in dist\ whatever happens: installer-probe.log (the checks)
+    and installer-probe-transcript.log (everything the console showed, which
+    is what to read if the run stopped early).
 
     Checks (each prints PASS or FAIL, with a count at the end):
 
       I1   elevated, and the built installer is present
-      I2   baseline recorded (driver versions, vJoy device 1 capabilities)
-      I3   vJoy uninstalled            (-Fresh only)
-      I4   ViGEmBus uninstalled        (-Fresh only)
+      I2   baseline recorded (driver state, vJoy device 1 capabilities)
+      I3   vJoy uninstalled            (-Teardown run only)
+      I4   ViGEmBus uninstalled        (-Teardown run only)
       I5   silent install returns a success code
-      I6   vJoy present afterwards
-      I7   ViGEmBus service present afterwards
-      I8   vJoy device 1 has 8 axes and 128 buttons
+      I6   vJoy present afterwards, with a device attached
+      I7   ViGEmBus present afterwards, and a client can open a virtual pad
+      I8   vJoy device 1 has 8 axes and 128 buttons and is usable
       I9   the app is installed and registered, with no leftover drivers folder
       I10  the app starts, shows a window, and exits when asked
       I11  the app uninstalls and both drivers survive it
 
-.PARAMETER Fresh
-    Uninstall vJoy and ViGEmBus first, so the install path is exercised instead
-    of skipped. Without it the installer will correctly detect both and install
-    neither, which tests the detection half only.
+    "Present" means what the installer's own detection means since 2026-09-06:
+    the driver's service exists AND a device is attached to it (the driver's
+    Enum count). Files, uninstall keys and service entries all survive a
+    removal or a failed device start, and trusting them is how the first run of
+    this probe skipped a ViGEmBus that failed every client with
+    VIGEM_ERROR_BUS_NOT_FOUND.
 
-    This removes drivers the machine may be using. Only pass it on a machine
-    where that is acceptable, and expect vJoy to come back as 2.2.1 and
-    ViGEmBus as 1.22.0, which is what the installer ships.
+.PARAMETER Teardown
+    Uninstall vJoy and ViGEmBus, record the boot time, and stop. Reboot, then
+    run again without it. This removes drivers the machine may be using; expect
+    vJoy to come back as 2.2.1 and ViGEmBus as 1.22.0, which is what the
+    installer ships.
 
 .PARAMETER KeepApp
     Leave the app installed at the end. By default I11 uninstalls it, since the
@@ -43,7 +64,7 @@
 #>
 param(
     [string]$Setup = "dist\Nimbus-Adaptive-Controller-Setup-1.4.3.exe",
-    [switch]$Fresh,
+    [switch]$Teardown,
     [switch]$KeepApp,
     [string]$LogPath = "dist\installer-probe.log"
 )
@@ -52,6 +73,8 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $Setup = if ([IO.Path]::IsPathRooted($Setup)) { $Setup } else { Join-Path $repo $Setup }
 $LogPath = if ([IO.Path]::IsPathRooted($LogPath)) { $LogPath } else { Join-Path $repo $LogPath }
+$transcript = [IO.Path]::ChangeExtension($LogPath, $null).TrimEnd('.') + '-transcript.log'
+$marker = [IO.Path]::ChangeExtension($LogPath, $null).TrimEnd('.') + '-teardown.json'
 
 $script:pass = 0
 $script:fail = 0
@@ -70,39 +93,102 @@ function Save-Log {
     Set-Content -Path $LogPath -Value $script:lines -Encoding utf8
     Write-Host "`nLog: $LogPath"
 }
+function Get-BootTime {
+    return (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+}
+
+# Native commands and python under $ErrorActionPreference = 'Stop' turn any
+# stderr line into a terminating error in Windows PowerShell 5.1. Everything
+# that shells out goes through here.
+function Invoke-Native([scriptblock]$Block) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Block } finally { $ErrorActionPreference = $prev }
+}
+
+# Runs a Python snippet with the venv interpreter and returns its last line of
+# output. The source goes through a file: passing it on the command line lets
+# PowerShell's native-argument quoting strip the double quotes, which is how the
+# first run of this probe turned a working check into a SyntaxError.
+function Invoke-Python([string]$Source) {
+    $py = Join-Path $repo 'venv\Scripts\python.exe'
+    if (-not (Test-Path $py)) { return 'no venv python' }
+    $file = Join-Path $env:TEMP ('nimbus_probe_' + [Guid]::NewGuid().ToString('N') + '.py')
+    Set-Content -Path $file -Value $Source -Encoding ascii
+    try {
+        $out = Invoke-Native { & $py $file 2>&1 | ForEach-Object { "$_" } | Select-Object -Last 1 }
+        return "$out"
+    } finally {
+        Remove-Item $file -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-DeviceCount([string]$Service) {
+    $c = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$Service\Enum" -ErrorAction SilentlyContinue).Count
+    if ($c) { return [int]$c } else { return 0 }
+}
 
 # ------------------------------------------------------------------ detection
 function Get-VJoy {
     # The same three uninstall keys installer.nsi checks, read from the 64-bit
-    # hive, plus the DLL on disk as the fallback.
+    # hive, plus the DLL on disk as the fallback, and then the device.
     $keys = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8E31F76F-74C3-47F1-9550-E041EEDC5FBB}_is1',
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{D3B6B8B0-4C9B-4C9B-8A1A-6B3C5E7D8F2A}_is1',
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\vJoy'
     )
+    $version = $null; $uninstall = $null; $installed = $false
     foreach ($k in $keys) {
         $p = Get-ItemProperty $k -ErrorAction SilentlyContinue
-        if ($p.DisplayVersion) {
-            return [pscustomobject]@{ Present = $true; Version = $p.DisplayVersion; Uninstall = $p.UninstallString; Key = $k }
-        }
+        if ($p.DisplayVersion) { $version = $p.DisplayVersion; $uninstall = $p.UninstallString; $installed = $true; break }
     }
-    $dll = "$env:ProgramFiles\vJoy\x64\vJoyInterface.dll"
-    if (Test-Path $dll) { return [pscustomobject]@{ Present = $true; Version = '(dll only)'; Uninstall = $null; Key = $null } }
-    return [pscustomobject]@{ Present = $false; Version = $null; Uninstall = $null; Key = $null }
+    if (-not $installed -and (Test-Path "$env:ProgramFiles\vJoy\x64\vJoyInterface.dll")) { $installed = $true; $version = '(dll only)' }
+    $devices = Get-DeviceCount 'vjoy'
+    return [pscustomobject]@{
+        Present   = ($installed -and $devices -ge 1)
+        Installed = $installed
+        Devices   = $devices
+        Version   = $version
+        Uninstall = $uninstall
+    }
 }
 
 function Get-ViGEm {
-    $null = & sc.exe query ViGEmBus 2>&1
-    $service = ($LASTEXITCODE -eq 0)
+    $service = [bool](Get-Service ViGEmBus -ErrorAction SilentlyContinue)
+    $devices = Get-DeviceCount 'ViGEmBus'
     $entry = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
         ForEach-Object { Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue } |
         Where-Object { $_.DisplayName -match 'ViGEm|Virtual Gamepad Emulation Bus' } |
         Select-Object -First 1
+    $file = "$env:SystemRoot\System32\drivers\ViGEmBus.sys"
     return [pscustomobject]@{
-        Present = $service
-        Version = $entry.DisplayVersion
-        Product = $entry.PSChildName
+        Present     = ($service -and $devices -ge 1)
+        Service     = $service
+        Devices     = $devices
+        Version     = $entry.DisplayVersion
+        Product     = $entry.PSChildName
+        FileVersion = $(if (Test-Path $file) { (Get-Item $file).VersionInfo.FileVersion } else { $null })
     }
+}
+
+function Format-VJoy($v) {
+    if ($v.Present) { return "present ($($v.Version), $($v.Devices) device)" }
+    if ($v.Installed) { return "BROKEN: $($v.Version) installed but no device attached" }
+    return 'absent'
+}
+function Format-ViGEm($v) {
+    if ($v.Present) { return "present ($($v.Version), file $($v.FileVersion), $($v.Devices) device)" }
+    if ($v.Service) { return "BROKEN: service entry lingers but no bus device (file $($v.FileVersion))" }
+    return 'absent'
+}
+
+function Test-ViGEmClient {
+    # The proof that matters: can vgamepad, which the app uses, open a pad.
+    return Invoke-Python @'
+import vgamepad
+vgamepad.VX360Gamepad()
+print('client opened a virtual pad')
+'@
 }
 
 function Get-VJoyCaps {
@@ -110,148 +196,195 @@ function Get-VJoyCaps {
     # app itself talks to. Returns $null when vJoy is not installed.
     $dll = "$env:ProgramFiles\vJoy\x64\vJoyInterface.dll"
     if (-not (Test-Path $dll)) { return $null }
-    $py = Join-Path $repo 'venv\Scripts\python.exe'
-    if (-not (Test-Path $py)) { return 'no venv python' }
-    $code = @"
+    $source = @"
 import ctypes
-dll = ctypes.WinDLL(r'$dll')
-u = {'X':0x30,'Y':0x31,'Z':0x32,'RX':0x33,'RY':0x34,'RZ':0x35,'SL0':0x36,'SL1':0x37}
-axes = [n for n, c in u.items() if dll.GetVJDAxisExist(1, c)]
-print('%d buttons, axes %s' % (dll.GetVJDButtonNumber(1), ' '.join(axes)))
+d = ctypes.WinDLL(r'$dll')
+u = {'X': 0x30, 'Y': 0x31, 'Z': 0x32, 'RX': 0x33, 'RY': 0x34, 'RZ': 0x35, 'SL0': 0x36, 'SL1': 0x37}
+axes = ' '.join(n for n, c in u.items() if d.GetVJDAxisExist(1, c))
+s = d.GetVJDStatus(1)
+status = ['OWN', 'FREE', 'BUSY', 'MISS', 'UNKN'][s] if s < 5 else str(s)
+print('%d buttons, axes %s, status %s' % (d.GetVJDButtonNumber(1), axes, status))
 "@
-    return (& $py -c $code 2>&1 | Select-Object -Last 1)
+    return Invoke-Python $source
 }
 
 function Get-App {
-    $p = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\nimbus-adaptive-controller' -ErrorAction SilentlyContinue
-    return [pscustomobject]@{
-        Present   = [bool]$p.InstallLocation
-        Dir       = $p.InstallLocation
-        Version   = $p.DisplayVersion
-        Uninstall = $p.UninstallString
+    # NSIS is a 32-bit process and writes its uninstall key without SetRegView,
+    # so the key lands in WOW6432Node. A 64-bit PowerShell has to look there.
+    $keys = @(
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\nimbus-adaptive-controller',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\nimbus-adaptive-controller'
+    )
+    foreach ($k in $keys) {
+        $p = Get-ItemProperty $k -ErrorAction SilentlyContinue
+        if ($p.InstallLocation) {
+            return [pscustomobject]@{ Present = $true; Dir = $p.InstallLocation; Version = $p.DisplayVersion; Uninstall = $p.UninstallString }
+        }
     }
+    return [pscustomobject]@{ Present = $false; Dir = $null; Version = $null; Uninstall = $null }
 }
 
 # ---------------------------------------------------------------------- start
-Say "Nimbus installer driver probe  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-Say "  setup : $Setup"
-Say "  fresh : $Fresh"
-Say ''
-
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$elevated = (New-Object Security.Principal.WindowsPrincipal($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-Check 'I1' ($elevated -and (Test-Path $Setup)) "elevated=$elevated setup present=$(Test-Path $Setup) (running as $($identity.Name))"
-if (-not $elevated) {
+New-Item -ItemType Directory -Force (Split-Path $LogPath) | Out-Null
+Start-Transcript -Path $transcript -Force | Out-Null
+try {
+    Say "Nimbus installer driver probe  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    Say "  setup    : $Setup"
+    Say "  teardown : $Teardown"
+    Say "  booted   : $(Get-BootTime)"
     Say ''
-    Say 'The installer needs admin. Start an elevated PowerShell (Win+X, A) and run this again.'
-    Save-Log
-    exit 1
-}
-if (-not (Test-Path $Setup)) {
-    Say ''
-    Say 'Build it first: PyInstaller, then build_tools\fetch_redist.ps1, then makensis build_tools\installer.nsi'
-    Save-Log
-    exit 1
-}
 
-$vj0 = Get-VJoy
-$vg0 = Get-ViGEm
-$caps0 = Get-VJoyCaps
-Check 'I2' $true "baseline: vJoy=$(if ($vj0.Present) { $vj0.Version } else { 'absent' }) ViGEmBus=$(if ($vg0.Present) { $vg0.Version } else { 'absent' }) device1=$caps0"
-
-# ------------------------------------------------------------------- teardown
-if ($Fresh) {
-    if ($vj0.Present -and $vj0.Uninstall) {
-        $exe = $vj0.Uninstall.Trim('"')
-        Say "  removing vJoy $($vj0.Version)"
-        Start-Process -FilePath $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
-        Start-Sleep -Seconds 3
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $elevated = (New-Object Security.Principal.WindowsPrincipal($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    Check 'I1' ($elevated -and (Test-Path $Setup)) "elevated=$elevated setup present=$(Test-Path $Setup) (running as $($identity.Name))"
+    if (-not $elevated) {
+        Say ''
+        Say 'The installer needs admin. Start an elevated PowerShell (Win+X, A) and run this again.'
+        exit 1   # the finally block still runs
     }
-    $vj1 = Get-VJoy
-    Check 'I3' (-not $vj1.Present) "vJoy after uninstall: $(if ($vj1.Present) { $vj1.Version } else { 'absent' })"
-
-    if ($vg0.Present -and $vg0.Product) {
-        Say "  removing ViGEmBus $($vg0.Version)"
-        Start-Process -FilePath 'msiexec.exe' -ArgumentList '/x', $vg0.Product, '/qn', '/norestart' -Wait
-        Start-Sleep -Seconds 3
+    if (-not (Test-Path $Setup)) {
+        Say ''
+        Say 'Build it first: PyInstaller, then build_tools\fetch_redist.ps1, then makensis build_tools\installer.nsi'
+        exit 1   # the finally block still runs
     }
-    $vg1 = Get-ViGEm
-    Check 'I4' (-not $vg1.Present) "ViGEmBus service after uninstall: $(if ($vg1.Present) { 'still present' } else { 'absent' })"
-} else {
-    Say '  I3   SKIP  -Fresh not passed, drivers left in place'
-    Say '  I4   SKIP  -Fresh not passed, drivers left in place'
-}
 
-# --------------------------------------------------------------- silent install
-Say "  running the installer silently"
-$sw = [Diagnostics.Stopwatch]::StartNew()
-$proc = Start-Process -FilePath $Setup -ArgumentList '/S' -Wait -PassThru
-$sw.Stop()
-$code = $proc.ExitCode
-Check 'I5' ($code -eq 0) "installer exit code $code after $([math]::Round($sw.Elapsed.TotalSeconds,1)) s"
+    $vj0 = Get-VJoy
+    $vg0 = Get-ViGEm
+    $caps0 = Get-VJoyCaps
+    Check 'I2' $true "baseline: vJoy=$(Format-VJoy $vj0); ViGEmBus=$(Format-ViGEm $vg0); device1=$caps0"
 
-Start-Sleep -Seconds 3
-$vj2 = Get-VJoy
-$vg2 = Get-ViGEm
-$caps2 = Get-VJoyCaps
-$app = Get-App
-
-Check 'I6' $vj2.Present "vJoy: $(if ($vj2.Present) { $vj2.Version } else { 'MISSING' })"
-Check 'I7' $vg2.Present "ViGEmBus: $(if ($vg2.Present) { "service present, $($vg2.Version)" } else { 'MISSING' })"
-Check 'I8' ($caps2 -match '128 buttons' -and $caps2 -match 'X Y Z RX RY RZ SL0 SL1') "vJoy device 1: $caps2"
-
-$leftover = $false
-if ($app.Dir) { $leftover = Test-Path (Join-Path $app.Dir 'drivers') }
-Check 'I9' ($app.Present -and -not $leftover) "app $($app.Version) at $($app.Dir); leftover drivers folder: $leftover (present only when a driver install failed)"
-
-# ------------------------------------------------------------------ app launch
-if ($app.Present) {
-    $exe = Join-Path $app.Dir 'Nimbus-Adaptive-Controller-1.4.3.exe'
-    if (Test-Path $exe) {
-        $p = Start-Process -FilePath $exe -PassThru
-        Start-Sleep -Seconds 20        # PyInstaller onefile unpacks before Qt appears
-        $p.Refresh()
-        $alive = -not $p.HasExited
-        $window = $false
-        if ($alive) { $window = ($p.MainWindowHandle -ne 0) }
-        if ($alive) {
-            $null = $p.CloseMainWindow()
-            Start-Sleep -Seconds 5
-            $p.Refresh()
-            if (-not $p.HasExited) { $p | Stop-Process -Force }
+    # ------------------------------------------------------------------- teardown
+    if ($Teardown) {
+        if ($vj0.Installed -and $vj0.Uninstall) {
+            $exe = $vj0.Uninstall.Trim('"')
+            Say "  removing vJoy $($vj0.Version)"
+            # Inno uninstallers hand off to a copy of themselves and exit at once,
+            # so wait for the registry key to go rather than for the process.
+            Start-Process -FilePath $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+            $deadline = (Get-Date).AddSeconds(60)
+            while ((Get-Date) -lt $deadline -and (Get-VJoy).Installed) { Start-Sleep -Seconds 2 }
         }
-        Check 'I10' ($alive -and $window) "app alive after 20 s: $alive, window shown: $window"
+        $vj1 = Get-VJoy
+        Check 'I3' (-not $vj1.Installed) "vJoy after uninstall: $(Format-VJoy $vj1)"
+
+        if ($vg0.Product) {
+            Say "  removing ViGEmBus $($vg0.Version)"
+            Start-Process -FilePath 'msiexec.exe' -ArgumentList '/x', $vg0.Product, '/qn', '/norestart' -Wait
+            Start-Sleep -Seconds 3
+        }
+        $vg1 = Get-ViGEm
+        Check 'I4' (-not $vg1.Present -and -not $vg1.Product) "ViGEmBus after uninstall: $(Format-ViGEm $vg1)"
+
+        @{ boot = (Get-BootTime).ToString('o'); when = (Get-Date).ToString('o') } | ConvertTo-Json | Set-Content -Path $marker -Encoding ascii
+        Say ''
+        Say 'Teardown done. The removed drivers are still resident in this boot, so a reinstall now would fail in'
+        Say 'ways that look like installer bugs. Reboot, then run this script again without -Teardown.'
+        exit $(if ($script:fail -gt 0) { 1 } else { 0 })
+    }
+
+    Say '  I3   SKIP  no -Teardown, drivers left in place'
+    Say '  I4   SKIP  no -Teardown, drivers left in place'
+    if (Test-Path $marker) {
+        $m = Get-Content $marker -Raw | ConvertFrom-Json
+        $tornDownBoot = [datetime]::Parse($m.boot)
+        if ([Math]::Abs(((Get-BootTime) - $tornDownBoot).TotalSeconds) -lt 5) {
+            Say ''
+            Say "STOPPED: the teardown ran in this same boot ($($m.when)). Reboot first, then run again."
+            $script:fail++
+            exit 1   # the finally block still runs
+        }
+        Say "  teardown at $($m.when) was followed by a reboot; the machine is a fresh install target"
+        Remove-Item $marker -Force -ErrorAction SilentlyContinue
+    }
+
+    # --------------------------------------------------------------- silent install
+    Say '  running the installer silently'
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $proc = Start-Process -FilePath $Setup -ArgumentList '/S' -Wait -PassThru
+    $sw.Stop()
+    $code = $proc.ExitCode
+    Check 'I5' ($code -eq 0) "installer exit code $code after $([math]::Round($sw.Elapsed.TotalSeconds,1)) s"
+
+    Start-Sleep -Seconds 3
+    $vj2 = Get-VJoy
+    $vg2 = Get-ViGEm
+    $caps2 = Get-VJoyCaps
+    $client = Test-ViGEmClient
+    $app = Get-App
+
+    Check 'I6' $vj2.Present "vJoy: $(Format-VJoy $vj2)"
+    Check 'I7' ($vg2.Present -and $client -match 'opened') "ViGEmBus: $(Format-ViGEm $vg2); client: $client"
+    Check 'I8' ($caps2 -match '128 buttons' -and $caps2 -match 'X Y Z RX RY RZ SL0 SL1' -and $caps2 -match 'status (FREE|OWN|BUSY)') "vJoy device 1: $caps2"
+
+    $leftover = $false
+    if ($app.Dir) { $leftover = Test-Path (Join-Path $app.Dir 'drivers') }
+    Check 'I9' ($app.Present -and -not $leftover) "app $($app.Version) at $($app.Dir); leftover drivers folder: $leftover (present only when a driver install failed)"
+
+    # ------------------------------------------------------------------ app launch
+    if ($app.Present) {
+        $exe = Join-Path $app.Dir 'Nimbus-Adaptive-Controller-1.4.3.exe'
+        if (Test-Path $exe) {
+            $started = Get-Date
+            $p = Start-Process -FilePath $exe -PassThru
+            # A PyInstaller onefile build unpacks ~190 MB before Qt draws anything,
+            # so poll for the window instead of guessing a sleep.
+            $deadline = (Get-Date).AddSeconds(90)
+            $window = $false
+            while ((Get-Date) -lt $deadline) {
+                Start-Sleep -Seconds 2
+                $p.Refresh()
+                if ($p.HasExited) { break }
+                if ($p.MainWindowHandle -ne 0) { $window = $true; break }
+            }
+            $p.Refresh()
+            $alive = -not $p.HasExited
+            $waited = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+            if ($alive) {
+                $null = $p.CloseMainWindow()
+                Start-Sleep -Seconds 8
+                $p.Refresh()
+                if (-not $p.HasExited) { $p | Stop-Process -Force }
+            }
+            Check 'I10' ($alive -and $window) "app window shown after $waited s: $window (process alive: $alive)"
+        } else {
+            Check 'I10' $false "app exe not found at $exe"
+        }
     } else {
-        Check 'I10' $false "app exe not found at $exe"
+        Check 'I10' $false 'app not installed, nothing to launch'
     }
-} else {
-    Check 'I10' $false 'app not installed, nothing to launch'
-}
 
-# --------------------------------------------------------------- app uninstall
-if ($KeepApp) {
-    Say '  I11  SKIP  -KeepApp passed, app left installed'
-} elseif ($app.Present) {
-    $un = Join-Path $app.Dir 'Uninstall.exe'
-    if (Test-Path $un) {
-        Start-Process -FilePath $un -ArgumentList '/S', "_?=$($app.Dir)" -Wait
-        Start-Sleep -Seconds 3
-        Remove-Item $un -Force -ErrorAction SilentlyContinue
-        Remove-Item $app.Dir -Recurse -Force -ErrorAction SilentlyContinue
+    # --------------------------------------------------------------- app uninstall
+    if ($KeepApp) {
+        Say '  I11  SKIP  -KeepApp passed, app left installed'
+    } elseif ($app.Present) {
+        $un = Join-Path $app.Dir 'Uninstall.exe'
+        if (Test-Path $un) {
+            Start-Process -FilePath $un -ArgumentList '/S', "_?=$($app.Dir)" -Wait
+            Start-Sleep -Seconds 3
+            Remove-Item $un -Force -ErrorAction SilentlyContinue
+            Remove-Item $app.Dir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        $after = Get-App
+        $vj3 = Get-VJoy
+        $vg3 = Get-ViGEm
+        Check 'I11' ((-not $after.Present) -and $vj3.Present -and $vg3.Present) "app removed: $(-not $after.Present); vJoy kept: $($vj3.Present); ViGEmBus kept: $($vg3.Present)"
+    } else {
+        Check 'I11' $false 'app was not installed, nothing to uninstall'
     }
-    $after = Get-App
-    $vj3 = Get-VJoy
-    $vg3 = Get-ViGEm
-    Check 'I11' ((-not $after.Present) -and $vj3.Present -and $vg3.Present) "app removed: $(-not $after.Present); vJoy kept: $($vj3.Present); ViGEmBus kept: $($vg3.Present)"
-} else {
-    Check 'I11' $false 'app was not installed, nothing to uninstall'
-}
 
-# ------------------------------------------------------------------- summary
-Say ''
-Say ("Result: {0}/{1} checks passed" -f $script:pass, ($script:pass + $script:fail))
-if (Get-Item 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired' -ErrorAction SilentlyContinue) {
-    Say 'A reboot is pending. Windows was told a restart is needed; the drivers may not be fully live until then.'
+    # ------------------------------------------------------------------- summary
+    Say ''
+    Say ("Result: {0}/{1} checks passed" -f $script:pass, ($script:pass + $script:fail))
+    if (Get-Item 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired' -ErrorAction SilentlyContinue) {
+        Say 'A reboot is pending. Windows was told a restart is needed; the drivers may not be fully live until then.'
+    }
+} catch {
+    Say ''
+    Say "STOPPED: $($_.Exception.Message)"
+    Say "  at: $($_.InvocationInfo.PositionMessage)"
+    $script:fail++
+} finally {
+    Save-Log
+    Stop-Transcript | Out-Null
 }
-Save-Log
 if ($script:fail -gt 0) { exit 1 }

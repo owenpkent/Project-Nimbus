@@ -43,6 +43,7 @@ Var VJoyInstalled
 Var VJoyVersion
 Var InstallViGEm
 Var ViGEmInstalled
+Var ViGEmBroken
 Var KeepProfiles
 
 ; ---- MUI Settings ----
@@ -139,21 +140,56 @@ Function DetectVJoy
         IfFileExists "$PROGRAMFILES\vJoy\x64\vJoyInterface.dll" 0 +2
             StrCpy $VJoyInstalled 1
     ${EndIf}
+    ; Files and the uninstall key are not enough either. vJoy's own installer
+    ; removes its device node when the device fails to start (measured on the
+    ; dev machine on 2026-09-06: a reinstall in the same boot as an uninstall
+    ; hit STATUS_INSUFFICIENT_RESOURCES because the old vjoy.sys was still
+    ; resident, and vJoyInstall.exe rolled the device back but left everything
+    ; else). What remains reports 0 buttons and status UNKN to every client.
+    ; The driver's Enum key counts attached devices; require one, so the page
+    ; offers a reinstall, which recreates the device.
+    ${If} $VJoyInstalled == 1
+        SetRegView 64
+        ReadRegDWORD $0 HKLM "SYSTEM\CurrentControlSet\Services\vjoy\Enum" "Count"
+        SetRegView lastused
+        ${If} $0 < 1
+            StrCpy $VJoyInstalled 0
+        ${EndIf}
+    ${EndIf}
     Pop $0
 FunctionEnd
 
-; Sets $ViGEmInstalled (0/1) from the service, which is what vgamepad needs.
+; Sets $ViGEmInstalled (0/1).
+;
+; The service entry alone is not proof. It outlives an uninstall until the next
+; reboot, so a machine whose ViGEmBus has been removed still answers "sc query"
+; with 0 while every client fails with VIGEM_ERROR_BUS_NOT_FOUND. Measured on
+; the dev machine on 2026-09-06 after an MSI removal: service present, PnP
+; device gone, vgamepad refusing to open a pad. Trusting the service there would
+; skip the install and leave the user with a ViGEmBus that cannot work.
+;
+; The driver's Enum key counts the devices actually attached to it, which is
+; missing or 0 once the bus device is gone, so require both.
 Function DetectViGEm
     Push $0
     Push $1
+    Push $2
+    StrCpy $ViGEmInstalled 0
+    StrCpy $ViGEmBroken 0
     nsExec::ExecToStack 'sc query ViGEmBus'
     Pop $0
     Pop $1
     ${If} $0 == 0
-        StrCpy $ViGEmInstalled 1
-    ${Else}
-        StrCpy $ViGEmInstalled 0
+        SetRegView 64
+        ReadRegDWORD $2 HKLM "SYSTEM\CurrentControlSet\Services\ViGEmBus\Enum" "Count"
+        SetRegView lastused
+        ${If} $2 >= 1
+            StrCpy $ViGEmInstalled 1
+        ${Else}
+            StrCpy $ViGEmBroken 1
+        ${EndIf}
     ${EndIf}
+    Pop $2
     Pop $1
     Pop $0
 FunctionEnd
@@ -187,10 +223,18 @@ Function VJoyOptionsPage
         Pop $VJoyStatusLabel
     ${Else}
         StrCpy $InstallVJoy 1
-        ${NSD_CreateCheckbox} 10u 32u 90% 12u "Install vJoy ${VJOY_VERSION} (recommended)"
-        Pop $VJoyCheckbox
-        ${NSD_Check} $VJoyCheckbox
-        ${NSD_CreateLabel} 10u 48u 90% 12u "Required for flight sim and legacy game profiles"
+        ${If} $VJoyVersion != ""
+            ; Present on paper, but with no device: the reinstall repairs it.
+            ${NSD_CreateCheckbox} 10u 32u 90% 12u "Repair vJoy (v$VJoyVersion found, but its device is missing)"
+            Pop $VJoyCheckbox
+            ${NSD_Check} $VJoyCheckbox
+            ${NSD_CreateLabel} 10u 48u 90% 12u "Reinstalling ${VJOY_VERSION} recreates the device. Required for DirectInput profiles"
+        ${Else}
+            ${NSD_CreateCheckbox} 10u 32u 90% 12u "Install vJoy ${VJOY_VERSION} (recommended)"
+            Pop $VJoyCheckbox
+            ${NSD_Check} $VJoyCheckbox
+            ${NSD_CreateLabel} 10u 48u 90% 12u "Required for flight sim and legacy game profiles"
+        ${EndIf}
         Pop $VJoyStatusLabel
     ${EndIf}
     
@@ -205,10 +249,20 @@ Function VJoyOptionsPage
         Pop $ViGEmStatusLabel
     ${Else}
         StrCpy $InstallViGEm 1
-        ${NSD_CreateCheckbox} 10u 78u 90% 12u "Install ViGEmBus ${VIGEM_VERSION} (recommended)"
-        Pop $ViGEmCheckbox
-        ${NSD_Check} $ViGEmCheckbox
-        ${NSD_CreateLabel} 10u 92u 90% 12u "Required for Game Mode and Xbox controller profiles"
+        ${If} $ViGEmBroken == 1
+            ; The service entry is there but no bus device is attached, which is
+            ; what a removed ViGEmBus looks like until the next reboot. Every
+            ; client fails with VIGEM_ERROR_BUS_NOT_FOUND; the reinstall repairs it.
+            ${NSD_CreateCheckbox} 10u 78u 90% 12u "Repair ViGEmBus (found, but not working)"
+            Pop $ViGEmCheckbox
+            ${NSD_Check} $ViGEmCheckbox
+            ${NSD_CreateLabel} 10u 92u 90% 12u "Reinstalling ${VIGEM_VERSION} restores the bus device. Required for Game Mode"
+        ${Else}
+            ${NSD_CreateCheckbox} 10u 78u 90% 12u "Install ViGEmBus ${VIGEM_VERSION} (recommended)"
+            Pop $ViGEmCheckbox
+            ${NSD_Check} $ViGEmCheckbox
+            ${NSD_CreateLabel} 10u 92u 90% 12u "Required for Game Mode and Xbox controller profiles"
+        ${EndIf}
         Pop $ViGEmStatusLabel
     ${EndIf}
     
