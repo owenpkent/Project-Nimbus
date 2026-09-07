@@ -60,7 +60,7 @@ Safety
 ------
 * The driver clears isolation when this process's handle closes (crash, kill,
   exit) and via its own 2 s watchdog. Since interface v3 the watchdog counts
-  only read *arrivals* as life: a read parked for 1 s with nothing to deliver
+  only read *arrivals* as life: a read parked for ``TICK_MS`` with nothing to deliver
   is completed empty (a tick, ``ticks`` counts them) and the reader issues the
   next one, so a Nimbus that is frozen or suspended stops re-issuing and loses
   the mouse within 2 s of its last read. Once isolation is off the driver
@@ -69,8 +69,10 @@ Safety
 * :meth:`MouseIsolation.stop` is idempotent and registered with :mod:`atexit`.
 * ``Ctrl+Alt+F12`` releases when ``hotkey`` is True (the default, as on
   Linux). It is polled on the reader thread with ``GetAsyncKeyState`` every
-  100 ms while a read is parked, so it works when the UI thread is stuck and
-  needs no focus. The driver never touches the keyboard.
+  ``HOTKEY_POLL_MS``, both while a read is parked and between reads, so a
+  mouse that never stops moving (every read completing at once) cannot starve
+  it. It works when the UI thread is stuck and needs no focus. The driver
+  never touches the keyboard.
 
 Requirements
 ------------
@@ -91,7 +93,7 @@ _IS_WINDOWS = sys.platform == "win32"
 
 # Must match driver/nimbus_moufilter/nimbus_moufilter_ioctl.h
 DEVICE_PATH = r"\\.\NimbusMouseFilter"
-INTERFACE_VERSION = 4
+INTERFACE_VERSION = 5
 IOCTL_NIMBUS_SET_ISOLATION = 0x00222000
 IOCTL_NIMBUS_GET_STATUS = 0x00222004
 WATCHDOG_MS = 2000      # NIMBUS_MOUFILTER_WATCHDOG_MS: release when no read arrives for this long
@@ -187,6 +189,7 @@ if _IS_WINDOWS:
     ERROR_IO_PENDING = 997
 
     SM_CXSCREEN, SM_CYSCREEN = 0, 1
+    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN = 76, 77
     SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 78, 79
 
     class _OVERLAPPED(ctypes.Structure):
@@ -642,7 +645,7 @@ class MouseIsolation:
         self._relay_allowed = cursor_relay if callable(cursor_relay) else None
         self._relay_rem = [0.0, 0.0]       # sub-pixel relay motion carried between packets
         self._speed = 1.0
-        #: Empty read completions received (driver heartbeat, interface v3).
+        #: Empty read completions received (driver heartbeat, interface v3+).
         self.ticks = 0
         self._lock = threading.RLock()
         self._active = False
@@ -660,6 +663,7 @@ class MouseIsolation:
         self.paused = False
         self._desktop = ""
         self._next_desktop_check = 0.0
+        self._next_hotkey_check = 0.0
         self._pause_error = ""
 
     @property
@@ -758,10 +762,24 @@ class MouseIsolation:
                 pass
             _k32.CancelIoEx(handle, None)       # and this wakes it if the IOCTL itself failed
         thread = self._thread
+        joined = True
         if thread and thread.is_alive() and threading.current_thread() is not thread:
             thread.join(timeout=1.0)
-        with self._lock:
-            self._close_handles()
+            joined = not thread.is_alive()
+        # Only close once the reader is provably out of the handles. It caches
+        # both in locals and blocks in ReadFile / WaitForSingleObject /
+        # GetOverlappedResult on them, so closing under a still-running reader
+        # is a use-after-close: Windows can hand the same HANDLE value to the
+        # next CreateFile or CreateEvent in this process. A reader that has not
+        # come back within a second is stuck in a callback; the driver has
+        # already given the mouse back (isolation off above), and stop_all() at
+        # exit closes what is left.
+        if joined:
+            with self._lock:
+                self._close_handles()
+        else:
+            print("[mouse_isolation_win] reader did not exit in 1 s; "
+                  "leaving its handles open rather than closing them underneath it")
         _unregister_instance(self)
         print(f"[mouse_isolation_win] released ({reason})")
         if self._on_stopped:
@@ -789,7 +807,15 @@ class MouseIsolation:
         try:
             while self._active:
                 # A mouse that never stops moving completes every read at once,
-                # so the desktop is also checked here, not only while parked.
+                # so the hotkey and the desktop are also checked here, not only
+                # while a read is parked. Without this the emergency release is
+                # starved by exactly the case it exists for: the user sweeping
+                # the mouse, every read completing before _wait_read's timeout.
+                if self._hotkey and time.monotonic() >= self._next_hotkey_check:
+                    self._next_hotkey_check = time.monotonic() + HOTKEY_POLL_MS / 1000.0
+                    if _hotkey_down():
+                        reason = "emergency hotkey"
+                        break
                 if self._desktop and time.monotonic() >= self._next_desktop_check:
                     self._next_desktop_check = time.monotonic() + HOTKEY_POLL_MS / 1000.0
                     if not _input_desktop_is_ours(self._desktop):
@@ -818,7 +844,7 @@ class MouseIsolation:
                 if n:
                     self._dispatch(buf, n)
                 else:
-                    # Heartbeat (interface v3): nothing to deliver, the driver
+                    # Heartbeat (interface v3+): nothing to deliver, the driver
                     # wants a fresh read to know this process is alive.
                     self.ticks += 1
         except Exception as exc:
@@ -951,14 +977,20 @@ class MouseIsolation:
         """Scale an absolute packet's 0..65535 position to screen pixels.
 
         Absolute devices report across the primary monitor, or across the
-        virtual desktop when ``MOUSE_VIRTUAL_DESKTOP`` is set.
+        virtual desktop when ``MOUSE_VIRTUAL_DESKTOP`` is set. The virtual
+        desktop's origin is not (0, 0) when a monitor sits left of or above the
+        primary one, so the offset is added back: ``SetCursorPos`` wants screen
+        coordinates, where the primary monitor's top-left is the origin and
+        points on those other monitors are negative.
         """
         if flags & MOUSE_VIRTUAL_DESKTOP:
+            left, top = _u32.GetSystemMetrics(SM_XVIRTUALSCREEN), _u32.GetSystemMetrics(SM_YVIRTUALSCREEN)
             width, height = _u32.GetSystemMetrics(SM_CXVIRTUALSCREEN), _u32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
         else:
+            left, top = 0, 0
             width, height = _u32.GetSystemMetrics(SM_CXSCREEN), _u32.GetSystemMetrics(SM_CYSCREEN)
-        return (x * (width or _ABSOLUTE_RANGE) / _ABSOLUTE_RANGE,
-                y * (height or _ABSOLUTE_RANGE) / _ABSOLUTE_RANGE)
+        return (left + x * (width or _ABSOLUTE_RANGE) / _ABSOLUTE_RANGE,
+                top + y * (height or _ABSOLUTE_RANGE) / _ABSOLUTE_RANGE)
 
     def _absolute_to_delta(self, unit: int, sx: float, sy: float) -> Tuple[int, int]:
         """Convert an absolute pixel position to whole pixels of motion.

@@ -116,11 +116,16 @@ if ($VerifySigned) {
         elseif ($sig.SignerCertificate.Subject -notlike "*$msPublisher*") {
             $bad += "$($f.Name): signed by '$($sig.SignerCertificate.Subject)', not the $msPublisher"
         }
-        # /pa uses the Authenticode policy; a driver catalog also has to satisfy
-        # the kernel policy, which signtool checks with /kp.
+        # /pa is the Authenticode policy. A driver binary and its catalog also
+        # have to satisfy the kernel-mode signing policy, which is a different
+        # and stricter chain: /pa can pass on a file the loader would still
+        # refuse. Both are run here, and the failure names which policy it was,
+        # because "signed" and "loadable" are not the same question.
         if ($f.Extension -eq '.cat' -or $f.Extension -eq '.sys') {
             & $signtool verify /pa /v $f.FullName | Out-Null
-            if ($LASTEXITCODE -ne 0) { $bad += "$($f.Name): signtool verify /pa failed" }
+            if ($LASTEXITCODE -ne 0) { $bad += "$($f.Name): signtool verify /pa (Authenticode policy) failed" }
+            & $signtool verify /kp /v $f.FullName | Out-Null
+            if ($LASTEXITCODE -ne 0) { $bad += "$($f.Name): signtool verify /kp (kernel-mode policy) failed" }
         }
     }
     if ($bad) {

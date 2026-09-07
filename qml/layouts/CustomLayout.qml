@@ -1482,6 +1482,11 @@ Item {
                         }
                         MouseArea {
                             anchors.fill: parent
+                            // The pad lives inside configFlickable, which can steal the
+                            // mouse grab during a vertical drag. Without onCanceled the
+                            // pad never sees its release, so with "Drive the controller"
+                            // on it left the real stick holding its last deflection.
+                            preventStealing: true
                             function _update(mouse, release) {
                                 var nx = release ? 0 : (mouse.x - testPad.width / 2) / testPad.padRadius
                                 var ny = release ? 0 : (mouse.y - testPad.height / 2) / testPad.padRadius
@@ -1496,6 +1501,16 @@ Item {
                             onPressed: function(mouse) { _update(mouse, false) }
                             onPositionChanged: function(mouse) { if (pressed) _update(mouse, false) }
                             onReleased: function(mouse) { _update(mouse, true) }
+                            // A cancelled grab has to centre the output too, and
+                            // _update reads mouse.x/y, so recentre without one.
+                            onCanceled: _recenter()
+                            function _recenter() {
+                                testPad.nx = 0; testPad.ny = 0
+                                if (!controller) return
+                                var res = controller.previewStick(configDialog.targetWidgetId, 0, 0,
+                                                                  configDialog._shapeParamsJson(), testDriveSwitch.checked)
+                                testPad.outX = res[0]; testPad.outY = res[1]; testPad.outMag = res[2]
+                            }
                         }
                     }
                     Column {

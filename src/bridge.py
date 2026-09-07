@@ -124,8 +124,13 @@ except Exception:
     MOUSE_ISOLATION_AVAILABLE = False
     _mouse_isolation = None
 
+# evdev button code -> Qt button, for clicks that land on Nimbus's own window.
+# BTN_SIDE and BTN_EXTRA are here too: without them a side-button click over
+# Nimbus fell through to SendInput and a foreground Raw Input game saw it,
+# which is the leak the relay exists to close.
 _ISO_BUTTON_MAP = {0x110: Qt.MouseButton.LeftButton, 0x111: Qt.MouseButton.RightButton,
-                   0x112: Qt.MouseButton.MiddleButton}
+                   0x112: Qt.MouseButton.MiddleButton, 0x113: Qt.MouseButton.BackButton,
+                   0x114: Qt.MouseButton.ForwardButton}
 
 
 class _IsolationRelay(QObject):
@@ -583,6 +588,11 @@ class ControllerBridge(QObject):
             self._widget_shaping = {}
         self._ema.clear()
         self._last_raw.clear()
+        # Modifiers belong to the layout that defined the buttons. QML recreates
+        # the widget delegates with their toggle visuals reset, so a latched
+        # precision left set here would silently slow every stick in a profile
+        # that has no button to unlatch it.
+        self._modifiers.clear()
 
     def _default_anti_deadzone(self, axis: str) -> float:
         """The output anti-deadzone a widget gets when it sets none.
@@ -688,13 +698,23 @@ class ControllerBridge(QObject):
             if ay != "none":
                 self._set_axis_target(ay, oy)
 
-    def _drive_stick(self, widget_id: str, w: Dict[str, Any], nx: float, ny: float) -> Tuple[float, float]:
+    def _drive_stick(self, widget_id: str, w: Dict[str, Any], nx: float, ny: float,
+                     advance_filter: bool = True) -> Tuple[float, float]:
         """Shape a raw stick vector for a widget and send it to the driver.
 
         Returns the shaped vector in the widget's screen orientation (before
         the y-axis flip and inversion), which is what the UI displays.
+
+        Args:
+            advance_filter: When False the tremor filter's state is reused
+                rather than stepped. A modifier change is not a new pointer
+                sample, so stepping the EMA there would move the stick as well
+                as rescale it.
         """
-        fx, fy = self._filter_tremor(widget_id, float(w.get("tremor_filter", DEFAULT_TREMOR_FILTER)), nx, ny)
+        if advance_filter:
+            fx, fy = self._filter_tremor(widget_id, float(w.get("tremor_filter", DEFAULT_TREMOR_FILTER)), nx, ny)
+        else:
+            fx, fy = self._ema.get(widget_id, (nx, ny))
         ox, oy = shape_vector(fx, fy, gain=self._precision_gain(w), **self._widget_params(w))
         # ny is screen-down positive; controller Y is up positive, so flip,
         # then apply the widget's own inversion on top.
@@ -787,7 +807,12 @@ class ControllerBridge(QObject):
             for widget_id, (nx, ny) in list(self._last_raw.items()):
                 w = self._widget_shaping.get(widget_id)
                 if w is not None:
-                    self._drive_stick(widget_id, w, nx, ny)
+                    # No new pointer sample arrived, so re-shape the filtered
+                    # vector the stick is already holding instead of feeding
+                    # the raw one through the EMA again. Otherwise toggling the
+                    # modifier walks a filtered stick toward its raw position,
+                    # changing where it points and not just how far.
+                    self._drive_stick(widget_id, w, nx, ny, advance_filter=False)
         except Exception:
             pass
 
