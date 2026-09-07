@@ -24,6 +24,9 @@ pad (default)
     G9  button: the pad button bound to an echo marker lands in the console log
     G10 release: nothing is stuck afterwards
     G11 latency: the first pose sample whose yaw moved after the stick went on
+    G12 calibration: yaw against hold time at several magnitudes, and walk
+        against hold time; ``--write-calibration`` writes the table into
+        ``src/spectator/calibrations/<game>.json`` for the primitives
 nimbus
     The real Nimbus app in-process, driving the same environment through its
     widgets, on a throwaway copy of the bundled profile (``--profile <id>``
@@ -37,6 +40,15 @@ nimbus
     N3  release: the bridge reads zero and the pose is stable
     N4  button: a click on the bumper widget produces the echo marker
     N5  left stick: a full drag up moves the player more than 20 units, ceiling sent
+
+    then the Spectator+ v0 primitives through the bridge's runner, planned
+    from the calibration G12 wrote and measured by the game:
+
+    P0  the bridge's runner loads this game's calibration
+    P1  turn right 90 degrees, P2 turn left 45, P3 turn right 10: within
+        15 percent or 5 degrees
+    P4  walk 100 units: within 20 percent or 10 units
+    P5  stop: a long walk cut short releases the stick and the player stops
 
 Run (from the repo root, venv with PySide6 and vgamepad; ViGEmBus installed;
 Steam able to sign in without a prompt)::
@@ -52,6 +64,7 @@ pose and prints it; ``--write-reset-pose`` writes it into the recipe.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import sys
@@ -67,10 +80,14 @@ sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "tests"))
 
 from game_harness import (  # noqa: E402
-    FRAMES_DIR, GameEnv, NimbusActuator, PadActuator, load_recipe, on_qt, pose_error, wrap_deg, write_reset_pose,
+    FRAMES_DIR, GameEnv, NimbusActuator, PadActuator, load_recipe, on_qt, pose_delta, pose_error, wrap_deg,
+    write_reset_pose,
 )
 
 DEFAULT_SWEEP = "0.20,0.26,0.28,0.30,0.40,0.60,0.80,1.00"
+DEFAULT_CAL_MAGS = "0.40,0.60,1.00"
+DEFAULT_CAL_HOLDS = "0.10,0.25,0.50,1.00"
+DEFAULT_WALK_HOLDS = "0.25,0.50,1.00"
 RESULTS: List[Dict[str, Any]] = []
 
 
@@ -99,6 +116,7 @@ def launch_and_ready(env: GameEnv, launch_name: str, ready_name: str) -> bool:
            f"within {env.recipe.get('window_timeout_s')}s")
     if not ok:
         return False
+    env.run_sequence()
     ready = env.wait_ready()
     p = env.pose() if ready else None
     console = env.oracle.kind == "source_console"
@@ -165,6 +183,27 @@ def pad_checks(env: GameEnv, args: argparse.Namespace) -> None:
         check_reset(env, "G2")
     else:
         record("G2 reset", True, "frame_diff oracle: no reset available, skipped")
+
+    # GS walk survey: turn the reset pose to face the longest clear run, so
+    # the walk checks and the walk calibration are not capped by a wall
+    if console and args.survey_walk and env.oracle.reset_pose:
+        base = env.oracle.reset_pose
+        rows = []
+        for yaw in range(0, 360, 45):
+            env.set_reset_pose({"pos": list(base["pos"]), "ang": [0.0, wrap_deg(float(yaw)), 0.0]})
+            env.reset()
+            r = env.step({"ly": 1.0}, 1.0, f"survey_{yaw}", with_frame=False)
+            rows.append((yaw, float(r.get("d_horiz", 0.0))))
+            print(f"    yaw {yaw:>3}: {rows[-1][1]:6.1f} units in 1.0s", flush=True)
+        best = max(rows, key=lambda t: t[1])
+        chosen = {"pos": [round(v, 3) for v in base["pos"]], "ang": [0.0, wrap_deg(float(best[0])), 0.0]}
+        env.set_reset_pose(chosen)
+        env.reset()
+        record("GS walk survey: the reset pose faces the longest clear run", best[1] > 150.0,
+               f"best yaw {best[0]} at {best[1]:.1f} units; " + ", ".join(f"{y}:{d:.0f}" for y, d in rows))
+        if args.write_reset_pose:
+            write_reset_pose(env.recipe, chosen)
+            print(f"[harness] wrote the surveyed reset_pose into {env.recipe['_path']}", flush=True)
     check_idle(env, "G3", "idle", set_noise=True)
     print(f"[harness] frame noise floor {env.noise}; moved if > {env.thresholds()[0]}, still if <= {env.thresholds()[1]}",
           flush=True)
@@ -253,7 +292,7 @@ def pad_checks(env: GameEnv, args: argparse.Namespace) -> None:
     # G9 button
     echo = env.oracle.echo_buttons()
     if not echo:
-        record("G9 button", False, "the recipe binds no echo button")
+        record("G9 button", not console, "no console oracle, skipped" if not console else "the recipe binds no echo button")
     for bid, marker in echo:
         env.front()
         off = env.log_offset()
@@ -291,6 +330,47 @@ def pad_checks(env: GameEnv, args: argparse.Namespace) -> None:
         record("G11 latency: the first pose sample whose yaw moved after the stick went on", first is not None,
                (f"{first * 1000:.0f} ms (a bound: one key press and a log read per sample); " if first else "")
                + f"samples (ms, deg)={samples}")
+
+    # G12 calibration: yaw against hold time at several magnitudes, and walk
+    # against hold time. This is the table a turn or walk primitive is planned
+    # from (src/spectator/calibration.py), so the holds are short as well as
+    # long: games ramp stick input, and one rate would not do.
+    if console:
+        cal_mags = [float(m) for m in args.cal_mags.split(",") if m.strip()]
+        cal_holds = [float(h) for h in args.cal_holds.split(",") if h.strip()]
+        walk_holds = [float(h) for h in args.walk_holds.split(",") if h.strip()]
+        yaw_table: Dict[str, List[List[float]]] = {}
+        monotone = True
+        for m in cal_mags:
+            rows: List[List[float]] = []
+            for h in cal_holds:
+                r = env.step({"rx": m}, h, f"cal_rx_{m:.2f}_{h:.2f}", with_frame=False)
+                env.reset()
+                rows.append([h, round(float(r.get("d_yaw", 0.0)), 3)])
+            yaw_table[f"{m:.2f}"] = rows
+            amounts = [abs(a) for _, a in rows]
+            monotone = monotone and all(b >= a for a, b in zip(amounts, amounts[1:]))
+            print(f"    rx={m:.2f}  " + "  ".join(f"{h:.2f}s: {a:+.1f}" for h, a in rows), flush=True)
+        walk_rows: List[List[float]] = []
+        for h in walk_holds:
+            r = env.step({"ly": 1.0}, h, f"cal_ly_1.00_{h:.2f}", with_frame=False)
+            env.reset()
+            walk_rows.append([h, round(float(r.get("d_horiz", 0.0)), 2)])
+        print("    ly=1.00  " + "  ".join(f"{h:.2f}s: {u:.1f}" for h, u in walk_rows), flush=True)
+        walk_ok = bool(walk_rows) and walk_rows[-1][1] > 20.0 and all(
+            b >= a for (_, a), (_, b) in zip(walk_rows, walk_rows[1:]))
+        record("G12 calibration: yaw and walk grow with hold time at every magnitude", monotone and walk_ok,
+               f"yaw at {list(yaw_table)} for holds {cal_holds}; walk {walk_rows}")
+        env.calibration = {"game": recipe["name"], "when": time.strftime("%Y-%m-%d %H:%M:%S"),
+                           "turn_right_sign": sign, "yaw": yaw_table, "walk": {"1.00": walk_rows}}
+        if args.write_calibration:
+            from src.spectator.calibration import CALIBRATIONS_DIR
+            os.makedirs(CALIBRATIONS_DIR, exist_ok=True)
+            path = os.path.join(CALIBRATIONS_DIR, f"{recipe['name']}.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(env.calibration, fh, indent=4)
+                fh.write("\n")
+            print(f"[harness] wrote {path}", flush=True)
 
 
 # ---- nimbus --------------------------------------------------------------------
@@ -349,7 +429,7 @@ def nimbus_checks(env: GameEnv, act: NimbusActuator, args: argparse.Namespace) -
     # N4 button
     echo = env.oracle.echo_buttons()
     if not echo:
-        record("N4 button", False, "the recipe binds no echo button")
+        record("N4 button", not console, "no console oracle, skipped" if not console else "the recipe binds no echo button")
     for bid, marker in echo:
         if bid not in act.buttons:
             record(f"N4 button: the profile has no widget for button {bid}", False, f"widgets={act.buttons}")
@@ -386,13 +466,79 @@ def nimbus_checks(env: GameEnv, act: NimbusActuator, args: argparse.Namespace) -
     record("N5 left stick: a full drag up moves the player more than 20 units and the bridge sent its ceiling",
            ok, note)
 
+    primitive_checks(env, act, args)
+
+
+def primitive_checks(env: GameEnv, act: NimbusActuator, args: argparse.Namespace) -> None:
+    """Spectator+ v0 primitives through the bridge's runner, measured by the game."""
+    from src.spectator.calibration import CALIBRATIONS_DIR
+    recipe = env.recipe
+    sign = int(recipe.get("turn_right_sign", -1))
+    if env.oracle.kind != "source_console":
+        record("P0 primitives", True, "no console oracle to measure a turn with, skipped")
+        return
+    cal_path = os.path.join(CALIBRATIONS_DIR, f"{recipe['name']}.json")
+    runner = on_qt(lambda: act.bridge.get_spectator())
+    loaded = on_qt(lambda: runner.use_game(recipe["name"]))
+    record("P0 the bridge's Spectator+ runner loads this game's calibration", loaded,
+           cal_path + ("" if loaded else " is missing: run the pad actuator with --write-calibration first"))
+    if not loaded:
+        return
+
+    cases = [
+        ("P1 turn right 90", lambda: runner.turn(90.0), "d_yaw", sign * 90.0),
+        ("P2 turn left 45", lambda: runner.turn(-45.0), "d_yaw", -sign * 45.0),
+        ("P3 turn right 10", lambda: runner.turn(10.0), "d_yaw", sign * 10.0),
+        ("P4 walk 100 units", lambda: runner.walk(100.0), "d_horiz", 100.0),
+    ]
+    for name, call, key, expected in cases:
+        env.front()
+        p0 = env.oracle.pose()
+        plan = on_qt(call)
+        if not plan:
+            record(name, False, "the runner refused the plan (busy, or no calibration row)")
+            continue
+        deadline = time.monotonic() + float(plan["hold"]) + 3.0
+        while on_qt(lambda: runner.busy) and time.monotonic() < deadline:
+            time.sleep(0.03)
+        done = not on_qt(lambda: runner.busy)
+        time.sleep(0.4)
+        p1 = env.oracle.pose()
+        d = pose_delta(p0, p1)
+        env.reset()
+        got = d.get(key)
+        tol = max(5.0, 0.15 * abs(expected)) if key == "d_yaw" else max(10.0, 0.2 * abs(expected))
+        ok = done and got is not None and abs(got - expected) <= tol
+        record(f"{name}: within {tol:.0f} of {expected:+.0f}", ok,
+               (f"got {got:+.1f}" if got is not None else "no pose")
+               + f" with axis {plan['axis_value']:+.2f} held {plan['hold']:.3f}s"
+               + ("" if done else "; the runner never finished"))
+
+    # P5 stop: a long walk cut short releases the stick and the player stops
+    env.front()
+    p0 = env.oracle.pose()
+    plan = on_qt(lambda: runner.walk(400.0))
+    time.sleep(0.3)
+    on_qt(runner.stop)
+    still_busy = on_qt(lambda: runner.busy)
+    sent = act.sent()
+    time.sleep(0.5)
+    p1 = env.oracle.pose()
+    before = pose_delta(p0, p1).get("d_horiz", 0.0)
+    after = env.step({}, 1.0, "primitive_stop_idle", with_frame=False).get("d_horiz", 1e9)
+    env.reset()
+    ok = plan is not None and not still_busy and abs(float(sent.get("left_y", 0.0))) < 1e-6 and after < 1.0
+    record("P5 stop: a walk cut short releases the stick and the player stops", ok,
+           f"moved {before:.1f} units before the stop, {after:.1f} in the next second; sent LY={sent.get('left_y')}")
+
 
 # ---- drivers -------------------------------------------------------------------
 def summary(env: Optional[GameEnv]) -> int:
     failed = [r for r in RESULTS if not r["ok"]]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed", flush=True)
     if env is not None:
-        out = env.write({"checks": RESULTS, "sweep": getattr(env, "sweep_rows", None)})
+        out = env.write({"checks": RESULTS, "sweep": getattr(env, "sweep_rows", None),
+                         "calibration": getattr(env, "calibration", None)})
         print(f"wrote {out}", flush=True)
     return 1 if failed or not RESULTS else 0
 
@@ -459,6 +605,14 @@ def main() -> int:
     ap.add_argument("--keep-game", action="store_true", help="leave the game running at the end")
     ap.add_argument("--write-reset-pose", action="store_true",
                     help="write the first pose read into the recipe when it has none")
+    ap.add_argument("--cal-mags", default=DEFAULT_CAL_MAGS, help="G12: right-stick magnitudes for the hold-time table")
+    ap.add_argument("--cal-holds", default=DEFAULT_CAL_HOLDS, help="G12: hold times for the yaw table")
+    ap.add_argument("--walk-holds", default=DEFAULT_WALK_HOLDS, help="G12: hold times for the walk table")
+    ap.add_argument("--write-calibration", action="store_true",
+                    help="G12: write the table into src/spectator/calibrations/<game>.json")
+    ap.add_argument("--survey-walk", action="store_true",
+                    help="after G2, walk a second in eight directions and turn the reset pose to the clearest one "
+                         "(with --write-reset-pose, into the recipe)")
     ap.add_argument("--skip-top", type=int, default=0)
     ap.add_argument("--no-frames", action="store_true", help="do not save before/after frames")
     ap.add_argument("--frames", default=FRAMES_DIR)

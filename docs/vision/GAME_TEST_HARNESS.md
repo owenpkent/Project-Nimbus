@@ -98,6 +98,7 @@ One JSON file per game in `tests/games/`. A recipe says how to launch the game i
 - `launch_args` is the exact Steam launch line, kept literal so a person can paste it. For a `source_console` recipe the harness checks that `-condebug` and `+exec <cfg_name>` are present.
 - `oracle.type` selects the oracle; `frame_diff` needs no other keys.
 - `reset_pose` is where `reset()` puts the player: `{"pos": [x, y, z], "ang": [pitch, yaw, roll]}`. When it is `null` the first pose read after the game is ready becomes the session's reset pose, and the runner prints it so it can be written into the recipe. A recipe with a fixed pose is a repeatable test; one without is a first run.
+- `ready_sequence` (optional) is the list of waits and button presses that take a game from its title screen into a map, for games with no `+map`: `{"wait": 25}`, `{"press": [1], "hold": 0.2}`, and `{"wait_until_control": {"rx": 1.0}, "interval": 5, "timeout": 150}`, which holds the stick every few seconds until the picture moves against an idle capture (menus and loading screens ignore a stick, the world does not, and it presses nothing in-world). Each step takes an optional `note`. `warmup_s` is the fixed wait the `frame_diff` oracle counts as readiness. The Elden Ring recipe uses all of them.
 
 ### 4.2 The launcher, and the launch-order rule
 
@@ -133,7 +134,7 @@ obs1 = env.step({"rx": 0.6}, hold=1.0)                  # apply, hold, release, 
 env.close()                                             # release, kill the game, restore
 ```
 
-`step` returns the observation after the hold plus the deltas from the observation before it: yaw and pitch (wrapped to plus or minus 180), horizontal distance, vertical distance, and the changed-sample count of the frame difference. The results JSON is a list of those.
+`step` returns the observation after the hold plus the deltas from the observation before it: yaw and pitch, horizontal distance, vertical distance, and the changed-sample count of the frame difference. With a console oracle the pose is also read through the hold, about twenty times a second, and the yaw delta is the sum of the wrapped steps between reads: a full deflection turns past 180 degrees inside a second (480 degrees in one second on Left 4 Dead 2, measured once the harness stopped folding it), so a single before-and-after read gives the wrong angle. The folded value is kept beside it as `d_yaw_wrapped`. The results JSON is a list of those.
 
 Sign conventions, so numbers in the results log read the same way everywhere: `rx` positive is stick right; Source yaw increases turning left, and Left 4 Dead 2's `joy_yawsensitivity` is negative, so stick right should give a negative yaw delta. Pitch is positive looking down in Source. Both are measured, not assumed; the runner's direction checks say what was found.
 
@@ -155,6 +156,7 @@ Sign conventions, so numbers in the results log read the same way everywhere: `r
 | G9 button | the pad button bound to the echo marker: the marker appears in the log within two seconds |
 | G10 release | after everything: one second idle, pose unchanged (nothing is stuck) |
 | G11 latency | `rx` at 1.0 with the pose polled every 60 ms: the first sample whose yaw moved, as a coarse latency bound |
+| G12 calibration | yaw against hold time (0.1, 0.25, 0.5 and 1 s) at 0.40, 0.60 and 1.00, and forward travel against hold time at full left stick; every column grows with the hold. `--write-calibration` writes the table to `src/spectator/calibrations/<game>.json` |
 
 With `--actuator nimbus` the same environment runs with the real app, and the checks are the end-to-end ones:
 
@@ -167,16 +169,27 @@ With `--actuator nimbus` the same environment runs with the real app, and the ch
 | N4 button | a click on the LB widget produces the echo marker in the log |
 | N5 left stick | a full drag up on the left stick moves the player more than 20 units, and the bridge sent its ceiling |
 
+then the Spectator+ primitives (section 4.7) through the bridge's own runner, measured by the game:
+
+| Check | Pass rule |
+|---|---|
+| P0 calibration | the bridge's runner loads `src/spectator/calibrations/<game>.json` |
+| P1, P2, P3 turn | turn right 90, left 45, right 10 degrees: the yaw delta is within 15 percent or 5 degrees, whichever is larger |
+| P4 walk | walk 100 units: the horizontal travel is within 20 percent or 10 units |
+| P5 stop | a 400-unit walk cut short after 0.3 s: the bridge reads zero on the stick and the player stays put for the next second |
+
 Each check prints one line and lands in `tests/probe_frames/harness_<game>_<actuator>.json` with every observation. Frames are saved beside it.
 
-### 4.7 What Spectator+ gets from this
+### 4.7 Spectator+ v0: scripted primitives
 
-Not built yet, but the shape is fixed by the harness:
+Built the same day as the harness, as the first Spectator+ feature a user could touch, with no model behind it. `src/spectator/` holds two modules:
 
-- **The environment** is `GameEnv`. An agent, scripted or learned, calls `observe` and `step`; a test calls the same two. Moving the class from `tests/` into `src/spectator/` is a file move once it has a consumer in the app.
-- **Primitives** are timed actions calibrated by G5 and G8: `turn(degrees)` is `rx` at a chosen magnitude for `degrees / rate` seconds, `walk(units)` is `ly` for `units / speed` seconds. Each primitive's test is "the pose delta is within tolerance", in the same runner. The nonlinearity in the yaw sweep (Source applies acceleration above `joy_lowend`) is why the calibration table has several magnitudes rather than one slope.
-- **Through Nimbus, not around it.** A primitive executed through the `nimbus` actuator goes through the bridge's shaping, so what the user's profile does to the stick is what the primitive gets; that is the copilot model of the concept document (the user directs, the bridge executes), and the N-series is its test.
-- **The oracle** stays the hard part for any game that is not Source. Section 2.1 lists the candidates; the recipe format already carries `oracle.type`.
+- **`calibration.py`.** A game's measured stick response, from G12: for each right-stick magnitude, yaw delta against hold time; for the left stick up, travel against hold time. `hold_for(samples, amount)` interpolates the hold that yields an amount, linearly between samples and along the last segment beyond them. `plan_turn(degrees)` picks the smallest magnitude whose hold fits between 0.2 and 2 s (a small angle gets a slow stick so timing error stays small; a large one gets the fastest), `plan_walk(units)` does the same for travel. The table needs several holds per magnitude because Source ramps stick input above `joy_lowend`: the first tenth of a second turns far less than a tenth of the one-second figure.
+- **`primitives.py`.** `PrimitiveRunner`, a `QObject` that executes a plan as timed steps on a precise `QTimer`, never blocking the UI thread: set the axis, wait the hold, zero it. One primitive at a time; `turn`, `walk` and `press` return the plan or `None`; `stop()` cancels and zeroes everything the plan touched; every plan ends with a release whatever happens; `started` and `finished(name, completed)` signals for a future UI.
+
+The bridge owns the runner through `get_spectator()`, created on first use and bound to `setAxis` and `setButton`, so a primitive's output goes through the active driver interface and its limits. It bypasses the widget shaping on purpose: the shaping is for the user's own hand, and "turn 90 degrees" has to be the same turn whatever curve the user has on their stick. A profile switch and the Ctrl+Alt+F12 stop also cancel a running primitive.
+
+What is not there yet: a way to trigger a primitive from the UI or from voice (the concept document's command palette), a closed loop (the runner cannot read the game, so it trusts the calibration; the harness measures how far that trust goes, section 8), and calibrations for any game but Left 4 Dead 2. The environment stays in `tests/` until the app has a consumer for it.
 
 ---
 
@@ -201,10 +214,16 @@ The pad calibration, unattended, about four minutes including the game start:
 venv\Scripts\python tests\probe_game_harness_windows.py --game left4dead2 --actuator pad
 ```
 
-The end-to-end run with the real app, same environment:
+The end-to-end run with the real app, same environment, including the Spectator+ primitives:
 
 ```
 venv\Scripts\python tests\probe_game_harness_windows.py --game left4dead2 --actuator nimbus
+```
+
+The primitives need the calibration the pad run writes with `--write-calibration` (checked in as `src/spectator/calibrations/left4dead2.json`; rerun it after a change to the game's controller cfg or to the harness's hold timing). A game with no console, launched through its title screen by the recipe's `ready_sequence`, about six minutes:
+
+```
+venv\Scripts\python tests\probe_game_harness_windows.py --game eldenring --actuator pad
 ```
 
 Run them in separate invocations, with the game quit in between (the runner does this), so each session's pad is player one. `--keep-game` leaves the game running for a look; `--sweep 0.2,0.26,0.28,0.3,0.4,0.6,0.8,1.0` and `--hold 1.0` change the yaw sweep; `--write-reset-pose` writes the first pose read into the recipe; `--profile <id>` makes the Nimbus run use an existing profile instead of the throwaway copy of the bundled one. Both need ViGEmBus. Both are safe over TeamViewer: every stimulus is injected, and the game window is left in the foreground only while a step runs. Steam must be able to sign in without a prompt. A pad run takes about two and a half minutes from launch to the game quitting; a Nimbus run about the same.
@@ -215,7 +234,7 @@ Run them in separate invocations, with the game quit in between (the runner does
 
 - **Anti-cheat titles** cannot be launched by this harness under test signing, and their state cannot be read from a console anyway. Elden Ring stays on frame differencing, launched by hand.
 - **The pose is sampled, not streamed.** Each pose read costs a key press and a log read, about 47 ms on the dev machine, so `observe()` is good to about 50 to 100 ms and the latency check is a bound, not a measurement. Fine for tests and for scripted primitives; a learned agent at frame rate would need `cl_showpos` on screen and a reader, or a plugin.
-- **The safe room** limits movement checks to a few metres in some directions; 114 units in a second from the recorded reset pose is fine. If a future check finds a wall, turn the reset pose to face the room's length.
+- **The safe room** has walls within 114 to 140 units in three of eight headings from the reset spot. `--survey-walk` measures all eight and turns the reset pose to the clearest (200 units at yaw 135); a game or map change should rerun it with `--write-reset-pose`.
 - **Frame differencing is not trustworthy in this scene.** The survivor bots walk through the view and the flashlight glare flickers, so a one-second noise floor is regularly exceeded with the camera still (section 8). The verdict is recorded beside the ground truth and never used for a pass on a Source game. A recipe for a game with no console should pick a scene without moving actors, or a longer noise measurement.
 - **The pad's own deadzone is not the game's.** The harness sends exact XInput values, so the sweep measures the game's threshold (0.26 to 0.28 here). A physical pad would add its own.
 - **Where does `GameEnv` live?** In `tests/` until Spectator+ has code in `src/` that imports it.
@@ -239,18 +258,29 @@ Three runs the same afternoon. **Run 1** parsed nothing: `getpos_exact` prints `
 | 0.40 | -13.75 | -13.8 | 7307 | MOVED | moved |
 | 0.60 | -34.38 | -34.4 | 8584 | MOVED | moved |
 | 0.80 | -55.24 | -55.2 | 9213 | MOVED | moved |
-| 1.00 | -122.78 | -122.8 | 10972 | MOVED | moved |
+| 1.00 | -464.78 (run 3 read -122.78, folded past 180) | -464.8 | 10972 | MOVED | moved |
 
 - **Deadzone** between 0.26 and 0.28, where the frame-differencing probe put it on 2026-09-06 and where the XInput constant of 0.265 says it is. At 0.28 the camera turns 1.5 degrees per second: the anti-deadzone floor is above the threshold, but only just, which is the number to remember when a game feels sluggish at the smallest movement.
-- **Rates.** Full deflection turned 116 degrees per second in the control step and 123 in the sweep (120 and 120 in run 2); the spread is Source's joystick acceleration ramp (`joy_accelscale`, `joy_accelmax`) plus sampling. The curve is strongly nonlinear: 0.40 gives 14 degrees per second, 0.60 gives 34, 0.80 gives 55, 1.00 gives 123. A turn primitive has to be calibrated per magnitude, not by one slope.
+- **Rates.** 0.40 gives 14 degrees per second, 0.60 gives 34, 0.80 gives 54, each linear in time. Full deflection is another regime: **481 degrees in one second** (465 in the sweep step), a full circle and a third, because `360controller.cfg` turns on Source's stick acceleration (`joy_accelscale 3`, `joy_accelmax 4`) at the stop and the rate ramps up through the second: 8 degrees in the first tenth, 37 by a quarter second, 124 by half. Runs 2 to 4 reported 116 to 123 for the same step because a single before-and-after read folds anything past 180 degrees back into the range, and the sweep table above carried that folded value until run 5; the harness now reads the pose through the hold (section 4.5) and keeps the folded number beside the real one. A turn primitive has to be calibrated per magnitude and per hold, not by one slope.
 - **Symmetry.** Left at 0.60 turned +34.3 degrees per second against -34.4 to the right (ratio 1.00). **Pitch** at 0.60 up: -21.2 degrees in a second (up is negative pitch in Source, so stick up looks up on this config).
-- **Movement.** Left stick full up moved the player 114 units in a second from the reset pose (152 in run 2 from the pre-spawn pose), on the floor (`d_z` 0).
+- **Movement.** Left stick full up moved the player 114 units in a second from the first reset pose, which turned out to face a wall 114 units away (runs 3 and 4 gave the same 114.1 at every hold). Run 5's walk survey tried eight headings from the same spot (121, 142, 184, 200, 140, 195, 114 and 195 units for yaw 0 to 315) and turned the reset pose to yaw 135, where a second of stick gives 200 units on the floor (`d_z` 0), the survivor's run speed.
 - **Button.** The left bumper landed in the console log 31 ms after the pad update, in both runs.
-- **Latency.** With the stick at 1.00 and the pose polled as fast as the key-and-log loop allows, the first sample (47 ms) still read zero and the second (94 ms) read 2.3 degrees. So the pad-to-game path is under 94 ms and probably close to 47; a finer bound needs a faster oracle.
+- **Latency.** With the stick at 1.00 and the pose polled as fast as the key-and-log loop allows, the first sample (47 ms) still read zero and the second (94 ms) read 2.3 degrees. So the pad-to-game path is under 94 ms and probably close to 47; a finer bound needs a faster oracle. (Run 5 read zero at 47 and 78 ms and 0.8 degrees at 125 ms: at full deflection the ramp starts slowly, so the first visible degree lags the input path.)
 - **Nothing stuck** afterwards: one idle second, pose unchanged.
 - **Frame differencing over-reports in this scene.** At 0.20 and 0.26 the camera did not turn at all and the frame still changed by 2,300 and 4,300 samples, far above the 300 threshold: the survivor bots walk through the view and the flashlight glare flickers, and a one-second noise floor does not cover them. The 2026-09-06 measurement got the right answer with the same method because the bots happened to be quiet. With ground truth beside it, the frame verdict is now recorded but never trusted on its own for a Source game.
 
 What the game taught, beyond the numbers: the spawn pose differs per launch (yaw -89.6 in one run, -46.9 in the next, 90 units apart), so the recipe carries a fixed reset pose rather than taking the first read; and `+sv_cheats 1` before `+map` does carry into the listen server, so `setpos_exact` and `setang` work from the first reset.
+
+**Runs 4 and 5**, the same day, added G12, the calibration table for the primitives. Run 4 (12/13) is where the fold showed: at full deflection the half-second hold read 124 degrees and the one-second hold 91, which cannot both be true unless the second wrapped, and the walk table stopped at 114 units for every hold, a wall. Run 5, **14/14**, with the pose read through the hold and the walk survey (GS) turning the reset pose to face the clear run, wrote `src/spectator/calibrations/left4dead2.json`:
+
+| Hold | `rx` 0.40 | `rx` 0.60 | `rx` 1.00 | `ly` 1.00 (units) |
+|---|---|---|---|---|
+| 0.10 s | -1.2 | -3.1 | -7.7 | |
+| 0.25 s | -3.3 | -8.2 | -36.6 | 54 |
+| 0.50 s | -6.7 | -16.6 | -123.7 | 120 |
+| 1.00 s | -13.6 | -32.9 | -456.5 | 200 |
+
+Below the stop the turn is linear in time at 13.6 and 33 degrees per second. At the stop it is not: a tenth of a second gives 8 degrees, a quarter 37, a half 124 and a second 457, the acceleration ramp. The walk is 200 units per second with about 4 units of coasting after a short hold. The rest of run 5 matched run 3 to a tenth of a degree everywhere below the stop, and this time the frame verdicts agreed with the console at every magnitude, which says how much the earlier disagreement was the bots.
 
 ### 2026-09-07, the same game, Nimbus actuator
 
@@ -266,7 +296,19 @@ What the game taught, beyond the numbers: the spawn pose differs per launch (yaw
 | click on the LB widget | button 5 | | echo in the log after 47 ms |
 | full drag up on the left stick | LY +0.950 | 0.950 | 114 units forward in a second |
 
-The step numbers are consistent with the pad calibration once the drag time is counted: the synthesized press and three moves take 125 ms before the one-second hold starts, so the stick is on for about 1.13 s, and 140 degrees over 1.13 s is 125 degrees per second against the pad's 123 at full deflection; the 1 px drag's 2.7 degrees sits between the pad's 1.5 at 0.28 and 3.6 at 0.30, where 0.289 belongs. That is the aim work's claim (section 14 of the aim document) restated in the game's units: the smallest movement Nimbus can make turns this game's camera at about 2.5 degrees per second, and the largest at about 125. The throwaway profile was removed and `controller_config.json` restored at the end.
+The step numbers are consistent with the pad calibration once the drag time is counted: the synthesized press and three moves take 125 ms before the one-second hold starts, so the stick is on for about 1.13 s, and 140 degrees over 1.13 s is 125 degrees per second against the pad's 123 at full deflection; the 1 px drag's 2.7 degrees sits between the pad's 1.5 at 0.28 and 3.6 at 0.30, where 0.289 belongs. That is the aim work's claim (section 14 of the aim document) restated in the game's units: the smallest movement Nimbus can make turns this game's camera at about 2.5 degrees per second. (The "125 at full drag" this run reported was the folded figure; run 3 below has the real one.) The throwaway profile was removed and `controller_config.json` restored at the end.
+
+**Run 3, 17/17**, after the yaw unwrapping, the surveyed reset pose, and the Spectator+ primitives. The N-series repeated (a 0.95 drag now reads 406 degrees in the step, the 1 px drag 2.4, the left stick 200 units on the clear run, the button 62 ms), and then the primitives ran through `ControllerBridge.get_spectator()` with the calibration from run 5, each measured by the console:
+
+| Primitive | Plan | Result |
+|---|---|---|
+| turn right 90 | `rx` +1.00 for 0.403 s | -86.4 degrees (tolerance 14) |
+| turn left 45 | `rx` -0.60 for 1.370 s | +45.7 degrees (tolerance 7) |
+| turn right 10 | `rx` +0.40 for 0.741 s | -9.9 degrees (tolerance 5) |
+| walk 100 units | `y` +1.00 for 0.425 s | 105.6 units (tolerance 20) |
+| stop a 400-unit walk after 0.3 s | | 72.7 units before the stop, 0.0 in the next second, stick at zero |
+
+The planner's choices are what section 4.7 intends: small angles go to the slow stick and long holds, the 90 goes to the stop where timing matters most, and that is where the error is largest (4 degrees short on a 0.4 s hold, about 10 ms of ramp). A closed loop would fix it; for v0 the tolerance is the honest number.
 
 ---
 

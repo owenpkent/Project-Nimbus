@@ -944,6 +944,56 @@ class GameEnv:
     def refresh_rect(self) -> None:
         self.x, self.y, self.w, self.h = client_rect_on_screen(self.hwnd)
 
+    def run_sequence(self) -> None:
+        """Play the recipe's ``ready_sequence`` after the window appears: the
+        button presses that take a game from its title screen into a map.
+
+        Each step is ``{"wait": seconds}``, ``{"press": [button ids], "hold":
+        seconds}``, or ``{"wait_until_control": {action}, "hold": s,
+        "interval": s, "timeout": s}``, which holds the action (a right stick,
+        say) every ``interval`` seconds until the picture moves against an
+        idle capture: the world is loaded and the stick steers it. Menus and
+        loading screens ignore a stick, so this is the readiness test for a
+        game with no console, and it presses nothing in-world. Steps carry an
+        optional ``note``. Games with a console oracle usually need none of
+        this, because ``+map`` does the work.
+        """
+        for step in self.recipe.get("ready_sequence", []) or []:
+            note = f" ({step['note']})" if step.get("note") else ""
+            if step.get("wait"):
+                print(f"[harness] sequence: wait {float(step['wait']):.0f}s{note}", flush=True)
+                time.sleep(float(step["wait"]))
+            if step.get("press"):
+                print(f"[harness] sequence: press {list(step['press'])}{note}", flush=True)
+                self.front()
+                self.actuator.apply({"buttons": [int(b) for b in step["press"]]})
+                time.sleep(float(step.get("hold", 0.15)))
+                self.actuator.release()
+                time.sleep(0.25)
+            if step.get("wait_until_control"):
+                action = dict(step["wait_until_control"])
+                hold = float(step.get("hold", 0.6))
+                interval = float(step.get("interval", 5.0))
+                deadline = time.monotonic() + float(step.get("timeout", 150.0))
+                print(f"[harness] sequence: wait until {action} moves the picture{note}", flush=True)
+                while time.monotonic() < deadline:
+                    self.front()
+                    a = self.grab()
+                    time.sleep(hold)
+                    b = self.grab()
+                    idle = frame_diff(a, b, skip_top=self.skip_top)
+                    self.actuator.apply(action)
+                    time.sleep(hold)
+                    c = self.grab()
+                    self.actuator.release()
+                    moved = frame_diff(b, c, skip_top=self.skip_top)
+                    if moved > max(3 * idle, 150):
+                        print(f"[harness] sequence: the picture moved ({moved} against idle {idle})", flush=True)
+                        break
+                    time.sleep(interval)
+                else:
+                    print("[harness] sequence: the stick never moved the picture before the timeout", flush=True)
+
     def wait_ready(self, live_min: int = 50, stable_s: float = 1.5) -> bool:
         """Wait until the game is playable: the oracle answers, the picture is
         live, and the pose has stopped moving.
@@ -971,7 +1021,12 @@ class GameEnv:
                 p0 = self.oracle.pose()
                 time.sleep(stable_s)
                 p1 = self.oracle.pose()
-                moved = pose_error(p0, p1)[0] if (p0 and p1) else math.inf
+                if p0 and p1:
+                    moved = pose_error(p0, p1)[0]
+                else:
+                    # a console that stopped answering is not ready; an
+                    # oracle with no pose at all has nothing to hold still
+                    moved = math.inf if self.oracle.kind == "source_console" else 0.0
                 if live > live_min and moved < 1.0:
                     self.ready_at = time.time()
                     print(f"[harness] ready after {self.ready_at - self.launched_at:.0f}s "
@@ -1051,16 +1106,40 @@ class GameEnv:
         t0 = time.monotonic()
         self.actuator.apply(action)
         t_applied = time.monotonic() - t0
-        time.sleep(hold)
+        # Read the pose through the hold and sum the wrapped steps. A full
+        # deflection turns past 180 degrees inside a second (measured: 480
+        # degrees in one second on Left 4 Dead 2), and a single before-and-
+        # after read folds that back into the wrong angle. Each read costs
+        # about 50 ms, so the per-sample step stays far below 180.
+        track = p0 is not None and self.oracle.kind == "source_console"
+        total_yaw = 0.0
+        last_yaw = p0["ang"][1] if p0 else 0.0
+        samples = 0
+        if track:
+            while time.monotonic() - t0 < hold - 0.06:
+                p = self.oracle.pose(timeout=0.3, tries=1)
+                if p:
+                    total_yaw += wrap_deg(p["ang"][1] - last_yaw)
+                    last_yaw = p["ang"][1]
+                    samples += 1
+        remaining = hold - (time.monotonic() - t0)
+        if remaining > 0:
+            time.sleep(remaining)
         b = self.grab() if with_frame else None
         sent = self.actuator.sent()
         self.actuator.release()
         time.sleep(settle)
         p1 = self.oracle.pose()
         changed = frame_diff(a, b, skip_top=self.skip_top) if with_frame else None
+        deltas = pose_delta(p0, p1)
+        if track and p1:
+            total_yaw += wrap_deg(p1["ang"][1] - last_yaw)
+            deltas["d_yaw_wrapped"] = deltas["d_yaw"]
+            deltas["d_yaw"] = total_yaw
+            deltas["yaw_samples"] = samples
         rec: Dict[str, Any] = {"label": label, "action": action, "hold": hold, "apply_s": round(t_applied, 3),
                                "sent": sent, "pose_before": p0, "pose_after": p1, "changed": changed,
-                               "log_offset": off, **pose_delta(p0, p1)}
+                               "log_offset": off, **deltas}
         if with_frame and self.save_frames:
             safe = re.sub(r"[^A-Za-z0-9_]+", "_", label)
             save_frame(a, os.path.join(self.frames_dir, f"harness_{self.tag}_{safe}_before.png"))
