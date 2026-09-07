@@ -74,6 +74,7 @@ These games have been tested and confirmed working with Project Nimbus.
 | **Terraria** | ClipCursor | XNA/MonoGame engine. Great accessibility with controller support. |
 | **The Elder Scrolls V: Skyrim** | ClipCursor | Set to windowed mode in launcher. Full controller support via ViGEm/vJoy. |
 | **Carrier Command 2** | Controller Mode | Measured on Windows 2026-09-05 (v1.5.18): the `WH_MOUSE_LL` hook stops in-game mouse-look completely (11,945 changed frame samples unhooked, 25 hooked, noise floor 50), so it is not a Raw Input game. Its first-person view does not respond to the gamepad right stick, so drive the carrier through its screens with the mouse rather than expecting stick camera control. |
+| **Left 4 Dead 2** | Controller Mode | Source engine. Measured on Windows 2026-09-06 (windowed, `+exec 360controller`): the right stick turns the camera through ViGEm, and the game's own inner deadzone sits at the XInput constant (still at 0.26, moving at 0.28), which Nimbus's default anti-deadzone clears (a 1 px drag on the aim stick moved the camera). **Start Nimbus before the game**: Source decides at launch whether an Xbox controller is present and never sees one that appears later. Raw Input mouse-look stays on unless `m_rawinput 0`; use the stick for the camera. |
 
 ## Likely Compatible Games
 
@@ -133,6 +134,8 @@ These games use Raw Input exclusively. External cursor release has no effect. Us
 2. **Use Game Focus Mode** (View → Game Focus Mode) alongside borderless for best results
 3. **Lower the cursor release interval** (16–30ms) if the game keeps re-locking your cursor
 4. **Use ViGEm Xbox profile** for games with native XInput support (most modern games)
+5. **Start Nimbus before the game.** Some engines (Source, measured on Left 4 Dead 2) decide at launch whether an Xbox controller is present and never see one that appears later. If the stick does nothing, quit the game, make sure Nimbus is running, and launch again.
+6. **Calibrate the anti-deadzone per game.** Edit Layout, double-click the aim stick, turn on "Drive the controller" on the test pad, and raise or lower Anti-DZ until the smallest nudge moves the camera. The default matches the Xbox constants most games use.
 
 ### Reporting New Games
 If you test a game that works (or doesn't), please open an issue on our GitHub repository with:

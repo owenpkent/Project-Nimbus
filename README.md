@@ -39,7 +39,8 @@ Users build their own controller layout by dragging, dropping, and resizing widg
 
 ### Core Functionality
 - **Modular Layout Builder**: Drag-and-drop canvas to place joysticks, buttons, sliders, D-pads, and steering wheels anywhere
-- **Dual Virtual Joysticks**: Independent axis mapping with FPS-style delta tracking and tremor filtering for wheelchair joysticks
+- **Dual Virtual Joysticks**: Independent axis mapping with FPS-style delta tracking and tremor filtering for wheelchair joysticks. Per-stick travel, an output anti-deadzone that lifts the smallest movement past the game's own deadzone, a precision modifier button, and a live test pad for calibrating against a running game (see [Aim Assistance](docs/vision/AIM_ASSISTANCE.md)).
+- **What Nimbus will not do**: it reshapes input the user produces and never originates aim. No screen reading, no target detection, no synthetic stick motion the user did not command. The reasoning is in [Aim Assistance, section 10](docs/vision/AIM_ASSISTANCE.md#10-the-line-we-do-not-cross).
 - **Trigger/Slider Controls**: Horizontal and vertical sliders with 3 snap modes (hold, snap-to-zero, spring-to-center)
 - **Button Support**: Up to 128 configurable buttons with toggle/momentary modes, color and shape options
 - **Macro Joystick Mode**: Convert any joystick into a macro pad — map directions to buttons, axes, or turbo actions

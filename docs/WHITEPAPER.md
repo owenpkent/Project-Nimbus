@@ -101,12 +101,14 @@ A user with limited grip strength cannot hold a mouse button down for the durati
 
 ### 4.3 Deadzone
 
-Two deadzones are applied per axis:
+Two deadzones are applied to the stick vector's magnitude, so the dead region is a circle and diagonals respond like cardinals:
 
 - **Centre deadzone** — a circular region around the origin in which output is forced to zero. This eliminates tremor, switch chatter, and the unintentional micro-movements typical of head- and eye-tracking systems.
 - **Extremity deadzone** — a scaling factor that reduces the maximum reachable output. This prevents over-travel for users who cannot consistently *avoid* the rim of a joystick widget, and is the symmetric counterpart of the centre deadzone.
 
 Both deadzones are configured as percentages (0–100 %) and stored per widget in the profile JSON.
+
+A third control works on the other side of the driver. Most games discard stick input below an inner deadzone of their own (24 % and 26.5 % for the documented XInput constants), which would swallow the first quarter of the widget's travel. The **output anti-deadzone** lifts the smallest non-zero output to that floor, so the smallest movement the user can make is the smallest movement the game will accept, and the game's own aim assistance, which engages only above its deadzone, sees the input at all. It defaults to the XInput constants when the output is an Xbox controller and is calibrated per widget against a running game.
 
 ### 4.4 Sensitivity Curve
 
@@ -118,7 +120,7 @@ exponent = sensitivity_to_exponent(sensitivity)
 output  = sign(input) · |input| ^ exponent
 ```
 
-A sensitivity of 50 % yields an exponent of 1.0 (linear). Values below 50 % flatten the curve near the centre, providing fine control for small movements at the cost of speed at the rim. Values above 50 % steepen the curve, giving rapid response near centre — desirable for combat games or rover yaw control, but unsuitable for sustained precision work like a UAV gimbal. The same formula is implemented in two places — `config.py:apply_joystick_dialog_curve()` for Python-side processing and `_applyCurve()` in `DraggableWidget.qml` for live preview — and the dialog draws the curve in real time as the user adjusts it.
+A sensitivity of 50 % yields an exponent of 1.0 (linear). Values below 50 % flatten the curve near the centre, providing fine control for small movements at the cost of speed at the rim. Values above 50 % steepen the curve, giving rapid response near centre — desirable for combat games or rover yaw control, but unsuitable for sustained precision work like a UAV gimbal. The formula is implemented once, in `config.py` (`shape_magnitude`), and applied by the bridge; the dialog's live preview asks the bridge for the curve's points, so what is drawn is what the driver receives.
 
 ### 4.5 Smoothing
 
