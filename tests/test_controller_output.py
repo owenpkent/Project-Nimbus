@@ -52,6 +52,19 @@ class ControllerOutputTests(unittest.TestCase):
         self.assertEqual(self.output.mode, "vigem")
         self.assertFalse(self.output.connected)
 
+    def test_game_mode_backend_creation_does_not_select_output(self):
+        self.config.get_layout_type.return_value = "flight_sim"
+        self.output.initialize()
+        self.assertIs(self.output.ensure_vigem(), self.vigem_factory.return_value)
+        self.output.ensure_vigem()
+        self.vigem_factory.assert_called_once_with(self.config)
+        self.assertEqual(self.output.mode, "vjoy")
+
+    def test_game_mode_backend_respects_unavailability(self):
+        self.output.vigem_available = False
+        self.assertIsNone(self.output.ensure_vigem())
+        self.vigem_factory.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

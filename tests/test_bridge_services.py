@@ -2,6 +2,7 @@
 import os
 import sys
 import types
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -40,6 +41,7 @@ class FakeCloud(QObject):
     userChanged = Signal(str)
     entitlementChanged = Signal(str)
     syncCompleted = Signal(bool)
+    profileUpdated = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -80,6 +82,7 @@ class BridgeServicesTests(unittest.TestCase):
         self.config.get_current_profile.return_value = "test"
         self.config.get_current_profile_data.return_value = {"custom_layout": {"widgets": []}}
         self.config.get_available_profiles.return_value = []
+        self.config.is_builtin_profile.return_value = False
         self.services = types.SimpleNamespace(
             cloud=FakeCloud(), updater=FakeUpdater(),
             telemetry=types.SimpleNamespace(analytics_enabled=False, crash_reports_enabled=False))
@@ -181,8 +184,7 @@ ApplicationWindow {
         self.services.shutdown = Mock()
         self.services.telemetry.track_session_start = Mock()
         engine = qt_qml_app.QQmlApplicationEngine()
-        with patch.object(qt_qml_app, "QApplication", return_value=self.app), \
-                patch.object(qt_qml_app, "ControllerConfig", return_value=self.config), \
+        with patch.object(qt_qml_app, "ControllerConfig", return_value=self.config), \
                 patch.object(qt_qml_app, "ApplicationServices", return_value=self.services), \
                 patch.object(qt_qml_app, "ControllerBridge", return_value=self.bridge) as factory, \
                 patch.object(qt_qml_app, "QQmlApplicationEngine", return_value=engine), \
@@ -221,6 +223,65 @@ ApplicationWindow {
         self.assertEqual(notifications, [True])
         self.assertEqual(self.config.save_profile_as.call_args.args[0], "safe_name")
         self.assertIn("existing", self.bridge._widget_shaping)
+
+    def test_reset_updates_real_canvas_before_its_next_save(self):
+        from src.config import ControllerConfig
+        from src.profile_repository import ProfileRepository
+        with tempfile.TemporaryDirectory() as directory:
+            root_dir = Path(directory)
+            bundled = root_dir / "bundled"
+            bundled.mkdir()
+            defaults = ProfileRepository(bundled, root_dir / "unused")
+            defaults.save("adaptive_platform_2", {"name": "Default", "layout_type": "custom",
+                "custom_layout": {"widgets": [{"id": "stock", "type": "button", "button_id": 1}]}})
+            with patch.object(ControllerConfig, "_get_user_data_dir", return_value=root_dir / "data"), \
+                    patch.object(ControllerConfig, "_get_bundled_profiles_dir", return_value=bundled):
+                config = ControllerConfig(str(root_dir / "settings.json"))
+            config.save_custom_layout([{"id": "edited", "type": "button", "button_id": 2}])
+            output = ControllerOutput(config, Mock(return_value=Mock(is_connected=True)),
+                                       Mock(return_value=Mock(is_connected=True)), True)
+            bridge = ControllerBridge(config, output=output)
+            engine = QQmlEngine()
+            engine.rootContext().setContextProperty("controller", bridge)
+            component = QQmlComponent(engine)
+            component.setData(b'import QtQuick; import "layouts"; Item { width: 1024; height: 600; CustomLayout { anchors.fill: parent } }',
+                              QUrl.fromLocalFile(str(Path(__file__).resolve().parents[1] / "qml" / "Main.qml")))
+            window = component.create()
+            self.assertIsNotNone(window, component.errors())
+            layout = window.findChild(QObject, "customLayout")
+            self.assertTrue(bridge.resetProfile("adaptive_platform_2"))
+            self.assertEqual([widget["id"] for widget in layout.property("widgetModel").toVariant()], ["stock"])
+            QMetaObject.invokeMethod(layout, "_saveLayout", Qt.ConnectionType.DirectConnection)
+            self.assertEqual(config.get_current_profile_data()["custom_layout"]["widgets"][0]["id"], "stock")
+            self.assertEqual(list(bridge._widget_shaping), ["stock"])
+            bridge._smooth_timer.stop()
+
+    def test_remote_profile_update_refreshes_active_profile(self):
+        notifications = []
+        self.bridge.profileChanged.connect(notifications.append)
+        self.services.cloud.profileUpdated.emit("test")
+        self.config.switch_profile.assert_called_once_with("test")
+        self.assertEqual(notifications, ["test"])
+
+    def test_full_game_mode_cannot_bypass_injected_factory(self):
+        from src import bridge as bridge_module
+        self.output.vigem = None
+        self.output.use_vigem = False
+        factory = self.output._vigem_factory
+        factory.reset_mock()
+        with patch.multiple(bridge_module, WINDOW_UTILS_AVAILABLE=False, BORDERLESS_AVAILABLE=False,
+                            MOUSE_HIDER_AVAILABLE=False, MOUSE_ISOLATION_AVAILABLE=False), \
+                patch.object(bridge_module, "ViGEmInterface") as global_factory:
+            self.bridge.startFullGameMode(0, 30)
+            factory.assert_called_once_with(self.config)
+            global_factory.assert_not_called()
+            self.assertFalse(self.output.use_vigem)
+            self.output.vigem = None
+            self.output.vigem_available = False
+            factory.reset_mock()
+            self.bridge.startFullGameMode(0, 30)
+            factory.assert_not_called()
+            global_factory.assert_not_called()
 
 
 if __name__ == "__main__":

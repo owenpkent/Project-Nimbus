@@ -119,6 +119,8 @@ class CloudClient(QObject):
         Emitted with the user's display name or email when auth state changes.
     syncCompleted(bool)
         Emitted after a profile sync attempt.  ``True`` = success.
+    profileUpdated(str)
+        Emitted after a remote profile is persisted, including partial syncs.
     entitlementChanged(str)
         Emitted when the user's tier changes (e.g. ``"free"``, ``"nimbus_plus"``).
 
@@ -132,6 +134,7 @@ class CloudClient(QObject):
     authStateChanged = Signal(bool)
     userChanged = Signal(str)
     syncCompleted = Signal(bool)
+    profileUpdated = Signal(str)
     entitlementChanged = Signal(str)
 
     def __init__(self, config: Any, parent: Optional[QObject] = None) -> None:
@@ -754,9 +757,10 @@ class CloudClient(QObject):
         """
         repository = self._config.profiles
         if not repository.directory.exists():
-            return
+            raise OSError("Profile directory is unavailable")
 
         remote_by_id = {p["profile_id"]: p for p in remote_profiles}
+        uploads_succeeded = True
 
         # Pull newer remote profiles
         for pid, rp in remote_by_id.items():
@@ -771,18 +775,20 @@ class CloudClient(QObject):
                     # Remote is newer — pull
                     if not repository.save(pid, rp["data"]):
                         raise ValueError("Unable to save remote profile")
+                    self.profileUpdated.emit(pid)
                     logger.debug("Pulled profile %s (remote newer).", pid)
                 elif local_mtime > remote_updated:
                     # Local is newer — push
                     local_data = repository.load(pid)
                     if local_data is None:
                         raise ValueError("Unable to load local profile")
-                    self.upsert_profile(pid, local_data)
+                    uploads_succeeded = self.upsert_profile(pid, local_data) and uploads_succeeded
                     logger.debug("Pushed profile %s (local newer).", pid)
             else:
                 # No local copy — pull
                 if not repository.save(pid, rp["data"]):
                     raise ValueError("Unable to save remote profile")
+                self.profileUpdated.emit(pid)
                 logger.debug("Pulled new profile %s from cloud.", pid)
 
         # Push local-only profiles
@@ -792,5 +798,7 @@ class CloudClient(QObject):
                 local_data = repository.load(pid)
                 if local_data is None:
                     raise ValueError("Unable to load local profile")
-                self.upsert_profile(pid, local_data)
+                uploads_succeeded = self.upsert_profile(pid, local_data) and uploads_succeeded
                 logger.debug("Pushed local-only profile %s to cloud.", pid)
+        if not uploads_succeeded:
+            raise RuntimeError("One or more profile uploads failed")

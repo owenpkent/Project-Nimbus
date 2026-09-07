@@ -220,6 +220,7 @@ class ControllerBridge(QObject):
             services.cloud.userChanged.connect(self._notify_account)
             services.cloud.entitlementChanged.connect(self._notify_account)
             services.cloud.syncCompleted.connect(self._on_sync_completed)
+            services.cloud.profileUpdated.connect(self._on_remote_profile_updated)
             services.updater.updateAvailable.connect(self.updateAvailable)
             services.updater.forceUpdateRequired.connect(self.forceUpdateRequired)
             services.updater.noUpdateAvailable.connect(self.noUpdateAvailable)
@@ -1054,7 +1055,7 @@ class ControllerBridge(QObject):
     @Slot(result=bool)
     def isVigemAvailable(self) -> bool:  # noqa: N802
         """Check if ViGEm (vgamepad) is available on this system."""
-        return VIGEM_AVAILABLE
+        return self._output.vigem_available
 
     @Slot(str)
     def setOutputMode(self, mode: str) -> None:  # noqa: N802
@@ -1274,11 +1275,7 @@ class ControllerBridge(QObject):
         """Switch to a different profile."""
         success = self._config.switch_profile(profile_id)
         if success:
-            self._reload_widget_shaping()
-            self.profileChanged.emit(profile_id)
-            self.layoutTypeChanged.emit(self._config.get_layout_type())
-            self._buttons_version += 1
-            self.buttonsVersionChanged.emit(self._buttons_version)
+            self._refresh_active_profile()
             # Track recently used (keep last 5, most-recent first, no duplicates)
             if profile_id in self._recent_profiles:
                 self._recent_profiles.remove(profile_id)
@@ -1288,6 +1285,13 @@ class ControllerBridge(QObject):
             self._config.save_config()
             self.recentProfilesChanged.emit()
         return success
+
+    def _refresh_active_profile(self) -> None:
+        self._reload_widget_shaping()
+        self.profileChanged.emit(self._config.get_current_profile())
+        self.layoutTypeChanged.emit(self._config.get_layout_type())
+        self._buttons_version += 1
+        self.buttonsVersionChanged.emit(self._buttons_version)
 
     @Slot(result="QVariantList")
     def getRecentProfiles(self) -> list:  # noqa: N802
@@ -1325,10 +1329,7 @@ class ControllerBridge(QObject):
         """Reset a profile to its default settings."""
         success = self._config.reset_profile(profile_id)
         if success and profile_id == self._config.get_current_profile():
-            # Refresh UI if we reset the current profile
-            self._reload_widget_shaping()
-            self._buttons_version += 1
-            self.buttonsVersionChanged.emit(self._buttons_version)
+            self._refresh_active_profile()
         return success
 
     @Slot(str, str, result=str)
@@ -1350,8 +1351,11 @@ class ControllerBridge(QObject):
     @Slot(str, result=bool)
     def deleteProfile(self, profile_id: str) -> bool:  # noqa: N802
         """Delete a user-created profile."""
+        previous = self._config.get_current_profile()
         success = self._config.delete_profile(profile_id)
         if success:
+            if previous != self._config.get_current_profile():
+                self._refresh_active_profile()
             self.profilesListChanged.emit()
         return success
 
@@ -1875,13 +1879,12 @@ class ControllerBridge(QObject):
         if self._vigem and self._vigem.gamepad:
             gamepad = self._vigem.gamepad
             print("[bridge] Full Game Mode: using existing ViGEm gamepad")
-        elif VIGEM_AVAILABLE:
+        elif self._output.vigem_available:
             # Create a ViGEm gamepad on demand for Game Mode
             try:
                 print("[bridge] Full Game Mode: profile doesn't use ViGEm, creating one for Game Mode...")
-                if self._vigem is None:
-                    self._vigem = ViGEmInterface(self._config)
-                if self._vigem.is_connected and self._vigem.gamepad:
+                self._output.ensure_vigem()
+                if self._vigem and self._vigem.is_connected and self._vigem.gamepad:
                     gamepad = self._vigem.gamepad
                     print("[bridge] Full Game Mode: on-demand ViGEm gamepad created!")
                 else:
@@ -2207,7 +2210,7 @@ class ControllerBridge(QObject):
         """Return diagnostic info about Game Mode readiness for the UI."""
         import sys as _sys
         result = {
-            "vigem_package": VIGEM_AVAILABLE,
+            "vigem_package": self._output.vigem_available,
             "vigem_gamepad": bool(self._vigem and self._vigem.gamepad),
             "vigem_connected": bool(self._vigem and self._vigem.is_connected),
             "mouse_hider": MOUSE_HIDER_AVAILABLE,
@@ -2250,6 +2253,13 @@ class ControllerBridge(QObject):
         if success:
             self.profilesListChanged.emit()
         self.syncCompleted.emit(success)
+
+    @Slot(str)
+    def _on_remote_profile_updated(self, profile_id: str) -> None:
+        if profile_id == self._config.get_current_profile():
+            if self._config.switch_profile(profile_id):
+                self._refresh_active_profile()
+        self.profilesListChanged.emit()
 
     @Property(bool, notify=accountStateChanged)
     def accountAuthenticated(self) -> bool:

@@ -2,7 +2,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from types import SimpleNamespace, MethodType
 from unittest.mock import Mock, patch
 
 from src.profile_repository import ProfileRepository
@@ -87,12 +87,26 @@ class ProfileRepositoryTests(unittest.TestCase):
     def test_cloud_merge_uses_repository_and_rejects_remote_traversal(self):
         from src.cloud_client import CloudClient
         client = SimpleNamespace(_config=SimpleNamespace(profiles=self.repository),
-                                 upsert_profile=Mock(return_value=True))
+                                 upsert_profile=Mock(return_value=True), profileUpdated=Mock())
         CloudClient._merge_profiles(client, [{"profile_id": "remote", "data": {"name": "Remote"}}])
         self.assertEqual(self.repository.load("remote"), {"name": "Remote"})
         with self.assertRaises(ValueError):
             CloudClient._merge_profiles(client, [{"profile_id": "../escape", "data": {}}])
         self.assertFalse((self.root / "escape.json").exists())
+
+    def test_failed_upload_reports_failed_sync(self):
+        from src.cloud_client import CloudClient
+        self.repository.save("local", {"name": "Local"})
+        client = SimpleNamespace(is_authenticated=True, is_premium=True,
+            _user={"id": "test-only"}, _config=SimpleNamespace(profiles=self.repository),
+            _auth_headers=lambda: {}, upsert_profile=Mock(return_value=False),
+            syncCompleted=Mock(), profileUpdated=Mock())
+        client._merge_profiles = MethodType(CloudClient._merge_profiles, client)
+        response = Mock(status_code=200)
+        response.json.return_value = []
+        with patch("httpx.get", return_value=response):
+            self.assertFalse(CloudClient.sync_profiles(client))
+        client.syncCompleted.emit.assert_called_once_with(False)
 
 
 if __name__ == "__main__":

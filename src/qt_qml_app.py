@@ -105,7 +105,7 @@ def main() -> int:
         The Qt event loop exit code (``0`` on clean shutdown, non-zero on
         QML load failure).
     """
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("Nimbus Adaptive Controller")
 
     # Resolve project root
@@ -127,20 +127,16 @@ def main() -> int:
         splash.showMessage("  Initializing controllers...", Qt.AlignBottom | Qt.AlignLeft, QColor(120, 120, 120))
         app.processEvents()
     services = ApplicationServices(config, app)
-    bridge = ControllerBridge(config, app, services=services)
-
-    if splash:
-        splash.showMessage("  Loading interface...", Qt.AlignBottom | Qt.AlignLeft, QColor(120, 120, 120))
-        app.processEvents()
-
-    engine = QQmlApplicationEngine()
-    # Expose bridge, config, and new services to QML
-    engine.rootContext().setContextProperty("controller", bridge)
-    engine.rootContext().setContextProperty("config", config)
-
-    # Load QML
-    main_qml = qml_path()
     try:
+        bridge = ControllerBridge(config, app, services=services)
+        if splash:
+            splash.showMessage("  Loading interface...", Qt.AlignBottom | Qt.AlignLeft, QColor(120, 120, 120))
+            app.processEvents()
+
+        engine = QQmlApplicationEngine()
+        engine.rootContext().setContextProperty("controller", bridge)
+        engine.rootContext().setContextProperty("config", config)
+        main_qml = qml_path()
         engine.load(QUrl.fromLocalFile(str(main_qml)))
         if splash:
             splash.close()
@@ -152,6 +148,8 @@ def main() -> int:
         return app.exec()
     finally:
         services.shutdown()
+        if splash:
+            splash.close()
 
 
 if __name__ == "__main__":

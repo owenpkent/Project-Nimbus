@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
 /*
@@ -19,10 +19,18 @@ Dialog {
     id: privacyDialog
     title: "Privacy & Telemetry"
     modal: true
-    width: 480
-    height: contentCol.implicitHeight + 80
+    width: Math.min(480, parent ? parent.width - 32 : 480)
+    height: Math.min(contentCol.implicitHeight + 80, parent ? parent.height - 32 : 600)
     anchors.centerIn: parent
     padding: 24
+
+    header: Label {
+        text: privacyDialog.title
+        color: "#dddddd"
+        font.pixelSize: 16
+        padding: 16
+        background: Rectangle { color: "#252525" }
+    }
 
     background: Rectangle {
         color: "#1a1a1a"
@@ -31,9 +39,16 @@ Dialog {
         radius: 10
     }
 
+    contentItem: Flickable {
+        id: privacyScroll
+        contentHeight: contentCol.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar {}
+
     ColumnLayout {
         id: contentCol
-        anchors.fill: parent
+        width: privacyScroll.width
         spacing: 16
 
         // ---- Header ----
@@ -243,5 +258,6 @@ Dialog {
                 font.pixelSize: 13; horizontalAlignment: Text.AlignHCenter
             }
         }
+    }
     }
 }

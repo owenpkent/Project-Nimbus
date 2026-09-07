@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
 /*
@@ -20,10 +20,18 @@ Dialog {
     id: accountDialog
     title: controller && controller.accountAuthenticated ? "Account" : "Sign In"
     modal: true
-    width: 420
-    height: contentColumn.implicitHeight + 80
+    width: Math.min(420, parent ? parent.width - 32 : 420)
+    height: Math.min(contentColumn.implicitHeight + 80, parent ? parent.height - 32 : 600)
     anchors.centerIn: parent
     padding: 24
+
+    header: Label {
+        text: accountDialog.title
+        color: "#dddddd"
+        font.pixelSize: 16
+        padding: 16
+        background: Rectangle { color: "#252525" }
+    }
 
     background: Rectangle {
         color: "#1a1a1a"
@@ -37,9 +45,16 @@ Dialog {
     property bool isLoading: false
     property string errorMessage: ""
 
+    contentItem: Flickable {
+        id: accountScroll
+        contentHeight: contentColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar {}
+
     ColumnLayout {
         id: contentColumn
-        anchors.fill: parent
+        width: accountScroll.width
         spacing: 16
 
         // ---- Header ----
@@ -137,6 +152,9 @@ Dialog {
             // OAuth buttons
             Button {
                 id: googleBtn
+                enabled: false
+                ToolTip.text: "Browser sign-in is not available in this build"
+                ToolTip.visible: hovered
                 Layout.fillWidth: true
                 Layout.preferredHeight: 42
                 onClicked: {
@@ -158,6 +176,9 @@ Dialog {
 
             Button {
                 id: facebookBtn
+                enabled: false
+                ToolTip.text: "Browser sign-in is not available in this build"
+                ToolTip.visible: hovered
                 Layout.fillWidth: true
                 Layout.preferredHeight: 42
                 onClicked: {
@@ -288,6 +309,7 @@ Dialog {
                 font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter
             }
         }
+    }
     }
 
     function submitEmail() {

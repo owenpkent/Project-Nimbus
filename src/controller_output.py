@@ -47,7 +47,7 @@ class ControllerOutput:
         self.use_vigem = bool(layout_type in ("xbox", "adaptive", "custom")
                               and self.vigem_available and prefer_vigem)
         if self.use_vigem and self.vigem is None:
-            self.vigem = self._vigem_factory(self._config)
+            self.ensure_vigem()
         if self.vjoy is None:
             self.vjoy = self._vjoy_factory(self._config)
 
@@ -64,8 +64,16 @@ class ControllerOutput:
             if not self.vigem_available:
                 return False
             if self.vigem is None:
-                self.vigem = self._vigem_factory(self._config)
+                self.ensure_vigem()
         elif self.vjoy is None:
             self.vjoy = self._vjoy_factory(self._config)
         self.use_vigem = mode == "vigem"
         return True
+
+    def ensure_vigem(self) -> Any:
+        """Create or reuse ViGEm for Game Mode without selecting its output."""
+        if not self.vigem_available or self._vigem_factory is None:
+            return None
+        if self.vigem is None:
+            self.vigem = self._vigem_factory(self._config)
+        return self.vigem
