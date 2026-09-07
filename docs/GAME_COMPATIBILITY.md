@@ -63,6 +63,17 @@ Any game that:
 
 ---
 
+## Measured With the Game Test Harness
+
+`tests/probe_game_harness_windows.py` launches a game from a recipe in `tests/games/`, owns the virtual pad, and measures what stick input does to it, from the game's own console where it has one and from frame differencing otherwise. What it has measured so far (dev machine, 2026-09-07; the full log is in [Game Test Harness, section 8](vision/GAME_TEST_HARNESS.md)):
+
+| Game | Oracle | Right-stick deadzone | Notes |
+|---|---|---|---|
+| Left 4 Dead 2 | console | between 0.26 and 0.28 (the XInput constant the anti-deadzone default assumes) | turn linear in time below the stop, about 480 degrees a second at full deflection (Source's stick acceleration); a 1 px Nimbus drag turns the camera 2.4 degrees a second |
+| Elden Ring | frame differencing | at or below 0.20 | camera moves at every magnitude swept; the default anti-deadzone floor of 0.285 is above this game's threshold, so the smallest Nimbus movement is a little faster than it needs to be here |
+
+A game whose deadzone sits below the default floor can lower Anti-DZ in the widget dialog; one above it (none measured yet) needs it raised. Adding a game is a recipe file; a Source engine game gets numbers, anything else gets moved-or-still verdicts.
+
 ## Verified Games
 
 These games have been tested and confirmed working with Project Nimbus.

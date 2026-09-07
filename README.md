@@ -138,7 +138,7 @@ Nimbus Adaptive Controller is evolving beyond a virtual controller into a broade
 Speak to control. Buttons, axes, and macros triggered by voice — using offline engines (Faster-Whisper, Vosk) for low latency and privacy, or cloud engines for higher accuracy. Goal: act on interim results for time-critical commands.
 
 ### 🤖 Spectator+ — AI-Assisted Play
-*"You direct. The AI executes."* An accessibility-first AI copilot: the user provides high-level intent (via voice, click, or switch), and a trained agent handles precise execution through the existing vJoy/ViGEm bridge. Designed for users who have the cognitive engagement to play but not the fine motor precision.
+*"You direct. The AI executes."* An accessibility-first AI copilot: the user provides high-level intent (via voice, click, or switch), and a trained agent handles precise execution through the existing vJoy/ViGEm bridge. Designed for users who have the cognitive engagement to play but not the fine motor precision. A first, model-free version exists: scripted primitives (turn by an angle, walk for a distance, press a button) in `src/spectator/`, calibrated per game by the [game test harness](docs/vision/GAME_TEST_HARNESS.md) and measured in Left 4 Dead 2 to within a few degrees. No way to trigger them from the UI yet.
 
 ### ⌨️ Keyboard Output Mode
 Any Nimbus button or slider emits native keyboard shortcuts to any application — Photoshop, DaVinci Resolve, OBS, a browser — with no external software. Enables Nimbus as a **Stream Deck replacement**, a **drawing tablet express key surface**, or a **DAW controller**.

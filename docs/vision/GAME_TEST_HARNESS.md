@@ -55,7 +55,7 @@ The console log is the only one that is both exact and cheap. It is limited to S
 | 2 | Ground truth from the game console | numbers: degrees, units, echoes; deterministic resets | an honest `reset` and `observe` | **built** for Source games |
 | 3 | A vision oracle (templates, OCR, a model as judge) | game-agnostic verdicts | the observation layer for non-console games | later, when a non-Source game matters |
 | 4 | A Gymnasium-style environment around the real game | conformance tests: reset, step, observe, latency | the environment itself | **built** as `GameEnv`, oracle and actuator pluggable |
-| 5 | Spectator+ v0 as scripted primitives with a real-game test each | the spec, as tests | the first user-facing feature | next, on top of 2 and 4; section 4.7 |
+| 5 | Spectator+ v0 as scripted primitives with a real-game test each | the spec, as tests | the first user-facing feature | **built** on top of 2 and 4; section 4.7, measured in section 8 |
 | 6 | A purpose-built deterministic test game | a hardware-free pipeline check | nothing | not now |
 
 ---
@@ -147,6 +147,7 @@ Sign conventions, so numbers in the results log read the same way everywhere: `r
 | G0 launch | the window appears within `window_timeout_s`; with `source_console`, the console log exists |
 | G1 ready | the oracle reports ready within `ready_timeout_s`; a pose is read |
 | G2 reset | after `reset()` the pose is within 2 units and 1 degree of the reset pose |
+| GS walk survey (`--survey-walk`) | a second of left stick in each of eight headings from the reset spot; the reset pose is turned to the longest run, which must exceed 150 units; `--write-reset-pose` writes it into the recipe |
 | G3 idle | one second of no input: yaw within 0.5 degrees, position within 1 unit; the frame noise floor is recorded |
 | G4 yaw control | `rx` at 1.0 for the hold: more than 10 degrees, and the direction is the recipe's turn-right sign |
 | G5 yaw sweep | `rx` at each of the sweep magnitudes; the table of degrees per second; the first magnitude past 1 degree is the game's deadzone; the frame-difference verdict for each step is recorded beside the ground truth |

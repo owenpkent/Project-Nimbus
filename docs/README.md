@@ -39,12 +39,8 @@
 - [Driver release signing](../driver/SIGNING.md): Partner Center registration, attestation signing, and where attestation stands after the April 2026 Windows Driver Policy
 
 ## Distribution & Sustainability
-- [Business Model](distribution/BUSINESS_MODEL.md) — freemium tiers, market research, pricing, revenue scenarios
-- [Open Core Playbook](distribution/OPEN_CORE_PLAYBOOK.md) — dual-repo strategy, license gating, CLA, real-world precedents
-- [Release Strategy](distribution/RELEASE_STRATEGY.md) — open source philosophy, funding models, sponsorship tiers, grant sources
-- [Sponsorship Outreach](distribution/SPONSORSHIP_OUTREACH.md) — email templates, pitch deck outline, partnership guidance
-- [Voice Command Integration](distribution/VOICE_COMMAND.md) — speech recognition options, latency analysis, architecture
-- [Spectator+ AI Agent](distribution/SPECTATOR_PLUS.md) — AI-assisted play concept, hardware requirements, RL architecture
+The business model, open-core playbook, release strategy, sponsorship outreach, voice command and Spectator+ concept documents are kept in a private repository and are not part of this one. What exists of Spectator+ in code is described here:
+- [Game Test Harness, section 4.7](vision/GAME_TEST_HARNESS.md): Spectator+ v0, scripted primitives (turn, walk, press) calibrated per game and measured in a real game, and what is not built yet
 
 ## Media
 - [Screenshots](screenshots/) — application UI screenshots
