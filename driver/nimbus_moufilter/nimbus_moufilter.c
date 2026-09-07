@@ -27,13 +27,17 @@
  *   isolating. A read that has been parked for NIMBUS_MOUFILTER_TICK_MS with
  *   nothing to deliver is completed empty first (a heartbeat tick), so a
  *   client that is frozen or suspended, and therefore never issues the next
- *   read, loses the mouse too (interface v3).
+ *   read, loses the mouse too (interface v3). Reads already parked do not
+ *   postpone the deadline: it turns on the idle time alone (interface v5),
+ *   so the bound holds however many reads the client left in the queue.
  * - Reads fail with STATUS_DEVICE_NOT_READY whenever isolation is off, so a
  *   client whose read comes back that way knows the mouse was given back
  *   instead of waiting forever for packets that will never be captured.
  *   Every release path clears the flag under the lock and then drains the
- *   read queue, and EvtIoRead re-checks the flag after parking a read, so a
- *   read cannot be left parked across a release.
+ *   read queue, EvtIoRead re-checks the flag after parking a read, and
+ *   NimbusCompleteRead re-checks it under the lock before completing, so a
+ *   read can neither be left parked across a release nor complete as though
+ *   it had been serviced by one.
  * - The keyboard is never touched.
  *
  * Environment: kernel mode only.
@@ -125,6 +129,16 @@ NimbusStartIsolating(
 /*
  * Copy queued packets into one pending read and complete it.
  * Callable at IRQL <= DISPATCH_LEVEL.
+ *
+ * The isolation check happens under g.Lock, immediately before the copy,
+ * because a request that has already been pulled off the manual queue by
+ * WdfIoQueueRetrieveNextRequest is no longer reachable by the drain in
+ * NimbusFailPendingReads. Without this check a release that lands in that
+ * window left the read completing STATUS_SUCCESS with zero bytes, which a
+ * client cannot tell from a heartbeat tick, contradicting the documented
+ * "every read fails with STATUS_DEVICE_NOT_READY while isolation is off".
+ * Deciding under the same lock the release uses is what makes the two
+ * outcomes exclusive.
  */
 static VOID
 NimbusCompleteRead(
@@ -148,6 +162,11 @@ NimbusCompleteRead(
      * an element count derived by division).
      */
     WdfSpinLockAcquire(g.Lock);
+    if (g.Isolating == 0) {
+        WdfSpinLockRelease(g.Lock);
+        WdfRequestCompleteWithInformation(Request, STATUS_DEVICE_NOT_READY, 0);
+        return;
+    }
     while (used + sizeof(MOUSE_INPUT_DATA) <= outLength && g.RingCount > 0) {
         RtlCopyMemory(out + used, &g.Ring[g.RingHead], sizeof(MOUSE_INPUT_DATA));
         used += sizeof(MOUSE_INPUT_DATA);
@@ -167,6 +186,17 @@ NimbusCompleteRead(
  * The queue handle is used outside g.Lock, so it is used under QueueRundown:
  * NimbusControl_Delete clears g.ReadQueue and then waits for the rundown
  * before it deletes the queue, so a handle copied out here stays valid.
+ *
+ * Open point for the static analysis run: ExAcquireRundownProtection is
+ * documented as IRQL <= APC_LEVEL, and this path reaches it at DISPATCH_LEVEL
+ * from NimbusFilter_ServiceCallback (and NimbusControl_EvtWatchdog, whose
+ * timer sets AutomaticSerialization = FALSE). The acquire is a lock-free
+ * interlocked loop and the release only signals an event, both of which are
+ * DISPATCH-safe in practice, but SDV and CodeQL's IrqlExApcLte3 rule are
+ * expected to flag it. If they do, replace EX_RUNDOWN_REF with an interlocked
+ * counter plus a KEVENT that NimbusControl_Delete waits on; the protocol here
+ * does not change. Not done blind because this is the teardown path and the
+ * failure mode is a dead mouse.
  */
 static VOID
 NimbusServicePendingReads(
@@ -553,10 +583,17 @@ NimbusFilter_ServiceCallback(
     count = (ULONG)(InputDataEnd - InputDataStart);
 
     /*
-     * The unlocked read keeps the pass-through path lock-free; the decision
-     * that counts is made under the lock inside NimbusCapturePackets.
+     * The decision is made entirely under g.Lock inside NimbusCapturePackets.
+     * There used to be an unlocked read of g.Isolating here as a fast-path
+     * hint, to keep pass-through lock-free. It was not safe: on a weakly
+     * ordered architecture (this driver builds for ARM64) a reader could
+     * observe a stale zero and hand packets to mouclass after isolation had
+     * been enabled, which is a mouse leak to the game. An uncontended spin
+     * lock per input report costs tens of nanoseconds and a mouse reports at
+     * most a few thousand times a second, so the hint bought nothing worth
+     * the hazard.
      */
-    if (g.Isolating != 0 && NimbusCapturePackets(InputDataStart, count)) {
+    if (NimbusCapturePackets(InputDataStart, count)) {
         *InputDataConsumed = count;
         return;
     }
@@ -861,7 +898,6 @@ NimbusControl_EvtWatchdog(
     ULONGLONG now;
     ULONGLONG idle = 0;
     ULONG queued = 0;
-    ULONG inDriver = 0;
     BOOLEAN isolating;
     BOOLEAN released = FALSE;
     BOOLEAN tick = FALSE;
@@ -873,19 +909,30 @@ NimbusControl_EvtWatchdog(
         return;
     }
     /*
-     * Everything is sampled under the lock so it agrees with EvtIoRead, which
-     * stamps LastReadActivity under the same lock before it forwards, and with
-     * NimbusServicePendingReads, whose retrieved-but-not-yet-completed read
-     * shows up in inDriver. A read is therefore either visible in one of the
-     * two counts or has just refreshed the timestamp.
+     * Sampled under the lock so it agrees with EvtIoRead, which stamps
+     * LastReadActivity under the same lock before it forwards. Only the queued
+     * count is needed now: the release below turns on the idle time alone, and
+     * queued only decides whether there is a parked read worth ticking out.
      */
-    WdfIoQueueGetState(g.ReadQueue, &queued, &inDriver);
+    WdfIoQueueGetState(g.ReadQueue, &queued, NULL);
     now = KeQueryInterruptTime();
     if (now > g.LastReadActivity) {
         idle = now - g.LastReadActivity;
     }
     isolating = (g.Isolating != 0);
-    if (isolating && queued == 0 && inDriver == 0 && idle > NIMBUS_WATCHDOG_TIMEOUT) {
+    /*
+     * The deadline is the idle time alone. It used to also require queued == 0
+     * and inDriver == 0, which let a frozen client hold the mouse far past the
+     * timeout: the tick below retires only one parked read per period, so N
+     * reads parked by a client that never issues another pushed the release out
+     * to roughly N * NIMBUS_MOUFILTER_TICK_MS (two minutes for a client that
+     * had parked 512). Nothing about a read sitting in the queue is evidence
+     * that the client is alive; only a read's *arrival* refreshes
+     * LastReadActivity, and a ticked-out read no longer refreshes it at all.
+     * Releasing on idle alone and then failing every pending read makes the
+     * bound NIMBUS_MOUFILTER_WATCHDOG_MS whatever the client parked.
+     */
+    if (isolating && idle > NIMBUS_WATCHDOG_TIMEOUT) {
         NimbusReleaseLocked();
         g.WatchdogReleases++;
         released = TRUE;

@@ -26,20 +26,26 @@
  * the same failure on its parked read.
  *
  * Safety: isolation is cleared when the client's handle is cleaned up (crash,
- * kill, exit) and by a watchdog when no read has arrived for
- * NIMBUS_MOUFILTER_WATCHDOG_MS while isolating (parked reads are ticked out
- * first, see above).
+ * kill, exit) and by a watchdog when no read has *arrived* for
+ * NIMBUS_MOUFILTER_WATCHDOG_MS while isolating. Reads already parked in the
+ * queue do not postpone that deadline (v5); they are failed by the release.
  *
  * The stall a live client survives is NIMBUS_MOUFILTER_WATCHDOG_MS minus the
  * age of its parked read, and that read is re-issued after each tick, so the
  * tick length sets the floor: with a 250 ms tick (one watchdog period) the
- * read is at most about 500 ms old and a client can stall for 1.5 s.
+ * read is at most about 500 ms old and a client can stall for 1.5 s. That
+ * bound no longer depends on how many reads the client has parked.
  *
  * Interface versions
  *   1  first build: SET_ISOLATION, GET_STATUS, ReadFile delivery
  *   2  reads fail with STATUS_DEVICE_NOT_READY while isolation is off
  *   3  parked reads are completed empty after NIMBUS_MOUFILTER_TICK_MS (heartbeat)
  *   4  tick shortened from 1000 to 250 ms (stall tolerance floor 0.75 s -> 1.5 s)
+ *   5  the watchdog releases on idle time alone, so parked reads no longer
+ *      extend the deadline (a frozen client that had parked N reads used to
+ *      hold the mouse for about N * NIMBUS_MOUFILTER_TICK_MS); and a read
+ *      pulled off the queue just before a release now fails with
+ *      STATUS_DEVICE_NOT_READY instead of completing empty like a tick
  */
 #pragma once
 
@@ -47,7 +53,7 @@
 #define NIMBUS_MOUFILTER_SYMLINK_NAME     L"\\DosDevices\\NimbusMouseFilter"
 #define NIMBUS_MOUFILTER_USER_PATH        L"\\\\.\\NimbusMouseFilter"
 
-#define NIMBUS_MOUFILTER_INTERFACE_VERSION 4
+#define NIMBUS_MOUFILTER_INTERFACE_VERSION 5
 #define NIMBUS_MOUFILTER_WATCHDOG_MS       2000
 #define NIMBUS_MOUFILTER_TICK_MS           250
 
