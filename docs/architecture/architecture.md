@@ -113,7 +113,7 @@ The universal wrapper component. It:
    - `dpadContent` — 4-directional button cluster with arrow symbols
    - `wheelContent` — rotational single-axis with spoke indicator
 4. Exposes `joystickLocked`, `updateJoystickPosition()`, `triggerTripleClick()` for the parent overlay
-5. `_applyCurve()` applies sensitivity using the same formula as `config.py:apply_joystick_dialog_curve()`
+5. Sends raw geometry only: `controller.setStickInput(widgetId, nx, ny)` for joysticks and `controller.setAxisInput(widgetId, value)` for sliders and wheels. All shaping happens in the bridge (see Sensitivity Curve below)
 
 ### Widget Palette (Pop-Out Window)
 
@@ -139,11 +139,13 @@ When a joystick is triple-click locked, `CustomLayout.qml` shows a full-canvas `
 Each axis widget stores sensitivity settings as percentages (0–100), matching the Settings menu:
 - `sensitivity` (50% = linear, <50% = exponential, >50% = responsive)
 - `dead_zone` (0–100%, maps to 0–0.25 of axis range internally)
-- `extremity_dead_zone` (0–100%, scales max output)
+- `extremity_dead_zone` (0–100%, scales max output; sticks default to 5, sliders and wheels to 0)
+- `anti_deadzone`, `anti_deadzone_buffer` (fractions): the output floor the smallest movement is lifted to, so a game's own inner deadzone does not swallow it. Defaults to the XInput constants under ViGEm
+- `tremor_filter` (0–10), `precision_gain` (fraction), `travel_px` (pixels)
 
-The `_applyCurve()` function in `DraggableWidget.qml` uses the identical formula as `apply_joystick_dialog_curve()` in `config.py`.
+The single formula lives in `config.py` (`shape_magnitude`, `shape_vector`) and is applied by the bridge in `setStickInput` / `setAxisInput`, in this order: tremor EMA, precision gain, radial inner deadzone, power curve, then a remap of anything non-zero onto `[anti_deadzone + buffer, 1 - extremity]`. It is radial: the vector's magnitude is shaped and its direction kept, so the dead region is a circle, diagonals respond like cardinals, and the magnitude never exceeds 1. The bridge then flips Y (screen-down to controller-up), applies `invert_x` / `invert_y`, and routes to the widget's mapped axes. A release (0, 0) always snaps the output to centre regardless of the filter. The legacy layouts (`adaptive`, `xbox`, `flight_sim`) go through `setLeftStick` / `setRightStick`, which use the same function with the profile's global `joystick_settings`.
 
-The config dialog includes a **Response Curve Preview** canvas that draws the curve in real-time as sliders change.
+The config dialog's **Response Curve Preview** asks the bridge for its points (`shapeCurve`) so the preview and the runtime cannot drift, shows the smallest and largest output, and has a test pad (`previewStick`) that can drive the mapped stick for calibrating the anti-deadzone against a running game.
 
 ### Persistence
 
@@ -190,7 +192,8 @@ Xbox 360 controller emulation via ViGEm/vgamepad:
 Qt `QObject` exposed to QML as `controller`:
 - Owns `ControllerConfig` + controller interface (VJoy or ViGEm)
 - **Properties**: `scaleFactor`, `debugBorders`, `buttonsVersion`, `noFocusMode`
-- **Axis slots**: `setLeftStick`, `setRightStick`, `setThrottle`, `setRudder`, `setAxis`
+- **Axis slots**: `setStickInput(widgetId, nx, ny)` and `setAxisInput(widgetId, value)` for custom-layout widgets (shaped from the widget's profile settings); `setLeftStick`, `setRightStick`, `setThrottle`, `setRudder`, `setAxis` for the legacy layouts and macro actions
+- **Shaping helpers**: `setModifier(name, active)` / `isModifierActive` (the precision modifier), `shapeCurve(paramsJson)` and `previewStick(...)` for the config dialog, `defaultAntiDeadzone(axis)`
 - **Button slot**: `setButton(id, pressed)`
 - **Profile slots**: `switchProfile`, `saveCurrentProfile`, `createProfileAs`, `deleteProfile`
 - **Custom layout slots**: `getCustomLayout`, `saveCustomLayout`, `getCustomLayoutGridSnap`, `getCustomLayoutShowGrid`

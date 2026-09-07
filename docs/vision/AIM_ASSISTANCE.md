@@ -1,6 +1,6 @@
 # Aim Assistance: Why Aiming Is Hard and What To Do About It
 
-**Status:** Research plus a code audit of the live pipeline (section 2, 2026-09-06). Nothing here is implemented. Sections 4 to 6 are the proposed work; sections 7 to 9 are options that need no code.
+**Status:** Research plus a code audit of the live pipeline (section 2, 2026-09-06). Tier 1 (section 4) and steps 1 to 7 of section 11 are implemented as of 2026-09-06 on `feature/aim-assistance-pipeline`; section 14 records what was built and where it departs from the proposal. Section 6 is still proposed work; sections 7 to 9 are options that need no code.
 **Question:** Users report that aiming through Nimbus is hard. How much of that is our pipeline, how much is the mouse-to-stick paradigm, and what assistance can we legitimately provide?
 
 ---
@@ -296,6 +296,20 @@ There is no automated suite, so this is manual, in the style of the probes in `t
 - Does the migration in section 11 need to be automatic, or is a changelog note plus a "reset to defaults" button enough?
 - Is `travel_px` the right unit, or should it be expressed as a gain multiplier so it survives DPI changes? Mouse DPI and Windows pointer speed both affect the physical distance a pixel represents.
 - Where does the precision modifier live in a layout that has no spare buttons? A dwell zone, a second pointer button, and a screen-edge region are all candidates.
+
+## 14. Implementation notes (2026-09-06)
+
+Steps 1 to 7 of section 11 are in (`src/config.py`, `src/bridge.py`, `qml/components/DraggableWidget.qml`, `qml/layouts/CustomLayout.qml`, `profiles/adaptive_platform_2.json`). What was built, and where it departs from sections 4 and 5:
+
+- **One shaping function.** `shape_magnitude` and `shape_vector` in `src/config.py` do the whole chain on the vector's magnitude: inner deadzone, gain, power curve, then the remap onto `[floor, ceiling]`. The bridge resolves each custom-layout widget's settings from the profile by id and shapes in `setStickInput` / `setAxisInput`, so QML sends raw geometry and `_applyCurve` is gone. `shape_stick` covers the legacy layouts with the global `joystick_settings` block. The curve preview asks the bridge for its points.
+- **Floor inside the ceiling.** Section 4.1 orders the anti-deadzone before the extremity cap. It is the other way round in code: the remap is onto `[anti_deadzone + buffer, 1 - extremity]`, because applying a 5% cap after the floor would push a calibrated 0.265 down to 0.252, back under the game's threshold. The buffer only counts on top of a non-zero anti-deadzone.
+- **No profile-level `aim` block.** Section 5 proposed per-stick profile keys with per-widget overrides. Everything is per widget (`anti_deadzone`, `anti_deadzone_buffer`, `travel_px`, `precision_gain`, and the existing `tremor_filter`), since the widget dialog is the only place a custom-layout user edits shaping. `joystick_settings` gained optional `anti_deadzone`, `anti_deadzone_buffer` and `precision_gain` keys for the legacy layouts only. `radial` is not a setting: shaping is always radial. `settle_ms` waits for section 6.1.
+- **The precision modifier is a button widget with `modifier: "precision"`**, so no new widget type; `toggle_mode` latches it. The gain is per joystick, so a movement stick can be left at 100%. A held stick is re-shaped the moment the modifier changes. Open question 4 (where it lives in a layout with no spare button) stays open.
+- **Defaults.** Anti-deadzone defaults to the XInput constants under ViGEm and 0 under vJoy, resolving open question 1 in favour of the constants; a user whose game already compensates lowers the slider, and the dialog's test pad with "Drive the controller" on is the calibration loop of section 4.2. Sticks keep the 5% extremity cap; sliders and wheels default to none, which also fixes the RT trigger idling at 5% and topping out at 95% (it went through the widget curve and then the rudder curve). Hold and return-to-zero sliders are shaped as the unipolar controls they are. The bundled right stick ships with `travel_px` 160.
+- **No migration**, resolving open question 2. With the global block at its defaults the second pass was near linear, so no sensitivity doubles; the visible change is the top 5% of range returning and the global 2.5% deadzone going. A changelog note covers it. The Axis Configuration dialog that edits the global block is hidden for custom layouts anyway.
+- **Lock mode is unchanged** apart from its EMA moving into the bridge. `lockSensitivity * 2` still stands; the second paragraph of section 4.3 is open.
+- **A release always centres.** The tremor EMA in the bridge treats an exact (0, 0) as a release and drops its state, so a heavily filtered stick can never be left holding a residual deflection after the pointer lets go. This matters more now than in lock mode, where nothing ever released.
+- **Verified** with property checks on the shaping function (radial symmetry across the sensitivity range, magnitude never above 1 including convex curves and overflowing input, floor and ceiling, gain), a headless bridge run against the dev machine's profile, and `tests/probe_nimbus_relay_windows.py` 8/8 (the 80 px drag lands at LX +0.95, the single cap; release recentres). The ruler measurement in section 12 and the in-game floor check against a title with a visible sensitivity setting are still to do.
 
 ---
 
