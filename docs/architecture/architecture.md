@@ -201,8 +201,8 @@ Qt `QObject` exposed to QML as `controller`:
 ### `WindowUtils` (`src/window_utils.py`)
 
 Windows-specific utilities for Game Focus Mode:
-- Saves foreground window on mouse press, restores on release
-- Uses Windows API: `GetForegroundWindow`, `SetForegroundWindow`, `AttachThreadInput`
+- Adds `WS_EX_NOACTIVATE` to the Nimbus window and answers `WM_MOUSEACTIVATE` with `MA_NOACTIVATE`, so clicks never move the foreground away from the game
+- Keeps `GetForegroundWindow` / `SetForegroundWindow` / `AttachThreadInput` helpers as a fallback for the rare activation that still happens (Alt+Tab)
 - Only available on Windows; gracefully disabled on other platforms
 
 ### `Borderless` (`src/borderless.py`)
@@ -217,6 +217,16 @@ Borderless gaming and mouse capture (Windows only, pure ctypes):
 - **`GAME_COMPATIBILITY`** — built-in database of verified/likely/partial/incompatible games
 - Exposed via 12 `ControllerBridge` slots (see bridge section above)
 - UI: `qml/components/BorderlessGamingDialog.qml` — game picker, auto-detect, one-click apply, compatibility browser
+
+### `MouseIsolation` (`src/mouse_isolation_win.py`) and the `driver/` filter
+
+Mouse isolation is the answer to games that read the mouse through Raw Input, which neither cursor release nor the `WH_MOUSE_LL` hook can stop (measured in `docs/vision/HOST_MODE_ISOLATION.md`, section 8). It has two halves:
+
+- **Kernel:** `driver/nimbus_moufilter`, a KMDF upper filter on the mouse class. Pass-through by default. While a client holds `\\.\NimbusMouseFilter` open with isolation on, physical mouse packets are withheld from `mouclass` and delivered to the client through `ReadFile`. Isolation is cleared when the client's handle closes and by a 2 s read watchdog; the keyboard is never filtered. Built with `driver\build.ps1` (needs the WDK); not part of `run.py`.
+- **User mode:** `MouseIsolation(on_motion, on_button, on_wheel, on_stopped, hotkey, cursor_relay)`, the same class API as the Linux `src/mouse_isolation.py` on the `linux-uinput-support` branch (evdev button codes included) plus the Windows-only `cursor_relay`: the reader thread applies captured motion to the real cursor with `SetCursorPos`, which creates no input event, so the cursor keeps working everywhere while the game's Raw Input sees nothing and the game keeps the foreground. The bridge imports it under `MOUSE_ISOLATION_AVAILABLE` (True only when the driver's device exists) and starts it from Full Game Mode with a per-point policy (never over the game window unless that spot is Nimbus) and a per-window click policy (synthesised Qt events over Nimbus, `SendInput` elsewhere). `Ctrl+Alt+F12` is polled on the reader thread. `start()` raises `RuntimeError` with an install hint when the driver is absent and refuses to succeed when the driver is attached to no mouse.
+- **Contract:** `driver/nimbus_moufilter/nimbus_moufilter_ioctl.h` and the constants at the top of `mouse_isolation_win.py` must change together.
+
+Status: dev build validated on hardware on 2026-09-05 (a Raw Input window received nothing while the driver captured every packet), then interface v3 (a heartbeat so a frozen Nimbus loses the mouse within 2 s) under Driver Verifier, the cursor relay against Left 4 Dead 2, and the real app in Full Game Mode against a fake Raw Input game (`tests/probe_nimbus_relay_windows.py`, 8/8). Full Game Mode brings the game to the foreground itself and parks a cursor found over the game onto Nimbus, so the relay policy never leaves a physical mouse stuck. On 2026-09-06 the filter passed an unattended battle test (`tests/probe_mouse_filter_stress_windows.py`: storms, floods, process chaos, CPU starvation, an API fuzz, a soak; 15/15, also under Driver Verifier) and the static checks (WDK Code Analysis, CodeQL), which produced three fixes: the reader thread runs at time-critical priority so a busy game cannot starve it past the watchdog, two driver functions that take a spin lock left the pageable section, and interface v4 shortened the heartbeat tick to 250 ms so a live client survives a stall of at least 1.5 s. The client also pauses isolation while the lock screen or a UAC prompt has the input, since the relay cannot reach the secure desktop. Not attestation-signed, not in any release, not in the installer. See `docs/vision/WINDOWS_MOUSE_FILTER_PLAN.md`.
 
 ---
 
