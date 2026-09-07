@@ -176,15 +176,114 @@ attestation-signed build.
 - The keyboard is never filtered, so `Ctrl+Alt+Del` always works and every
   recovery below can be done from the keyboard. `Ctrl+Alt+F12` releases
   isolation: the client polls it with `GetAsyncKeyState` on its reader thread
-  every 100 ms while a read is parked, so it needs no focus and works when
+  every 100 ms, both while a read is parked and between reads, so a mouse
+  that never stops moving cannot starve it. It needs no focus and works when
   Nimbus's UI thread is stuck. The `Ctrl+Alt+F12` listener in
-  `src/mouse_hider.py` still stops the Controller Mode pulse.
+  `src/mouse_hider.py` still stops the Controller Mode pulse. Note that this
+  is polled by the **client**, so it does not release a device held by some
+  other process; see "Security model" below.
 - A class upper filter is **mandatory once listed**: if the driver fails to
   load, Windows does not start the mouse devices (Device Manager Code 39 or
   Code 19) until the `UpperFilters` entry is removed. `install-dev.ps1`
   therefore creates a restore point first, verifies after attaching, and
   rolls the registry entry back automatically if the driver is not running
   or any mouse reports a problem.
+
+## Security model
+
+The control device is `\\.\NimbusMouseFilter`, created with the SDDL
+`D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)`: full control for SYSTEM and
+Builtin Administrators, `GENERIC_READ | GENERIC_WRITE` for Interactive Users
+(`IU`, S-1-5-4). Both control codes use `FILE_ANY_ACCESS`, and the device is
+exclusive (`WdfDeviceInitSetExclusive`), one handle at a time. The grant to
+`IU` is **deliberate and necessary**: Nimbus runs unprivileged as the
+logged-in user, because an accessibility tool that needs an elevation prompt
+to start is not usable by the people it is for.
+
+What the grant permits: any process holding an interactive token can open the
+device, send `IOCTL_NIMBUS_SET_ISOLATION(1)` and keep issuing reads. While it
+does, physical mouse packets are withheld from `mouclass`, so the cursor, Raw
+Input and every application stop seeing the mouse. The watchdog does not help
+here: it releases only when reads stop arriving, and a cooperating process
+keeps reading.
+
+### Who can hold the device
+
+1. **A stuck or buggy client, including Nimbus itself.** Covered. Handle
+   cleanup (crash, kill, exit) restores pass-through, and the watchdog
+   releases within `NIMBUS_MOUFILTER_WATCHDOG_MS` once reads stop arriving.
+2. **A hostile process in the same session.** Not a new capability. A
+   same-session process already receives the whole mouse stream through Raw
+   Input with `RIDEV_INPUTSINK`: no driver, no isolation, nothing visible to
+   the user. The repo demonstrates this itself in
+   `tests/probe_rawinput_windows.py`. A `WH_MOUSE_LL` hook can already
+   swallow mouse events too. What the filter adds is that suppression also
+   reaches Raw Input, and that recovery is harsher. Degree, not kind.
+3. **A hostile process in another session.** This is the one with no
+   user-mode equivalent. Low-level hooks are scoped to the installing
+   thread's desktop and window station, so they cannot reach another
+   session. The filter sits on the mouse class stack, below the session
+   boundary, and its symlink `\DosDevices\NimbusMouseFilter` lives in the
+   global object namespace. `IU` is present in every interactive logon
+   token, RDP included. So a standard user in an RDP session can suppress
+   the physical mouse of the administrator at the console, and nothing in
+   user mode can observe or undo it. That routes around the boundary UIPI
+   exists to maintain.
+
+### A tempting attack that does not work
+
+Isolate, read every packet, then replay motion with `SetCursorPos` and clicks
+with `SendInput`, so the mouse looks normal while it is being logged. This is
+Nimbus's own cursor relay repurposed. It **buys an attacker nothing**:
+same-session capture is already available through `RIDEV_INPUTSINK` without
+any of it, and the cross-session version fails because `SetCursorPos` moves
+the attacker's own session's cursor, leaving the console user with a mouse
+that is simply dead. Recorded because it is where people look first.
+
+### Recovery today
+
+- `Ctrl+Alt+F12` is polled by the **client**, on its reader thread. It
+  protects against a Nimbus that is stuck, and not at all against a process
+  that is holding the device deliberately.
+- Against a hostile holder the recovery is: **kill the process from the
+  keyboard** (handle cleanup releases immediately), or remove the
+  `UpperFilters` entry and restart the mice.
+- Every mitigation in the "If it gets stuck" table below is
+  **keyboard-based**, which is the weakest possible fallback for this
+  project's users, some of whom cannot reliably use a keyboard.
+
+### What is not being done
+
+A privileged broker service was considered and rejected. The broker would
+have to serve the same unprivileged caller, so deciding which callers to
+trust degrades to image path or signature checks, which a process running as
+that user defeats by injecting into the real Nimbus or by driving it. That
+**relocates the trust boundary without closing it**, at the cost of a
+service, an IPC surface and a new attack surface.
+
+### Before the first release that ships this
+
+- Scope the ACL to a **specific SID recorded at install**, rather than to
+  `IU`. That names who instead of what kind of session, closes the
+  cross-session case, and leaves the unavoidable case (code running as the
+  user) exactly where it already was. A token session check in
+  `EvtDeviceFileCreate` is the alternative; the callback slot is currently
+  unused.
+- The exclusive device means that while anything holds it, nobody can even
+  call `IOCTL_NIMBUS_GET_STATUS`, so the condition **cannot be diagnosed**.
+  Splitting status onto a non-exclusive read-only path would let a support
+  script report that isolation is on and held by another process.
+
+### Attestation
+
+None of this blocks submission. Exploiting any of the above requires the
+driver to be installed by choice, and an attacker with the administrator
+rights needed to install a driver does not need this one. The exposed surface
+is small: both control codes are `METHOD_BUFFERED`, reads use
+`WdfDeviceIoBuffered`, no user-mode pointer is dereferenced, and 19 malformed
+request cases have been fuzzed. This is **a policy question, not a
+memory-safety one**, and a denial of service rather than an elevation of
+privilege.
 
 ## If it gets stuck
 
@@ -196,4 +295,5 @@ attestation-signed build.
 | Cursor frozen while Nimbus is running | Isolation is on without the cursor relay, or the relay's reader thread is stuck | With the relay the cursor should keep moving; frozen means the reader is not running. `Ctrl+Alt+F12` releases (polled by the client). Or close Nimbus (Alt+F4 or Task Manager from the keyboard); closing the handle releases immediately. The watchdog releases within 2 s if Nimbus stops issuing reads, including when it is frozen (interface v3). |
 | Mouse dead on the lock screen or a UAC prompt while Nimbus is in Game Mode | The client's secure-desktop pause did not kick in (it checks the input desktop every 100 ms) | The keyboard works: unlock or dismiss the prompt from it and the mouse is back on the desktop. Then file the bug; `Ctrl+Alt+F12` cannot reach the secure desktop. |
 | Cursor frozen and Nimbus is gone | Should not happen (handle cleanup clears isolation) | Replug the mouse (a fresh device instance), or reboot; the flag does not survive a driver reload. Then file the bug with the output of `--status`. |
+| Mouse dead and Nimbus is not the one holding it | Some other process opened the control device and is isolating (see "Security model"): the watchdog will not release it while that process keeps reading, and `Ctrl+Alt+F12` is polled by Nimbus, not by the holder | The device is exclusive, so `--status` cannot answer while it is held. Find the owner of a handle to `\Device\NimbusMouseFilter` (Process Explorer, "Find Handle or DLL", or `handle.exe NimbusMouseFilter`) and end that process from the keyboard; handle cleanup releases immediately. Failing that, elevated `driver\uninstall-dev.ps1` and replug the mouse. |
 | "Test Mode" watermark, anti-cheat games refuse to start | Test signing is on | `bcdedit /set testsigning off` from an elevated prompt, reboot. Do this before playing EAC/BattlEye/Vanguard titles; the unsigned dev driver cannot load without it. |
