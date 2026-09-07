@@ -157,6 +157,10 @@ class CloudClient(QObject):
     # Properties (exposed to QML via bridge)
     # ------------------------------------------------------------------
 
+    def shutdown(self) -> None:
+        """Stop session refresh without changing stored credentials."""
+        self._refresh_timer.stop()
+
     @property
     def is_authenticated(self) -> bool:
         """Whether the user is currently logged in with a valid token."""
@@ -748,39 +752,45 @@ class CloudClient(QObject):
         - If no local counterpart exists, pull from remote.
         - If no remote counterpart exists, push to remote.
         """
-        profiles_dir = self._config._user_profiles_dir
-        if not profiles_dir.exists():
+        repository = self._config.profiles
+        if not repository.directory.exists():
             return
 
         remote_by_id = {p["profile_id"]: p for p in remote_profiles}
 
         # Pull newer remote profiles
         for pid, rp in remote_by_id.items():
-            local_path = profiles_dir / f"{pid}.json"
             remote_updated = rp.get("updated_at", "")
+            modified_at = repository.modified_at(pid)
 
-            if local_path.exists():
+            if modified_at is not None:
                 local_mtime = datetime.fromtimestamp(
-                    local_path.stat().st_mtime, tz=timezone.utc
+                    modified_at, tz=timezone.utc
                 ).isoformat()
                 if remote_updated > local_mtime:
                     # Remote is newer — pull
-                    local_path.write_text(json.dumps(rp["data"], indent=2), "utf-8")
+                    if not repository.save(pid, rp["data"]):
+                        raise ValueError("Unable to save remote profile")
                     logger.debug("Pulled profile %s (remote newer).", pid)
                 elif local_mtime > remote_updated:
                     # Local is newer — push
-                    local_data = json.loads(local_path.read_text("utf-8"))
+                    local_data = repository.load(pid)
+                    if local_data is None:
+                        raise ValueError("Unable to load local profile")
                     self.upsert_profile(pid, local_data)
                     logger.debug("Pushed profile %s (local newer).", pid)
             else:
                 # No local copy — pull
-                local_path.write_text(json.dumps(rp["data"], indent=2), "utf-8")
+                if not repository.save(pid, rp["data"]):
+                    raise ValueError("Unable to save remote profile")
                 logger.debug("Pulled new profile %s from cloud.", pid)
 
         # Push local-only profiles
-        for profile_file in profiles_dir.glob("*.json"):
-            pid = profile_file.stem
+        for profile in repository.list_profiles():
+            pid = profile["id"]
             if pid not in remote_by_id:
-                local_data = json.loads(profile_file.read_text("utf-8"))
+                local_data = repository.load(pid)
+                if local_data is None:
+                    raise ValueError("Unable to load local profile")
                 self.upsert_profile(pid, local_data)
                 logger.debug("Pushed local-only profile %s to cloud.", pid)

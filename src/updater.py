@@ -144,7 +144,7 @@ def is_below_minimum(current: str, minimum: str) -> bool:
 class _FetchWorker(QThread):
     """Fetch the version manifest in a background thread."""
 
-    finished = Signal(dict)  # emits the parsed JSON manifest (or empty dict)
+    manifestReceived = Signal(dict)
     error = Signal(str)      # emits error message
 
     def __init__(self, url: str, parent: Optional[QObject] = None) -> None:
@@ -157,16 +157,16 @@ class _FetchWorker(QThread):
 
             response = httpx.get(self._url, timeout=10.0, follow_redirects=True)
             if response.status_code == 200:
-                self.finished.emit(response.json())
+                self.manifestReceived.emit(response.json())
             else:
                 self.error.emit(f"Version check HTTP {response.status_code}")
-                self.finished.emit({})
+                self.manifestReceived.emit({})
         except ImportError:
             self.error.emit("httpx not installed — update check skipped.")
-            self.finished.emit({})
+            self.manifestReceived.emit({})
         except Exception as e:
             self.error.emit(str(e))
-            self.finished.emit({})
+            self.manifestReceived.emit({})
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +223,7 @@ class UpdateChecker(QObject):
 
         # Background worker
         self._worker: Optional[_FetchWorker] = None
+        self._closed = False
 
         # Periodic re-check timer
         self._recheck_timer = QTimer(self)
@@ -282,6 +283,8 @@ class UpdateChecker(QObject):
         one of the signals is emitted: ``updateAvailable``,
         ``forceUpdateRequired``, ``noUpdateAvailable``, or ``checkFailed``.
         """
+        if self._closed:
+            return
         if self._worker and self._worker.isRunning():
             logger.debug("Update check already in progress — skipping.")
             return
@@ -289,10 +292,19 @@ class UpdateChecker(QObject):
         logger.debug("Starting update check against %s (channel=%s).",
                       VERSION_URL, self._channel)
 
+        if self._worker:
+            self._worker.deleteLater()
         self._worker = _FetchWorker(VERSION_URL, self)
-        self._worker.finished.connect(self._on_manifest_received)
+        self._worker.manifestReceived.connect(self._on_manifest_received)
         self._worker.error.connect(self._on_check_error)
         self._worker.start()
+
+    def shutdown(self) -> None:
+        """Prevent new checks and join the HTTP worker before Qt destroys it."""
+        self._closed = True
+        self._recheck_timer.stop()
+        if self._worker:
+            self._worker.wait()
 
     @Slot()
     def open_download_page(self) -> None:
@@ -324,7 +336,7 @@ class UpdateChecker(QObject):
 
     def _on_manifest_received(self, manifest: Dict[str, Any]) -> None:
         """Process the downloaded version manifest."""
-        if not manifest:
+        if self._closed or not manifest:
             return
 
         # Determine the target version for the active channel
@@ -371,5 +383,7 @@ class UpdateChecker(QObject):
 
     def _on_check_error(self, message: str) -> None:
         """Handle version check failure (non-critical)."""
+        if self._closed:
+            return
         logger.debug("Update check failed: %s", message)
         self.checkFailed.emit(message)

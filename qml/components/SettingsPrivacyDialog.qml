@@ -12,7 +12,7 @@ import QtQuick.Layouts
  *   - Link to delete all collected data
  *
  * Exposed context properties used:
- *   - telemetry  (TelemetryClient)  — from qt_qml_app.py
+ *   - controller (ControllerBridge)
  */
 
 Dialog {
@@ -80,9 +80,10 @@ Dialog {
 
             Switch {
                 id: crashSwitch
-                checked: telemetry ? telemetry.crash_reports_enabled : false
+                objectName: "crashReportsSwitch"
+                checked: controller ? controller.crashReportsEnabled : false
                 onToggled: {
-                    if (telemetry) telemetry.crash_reports_enabled = checked
+                    if (controller) controller.setCrashReportsEnabled(checked)
                 }
             }
         }
@@ -114,9 +115,10 @@ Dialog {
 
             Switch {
                 id: analyticsSwitch
-                checked: telemetry ? telemetry.analytics_enabled : false
+                objectName: "analyticsSwitch"
+                checked: controller ? controller.analyticsEnabled : false
                 onToggled: {
-                    if (telemetry) telemetry.analytics_enabled = checked
+                    if (controller) controller.setAnalyticsEnabled(checked)
                 }
             }
         }

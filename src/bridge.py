@@ -68,6 +68,7 @@ from .config import (
     shape_vector,
 )
 from .vjoy_interface import VJoyInterface
+from .controller_output import ControllerOutput
 from .qt_dialogs import AxisMappingQt, JoystickSettingsQt, ButtonSettingsQt, SliderSettingsQt, AxisSettingsQt
 
 # Try to import ViGEm for Xbox controller emulation (preferred for modern games)
@@ -190,8 +191,16 @@ class ControllerBridge(QObject):
     controllerModeChanged = Signal(bool)  # Emits when controller mode enforcement starts/stops
     outputModeChanged = Signal(str)  # Emits "vjoy" or "vigem" when output device changes
     recentProfilesChanged = Signal()  # Emits when the recently-used profile list changes
+    accountStateChanged = Signal()
+    privacyChanged = Signal()
+    syncCompleted = Signal(bool)
+    updateAvailable = Signal(str, str, str)
+    forceUpdateRequired = Signal(str, str)
+    noUpdateAvailable = Signal()
+    checkFailed = Signal(str)
 
-    def __init__(self, config: ControllerConfig, parent: Optional[QObject] = None) -> None:
+    def __init__(self, config: ControllerConfig, parent: Optional[QObject] = None,
+                 *, output: Optional[ControllerOutput] = None, services: Any = None) -> None:
         """Initialize the bridge and probe for available controller back ends.
 
         Selects ViGEm or vJoy based on the current profile's layout type and
@@ -205,6 +214,16 @@ class ControllerBridge(QObject):
         """
         super().__init__(parent)
         self._config = config
+        self._services = services
+        if services is not None:
+            services.cloud.authStateChanged.connect(self._notify_account)
+            services.cloud.userChanged.connect(self._notify_account)
+            services.cloud.entitlementChanged.connect(self._notify_account)
+            services.cloud.syncCompleted.connect(self._on_sync_completed)
+            services.updater.updateAvailable.connect(self.updateAvailable)
+            services.updater.forceUpdateRequired.connect(self.forceUpdateRequired)
+            services.updater.noUpdateAvailable.connect(self.noUpdateAvailable)
+            services.updater.checkFailed.connect(self.checkFailed)
         self._window: Optional[QWindow] = None
         self._no_focus_mode = False
         self._cursor_release_active = False
@@ -229,9 +248,8 @@ class ControllerBridge(QObject):
         # Determine which controller interface to use based on profile layout type
         # ViGEm (Xbox emulation) is preferred for xbox/adaptive profiles as it works with XInput games
         # vJoy is used for flight_sim profiles or as fallback
-        self._use_vigem = False
-        self._vigem: Optional[ViGEmInterface] = None
-        self._vjoy: Optional[VJoyInterface] = None
+        self._output = output if output is not None else ControllerOutput(
+            config, VJoyInterface, ViGEmInterface, VIGEM_AVAILABLE)
         
         self._init_controller_interface()
         
@@ -263,42 +281,39 @@ class ControllerBridge(QObject):
     
     def _init_controller_interface(self) -> None:
         """Initialize the appropriate controller interface based on profile type."""
-        layout_type = self._config.get_layout_type()
-        use_vigem_config = self._config.get("controller.prefer_vigem", True)
-        
-        # Use ViGEm for Xbox/Adaptive/Custom profiles if available (works with XInput games like No Man's Sky)
-        if layout_type in ("xbox", "adaptive", "custom") and VIGEM_AVAILABLE and use_vigem_config:
-            print(f"Profile '{layout_type}' detected - using ViGEm Xbox controller emulation")
-            print("This provides XInput compatibility for games like No Man's Sky")
-            if self._vigem is None:
-                self._vigem = ViGEmInterface(self._config)
-            self._use_vigem = True
-            # Also init vJoy as fallback
-            if self._vjoy is None:
-                self._vjoy = VJoyInterface(self._config)
-        else:
-            # Use vJoy for flight sim profiles or if ViGEm unavailable
-            if layout_type in ("xbox", "adaptive") and not VIGEM_AVAILABLE:
-                print(f"Warning: ViGEm not available for {layout_type} profile")
-                print("Install with: pip install vgamepad")
-                print("Falling back to vJoy (may not work with XInput-only games)")
-            if self._vjoy is None:
-                self._vjoy = VJoyInterface(self._config)
-            self._use_vigem = False
+        self._output.initialize()
+
+    @property
+    def _vjoy(self):
+        return self._output.vjoy
+
+    @_vjoy.setter
+    def _vjoy(self, value):
+        self._output.vjoy = value
+
+    @property
+    def _vigem(self):
+        return self._output.vigem
+
+    @_vigem.setter
+    def _vigem(self, value):
+        self._output.vigem = value
+
+    @property
+    def _use_vigem(self):
+        return self._output.use_vigem
+
+    @_use_vigem.setter
+    def _use_vigem(self, value):
+        self._output.use_vigem = value
     
     def _is_controller_connected(self) -> bool:
         """Check if the active controller interface is connected."""
-        if self._use_vigem and self._vigem:
-            return self._vigem.is_connected
-        elif self._vjoy:
-            return self._vjoy.is_connected
-        return False
+        return self._output.connected
     
     def _get_active_interface(self):
         """Get the currently active controller interface."""
-        if self._use_vigem and self._vigem:
-            return self._vigem
-        return self._vjoy
+        return self._output.active
 
     # ----- Scale factor property -----
     def _get_scale(self) -> float:
@@ -1044,22 +1059,10 @@ class ControllerBridge(QObject):
     @Slot(str)
     def setOutputMode(self, mode: str) -> None:  # noqa: N802
         """Switch output device. mode is 'vjoy' or 'vigem'."""
-        mode = mode.lower().strip()
-        if mode not in ("vjoy", "vigem"):
+        if not self._output.select(mode):
             return
-        want_vigem = mode == "vigem"
-        if want_vigem == self._use_vigem:
-            return
-        if want_vigem and not VIGEM_AVAILABLE:
-            print("Cannot switch to ViGEm — vgamepad not installed")
-            return
-        # Initialize the target interface if needed
-        if want_vigem and self._vigem is None:
-            self._vigem = ViGEmInterface(self._config)
-        if not want_vigem and self._vjoy is None:
-            self._vjoy = VJoyInterface(self._config)
-        self._use_vigem = want_vigem
-        self._config.set("controller.prefer_vigem", want_vigem)
+        mode = self._output.mode
+        self._config.set("controller.prefer_vigem", self._output.use_vigem)
         self._config.save_config()
         self.outputModeChanged.emit(mode)
         self.vjoyConnectionChanged.emit(self._is_controller_connected())
@@ -1403,10 +1406,13 @@ class ControllerBridge(QObject):
         """Save custom layout widgets from QML (silent — no profileSaved signal)."""
         try:
             widgets = json.loads(widgets_json)
-            self._config.save_custom_layout(widgets, int(grid_snap), bool(show_grid))
-            self._reload_widget_shaping(widgets)
+            if self._config.save_custom_layout(widgets, int(grid_snap), bool(show_grid)):
+                self._reload_widget_shaping(widgets)
+            else:
+                self.profileSaved.emit(False)
         except Exception as e:
             print(f"Error saving custom layout: {e}")
+            self.profileSaved.emit(False)
 
     @Slot(str, str, int, bool)
     def saveCustomLayoutAs(self, name: str, widgets_json: str, grid_snap: int, show_grid: bool) -> None:  # noqa: N802
@@ -1414,10 +1420,9 @@ class ControllerBridge(QObject):
         try:
             import copy
             widgets = json.loads(widgets_json)
-            self._reload_widget_shaping(widgets)
             # Duplicate current profile with new name
             profile_data = copy.deepcopy(self._config.get_current_profile_data() or {})
-            profile_id = name.lower().replace(" ", "_").replace("-", "_")
+            profile_id = self._config.profiles.unique_id(name)
             profile_data["name"] = name
             profile_data["description"] = f"Custom layout: {name}"
             profile_data["layout_type"] = "custom"
@@ -1427,9 +1432,10 @@ class ControllerBridge(QObject):
             profile_data["custom_layout"]["grid_snap"] = int(grid_snap)
             profile_data["custom_layout"]["show_grid"] = bool(show_grid)
             # Save as new profile
-            self._config.save_profile_as(profile_id, profile_data)
-            print(f"Saved custom layout as: {name} (id: {profile_id})")
-            self.profileSaved.emit(True)
+            success = self._config.save_profile_as(profile_id, profile_data)
+            if success:
+                self.profilesListChanged.emit()
+            self.profileSaved.emit(success)
         except Exception as e:
             print(f"Error saving custom layout as '{name}': {e}")
             self.profileSaved.emit(False)
@@ -2235,96 +2241,119 @@ class ControllerBridge(QObject):
 
     # ---- Account ----
 
+    @Slot()
+    def _notify_account(self) -> None:
+        self.accountStateChanged.emit()
+
+    @Slot(bool)
+    def _on_sync_completed(self, success: bool) -> None:
+        if success:
+            self.profilesListChanged.emit()
+        self.syncCompleted.emit(success)
+
+    @Property(bool, notify=accountStateChanged)
+    def accountAuthenticated(self) -> bool:
+        return bool(self._services and self._services.cloud.is_authenticated)
+
+    @Property(str, notify=accountStateChanged)
+    def accountDisplayName(self) -> str:
+        return self._services.cloud.display_name if self._services else "Not signed in"
+
+    @Property(str, notify=accountStateChanged)
+    def accountEmail(self) -> str:
+        user = self._services.cloud.user if self._services else None
+        return (user or {}).get("email", "")
+
+    @Property(str, notify=accountStateChanged)
+    def accountTier(self) -> str:
+        return self._services.cloud.tier if self._services else "free"
+
+    @Property(bool, notify=accountStateChanged)
+    def accountPremium(self) -> bool:
+        return bool(self._services and self._services.cloud.is_premium)
+
     @Slot(str, str, result=bool)
     def loginWithEmail(self, email: str, password: str) -> bool:  # noqa: N802
         """Sign in with email and password.  Returns True on success."""
-        try:
-            from .cloud_client import CloudClient
-            cloud: CloudClient = self.parent().findChild(CloudClient)
-            if cloud:
-                return cloud.login_with_email(email, password)
-        except Exception:
-            pass
-        return False
+        return bool(self._services and self._services.cloud.login_with_email(email, password))
+
+    @Slot(str, str, result=bool)
+    def signupWithEmail(self, email: str, password: str) -> bool:  # noqa: N802
+        """Create an account through the injected cloud service."""
+        return bool(self._services and self._services.cloud.signup_with_email(email, password))
+
+    @Slot(result=bool)
+    def syncProfiles(self) -> bool:  # noqa: N802
+        """Synchronize profiles through the injected cloud service."""
+        return bool(self._services and self._services.cloud.sync_profiles())
 
     @Slot(str)
     def loginWithProvider(self, provider: str) -> None:  # noqa: N802
         """Open the system browser for OAuth login (google / facebook)."""
-        try:
-            from .cloud_client import CloudClient
-            cloud: CloudClient = self.parent().findChild(CloudClient)
-            if cloud:
-                cloud.login_with_browser(provider)
-        except Exception:
-            pass
+        if self._services:
+            self._services.cloud.login_with_browser(provider)
 
     @Slot()
     def logoutAccount(self) -> None:  # noqa: N802
         """Sign out and clear all stored tokens."""
-        try:
-            from .cloud_client import CloudClient
-            cloud: CloudClient = self.parent().findChild(CloudClient)
-            if cloud:
-                cloud.logout()
-        except Exception:
-            pass
+        if self._services:
+            self._services.cloud.logout()
 
     # ---- Telemetry ----
 
     @Slot(bool)
     def setAnalyticsEnabled(self, enabled: bool) -> None:  # noqa: N802
         """Toggle anonymous usage analytics on or off."""
-        self._config.set("telemetry.analytics_enabled", enabled)
-        self._config.save_config()
+        if self._services:
+            self._services.telemetry.analytics_enabled = enabled
+        else:
+            self._config.set("telemetry.analytics_enabled", enabled)
+            self._config.save_config()
+        self.privacyChanged.emit()
 
     @Slot(bool)
     def setCrashReportsEnabled(self, enabled: bool) -> None:  # noqa: N802
         """Toggle crash report collection on or off."""
-        self._config.set("telemetry.crash_reports_enabled", enabled)
-        self._config.save_config()
+        if self._services:
+            self._services.telemetry.crash_reports_enabled = enabled
+        else:
+            self._config.set("telemetry.crash_reports_enabled", enabled)
+            self._config.save_config()
+        self.privacyChanged.emit()
 
     @Slot(result=bool)
     def isAnalyticsEnabled(self) -> bool:  # noqa: N802
         """Return whether usage analytics is currently enabled."""
+        if self._services:
+            return self._services.telemetry.analytics_enabled
         return bool(self._config.get("telemetry.analytics_enabled", False))
 
     @Slot(result=bool)
     def isCrashReportsEnabled(self) -> bool:  # noqa: N802
         """Return whether crash reporting is currently enabled."""
+        if self._services:
+            return self._services.telemetry.crash_reports_enabled
         return bool(self._config.get("telemetry.crash_reports_enabled", False))
+
+    analyticsEnabled = Property(bool, isAnalyticsEnabled, notify=privacyChanged)
+    crashReportsEnabled = Property(bool, isCrashReportsEnabled, notify=privacyChanged)
 
     # ---- Updater ----
 
     @Slot()
     def checkForUpdates(self) -> None:  # noqa: N802
         """Manually trigger an update check."""
-        try:
-            from .updater import UpdateChecker
-            checker: UpdateChecker = self.parent().findChild(UpdateChecker)
-            if checker:
-                checker.check()
-        except Exception:
-            pass
+        if self._services:
+            self._services.updater.check()
 
     @Slot()
     def openDownloadPage(self) -> None:  # noqa: N802
         """Open the download page for the latest version."""
-        try:
-            from .updater import UpdateChecker
-            checker: UpdateChecker = self.parent().findChild(UpdateChecker)
-            if checker:
-                checker.open_download_page()
-        except Exception:
-            import webbrowser
-            webbrowser.open("https://github.com/owenpkent/Nimbus-Adaptive-Controller/releases/latest")
+        if self._services:
+            self._services.updater.open_download_page()
 
     @Slot()
     def dismissUpdate(self) -> None:  # noqa: N802
         """Dismiss the current update notification."""
-        try:
-            from .updater import UpdateChecker
-            checker: UpdateChecker = self.parent().findChild(UpdateChecker)
-            if checker:
-                checker.dismiss()
-        except Exception:
-            pass
+        if self._services:
+            self._services.updater.dismiss()

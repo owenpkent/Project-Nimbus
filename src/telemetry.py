@@ -174,6 +174,7 @@ class TelemetryClient(QObject):
         self._config.save_config()
         if value and not self._sentry_initialised:
             self._init_sentry()
+        self._update_timer()
 
     def track(self, event: str, props: Optional[Dict[str, Any]] = None) -> None:
         """
@@ -410,8 +411,7 @@ class TelemetryClient(QObject):
         except Exception as e:
             logger.warning("Failed to initialise Sentry: %s", e)
 
-    @staticmethod
-    def _scrub_sentry_event(event: Dict, hint: Dict) -> Optional[Dict]:
+    def _scrub_sentry_event(self, event: Dict, hint: Dict) -> Optional[Dict]:
         """
         Sentry ``before_send`` callback — strip PII before transmission.
 
@@ -420,6 +420,8 @@ class TelemetryClient(QObject):
         - Request bodies (belt-and-suspenders)
         - Environment variables
         """
+        if not self._crash_reports_enabled:
+            return None
         # Strip absolute paths from stack frames
         if "exception" in event:
             for exc_info in event["exception"].get("values", []):
