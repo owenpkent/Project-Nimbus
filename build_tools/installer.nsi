@@ -22,8 +22,11 @@
 ; download plugin present) cannot fetch an https:// URL at all. Run
 ; build_tools\fetch_redist.ps1 before makensis; it pins both by SHA-256 and
 ; checks the publisher signature. Changing a version here means changing it there.
-!define VJOY_SETUP     "vJoySetup-2.2.1-signed.exe"
-!define VJOY_VERSION   "2.2.1"
+; vJoy is the 2016 2.1.9.1 in Justin Shafer's attestation-signed build on
+; purpose: the newer njz3 2.2.1 driver fails to load on Windows 11
+; (0xC000009A, njz3/vJoy issue 17). See fetch_redist.ps1.
+!define VJOY_SETUP     "vJoySetup-2.1.9.1.exe"
+!define VJOY_VERSION   "2.1.9.1"
 !define VIGEM_SETUP    "ViGEmBus_1.22.0_x64_x86_arm64.exe"
 !define VIGEM_VERSION  "1.22.0"
 

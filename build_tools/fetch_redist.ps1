@@ -26,16 +26,23 @@ param(
 $ErrorActionPreference = 'Stop'
 $redist = Join-Path $PSScriptRoot 'redist'
 
-# Both projects are frozen: ViGEmBus was archived on 2023-11-02 with 1.22.0 as
-# its final release, and vJoy 2.2.1.1 is the current njz3 build. Bumping either
-# means a new hash here and a new version in installer.nsi.
+# Both projects are frozen. ViGEmBus was archived on 2023-11-02 with 1.22.0 as
+# its final release. vJoy is deliberately the 2016 2.1.9.1 in Justin Shafer's
+# 2019 build, not the newer njz3 2.2.1: on Windows 11 the 2.2.x driver fails
+# to load with 0xC000009A (WdfCollectionCreate; njz3/vJoy issue 17, open since
+# 2023, reproduced on the dev machine on 2026-09-06 on a clean boot), and the
+# BrunnerInnovation 2.2.2.0 build is reported failing the same way. The 2.1.9.1
+# build's vJoy.sys and catalog are signed by the Microsoft Windows Hardware
+# Compatibility Publisher (attestation), so it is also on the right side of the
+# April 2026 driver policy. Bumping either item means a new hash here and a new
+# version in installer.nsi.
 $items = @(
     @{
-        Name      = 'vJoySetup-2.2.1-signed.exe'
-        Url       = 'https://github.com/njz3/vJoy/releases/download/v2.2.1.1/vJoySetup-2.2.1-signed.exe'
-        Sha256    = '0C599290DA9AB17ED189DEB1DB20D8BB2688D15173FE464D485C203032EEEF8D'
+        Name      = 'vJoySetup-2.1.9.1.exe'
+        Url       = 'https://github.com/jshafer817/vJoy/releases/download/v2.1.9.1/vJoySetup.exe'
+        Sha256    = 'F103CED4E7FF7CCB49C8415A542C56768ED4DA4FEA252B8F4FFDAC343074654A'
         Signer    = 'On-site Dental Systems'
-        Purpose   = 'vJoy 2.2.1 (Inno Setup, silent flags /VERYSILENT /SUPPRESSMSGBOXES /NORESTART)'
+        Purpose   = 'vJoy 2.1.9.1, jshafer817 build, Microsoft-attestation-signed driver (Inno Setup, /VERYSILENT /SUPPRESSMSGBOXES /NORESTART)'
     },
     @{
         Name      = 'ViGEmBus_1.22.0_x64_x86_arm64.exe'

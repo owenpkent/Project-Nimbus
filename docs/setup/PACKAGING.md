@@ -218,8 +218,21 @@ or from the wrong publisher. Cached files are re-verified, not blindly reused.
 
 | Driver | Version | Installer type | Silent flags |
 |---|---|---|---|
-| vJoy (Shaul Eizikovich / njz3 fork) | 2.2.1 | Inno Setup | `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART` |
+| vJoy (Shaul Eizikovich, jshafer817's signed build) | 2.1.9.1 | Inno Setup | `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART` |
 | ViGEmBus (Nefarius Software Solutions) | 1.22.0, final | Advanced Installer bootstrapper | `/exenoui /qn /norestart` |
+
+**Why vJoy 2.1.9.1 and not 2.2.1.** The newer njz3 2.2.1 driver fails to load
+on Windows 11: `vjoy.sys` returns `0xC000009A` from `WdfCollectionCreate`
+(njz3/vJoy issue 17, open since December 2023, reproduced on the dev machine on
+2026-09-06 on a clean boot, no Memory Integrity, no Code Integrity block), and
+`vJoyInstall.exe` then removes its own device, leaving an install that looks
+complete and reports 0 buttons. BrunnerInnovation's 2.2.2.0 is reported failing
+the same way as of April 2026. Justin Shafer's 2019 build of the original
+2.1.9.1 works (128 buttons, 8 axes, status FREE, measured the same day) and its
+`vJoy.sys` and catalog are signed by the Microsoft Windows Hardware
+Compatibility Publisher, so it survives the April 2026 driver policy, which the
+2016 SourceForge original would not. It is the only vJoy worth bundling today,
+and vJoy as a whole is on borrowed time; ViGEmBus is the path that has a future.
 
 **What counts as installed.** Neither driver is trusted on the strength of its
 files, uninstall key or service entry, because all three survive a removal or a

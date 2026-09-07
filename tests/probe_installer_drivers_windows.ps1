@@ -54,7 +54,7 @@
 .PARAMETER Teardown
     Uninstall vJoy and ViGEmBus, record the boot time, and stop. Reboot, then
     run again without it. This removes drivers the machine may be using; expect
-    vJoy to come back as 2.2.1 and ViGEmBus as 1.22.0, which is what the
+    vJoy to come back as 2.1.9.1 and ViGEmBus as 1.22.0, which is what the
     installer ships.
 
 .PARAMETER KeepApp
@@ -324,28 +324,39 @@ try {
     if ($app.Present) {
         $exe = Join-Path $app.Dir 'Nimbus-Adaptive-Controller-1.4.3.exe'
         if (Test-Path $exe) {
+            # Anything left over from an earlier run would be mistaken for ours.
+            Get-Process -Name 'Nimbus-Adaptive-Controller*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
             $started = Get-Date
-            $p = Start-Process -FilePath $exe -PassThru
-            # A PyInstaller onefile build unpacks ~190 MB before Qt draws anything,
-            # so poll for the window instead of guessing a sleep.
-            $deadline = (Get-Date).AddSeconds(90)
-            $window = $false
+            $boot = Start-Process -FilePath $exe -PassThru
+            # PyInstaller onefile: the process started here is the bootloader. It
+            # unpacks ~190 MB, then spawns a child that runs the app and owns the
+            # window, so the window has to be looked for on the child. The first
+            # runs of this probe polled the bootloader, waited 90 s for a handle
+            # that never comes, then killed it and orphaned the child.
+            # $app is the install record used by I11 below; the window's process
+            # gets its own name. Reusing $app here is what made the third run
+            # report "app was not installed" and skip the uninstall.
+            $deadline = (Get-Date).AddSeconds(120)
+            $win = $null
             while ((Get-Date) -lt $deadline) {
                 Start-Sleep -Seconds 2
-                $p.Refresh()
-                if ($p.HasExited) { break }
-                if ($p.MainWindowHandle -ne 0) { $window = $true; break }
+                $boot.Refresh()
+                if ($boot.HasExited) { break }
+                $win = Get-Process -Name 'Nimbus-Adaptive-Controller*' -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Id -ne $boot.Id -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+                if ($win) { break }
             }
-            $p.Refresh()
-            $alive = -not $p.HasExited
             $waited = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
-            if ($alive) {
-                $null = $p.CloseMainWindow()
+            $title = $(if ($win) { $win.MainWindowTitle } else { '' })
+            $closed = $false
+            if ($win) {
+                $null = $win.CloseMainWindow()
                 Start-Sleep -Seconds 8
-                $p.Refresh()
-                if (-not $p.HasExited) { $p | Stop-Process -Force }
+                $win.Refresh()
+                $closed = $win.HasExited
             }
-            Check 'I10' ($alive -and $window) "app window shown after $waited s: $window (process alive: $alive)"
+            Get-Process -Name 'Nimbus-Adaptive-Controller*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Check 'I10' ([bool]$win) "app window '$title' shown after $waited s: $([bool]$win); closed on request: $closed"
         } else {
             Check 'I10' $false "app exe not found at $exe"
         }
