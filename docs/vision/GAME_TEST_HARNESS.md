@@ -1,6 +1,6 @@
 # Game Test Harness: Automated Tests Against Real Games
 
-> **Status:** designed, built and run 2026-09-07 on `refactor/application-ownership`. The harness is `tests/game_harness.py`, the runner is `tests/probe_game_harness_windows.py`, the recipes are in `tests/games/`. Against Left 4 Dead 2 the pad calibration passes 12/12 and the Nimbus end-to-end run 11/11; the numbers and what the game taught are in section 8.
+> **Status:** designed, built and run 2026-09-07 on `feature/game-test-harness`. The harness is `tests/game_harness.py`, the runner is `tests/probe_game_harness_windows.py`, the recipes are in `tests/games/`, and the first Spectator+ feature it made possible is in `src/spectator/` (section 4.7). Against Left 4 Dead 2 the pad calibration passes 14/14 and the Nimbus end-to-end run 17/17, primitives included; Elden Ring, with no console, passes 11/11 on frame verdicts. The numbers and what the games taught are in section 8.
 >
 > **Relationship to Spectator+:** the loop this harness runs (put the game in a known state, send controller input, read what the game did) is the loop a Spectator+ agent runs. Section 4.7 says what carries over.
 
@@ -98,7 +98,7 @@ One JSON file per game in `tests/games/`. A recipe says how to launch the game i
 - `launch_args` is the exact Steam launch line, kept literal so a person can paste it. For a `source_console` recipe the harness checks that `-condebug` and `+exec <cfg_name>` are present.
 - `oracle.type` selects the oracle; `frame_diff` needs no other keys.
 - `reset_pose` is where `reset()` puts the player: `{"pos": [x, y, z], "ang": [pitch, yaw, roll]}`. When it is `null` the first pose read after the game is ready becomes the session's reset pose, and the runner prints it so it can be written into the recipe. A recipe with a fixed pose is a repeatable test; one without is a first run.
-- `ready_sequence` (optional) is the list of waits and button presses that take a game from its title screen into a map, for games with no `+map`: `{"wait": 25}`, `{"press": [1], "hold": 0.2}`, and `{"wait_until_control": {"rx": 1.0}, "interval": 5, "timeout": 150}`, which holds the stick every few seconds until the picture moves against an idle capture (menus and loading screens ignore a stick, the world does not, and it presses nothing in-world). Each step takes an optional `note`. `warmup_s` is the fixed wait the `frame_diff` oracle counts as readiness. The Elden Ring recipe uses all of them.
+- `ready_sequence` (optional) is the list of waits and button presses that take a game from its title screen into a map, for games with no `+map`: `{"wait": 25}`, `{"press": [1], "hold": 0.2}`, `{"wait_until_control": {"rx": 1.0}, "interval": 5, "timeout": 150}`, which holds the stick every few seconds until the picture moves, and `{"press_until_control": [1], "action": {"rx": 1.0}, ...}`, which does the same but presses the buttons after each failed test. Menus and loading screens ignore a stick and the world does not, and "moved" is a twentieth of the sampled frame, because a menu's shimmer changes a few hundred samples and a camera turn tens of thousands. The test runs before the press each cycle, so once the stick works nothing more is pressed. Each step takes an optional `note`. `warmup_s` is the fixed wait the `frame_diff` oracle counts as readiness. The Elden Ring recipe is a wait for the logos and one `press_until_control`.
 
 ### 4.2 The launcher, and the launch-order rule
 
@@ -309,6 +309,28 @@ The step numbers are consistent with the pad calibration once the drag time is c
 | stop a 400-unit walk after 0.3 s | | 72.7 units before the stop, 0.0 in the next second, stick at zero |
 
 The planner's choices are what section 4.7 intends: small angles go to the slow stick and long holds, the 90 goes to the stop where timing matters most, and that is where the error is largest (4 degrees short on a 0.4 s hold, about 10 ms of ramp). A closed loop would fix it; for v0 the tolerance is the honest number.
+
+### 2026-09-07, dev machine, Elden Ring 1.17, full screen 2560x1440, pad actuator, frame-differencing oracle
+
+The second recipe, for a game with no console: verdicts, not numbers. Three runs. **Run 1** (4/5) never left the title screen: a notice that the last session was not quit from the menu ("Quit Game or Return to Desktop might not have been selected") sits in front of it with an OK button, and it will always be there, because the harness kills the game at the end of a run; the fixed sequence's presses came before it appeared and the control step saw zero changed samples. **Run 2** (4/5) reached the main menu and stopped there with Continue highlighted: the third press came before the menu was up, and the menu's gold shimmer (200 of 102,480 samples) passed the old fixed threshold of 150 for "the stick moved the picture". **Run 3, 11/11**, with a 30 s wait for the logos and one `press_until_control` step (test the stick, press A after a failed test, every 5 s, "moved" a twentieth of the frame) reached the world 69 s after launch, 19,726 samples moving under the stick. Against a noise floor of 330 in the world:
+
+| Step | changed samples | verdict |
+|---|---|---|
+| control `rx` 1.00 | 31,787 | MOVED |
+| 0.20 | 1,057 | MOVED (marginal: the threshold was 990) |
+| 0.26 | 3,053 | MOVED |
+| 0.28 | 5,205 | MOVED |
+| 0.30 | 6,762 | MOVED |
+| 0.40 | 11,880 | MOVED |
+| 0.60 | 37,223 | MOVED |
+| 0.80 | 44,191 | MOVED |
+| 1.00 | 15,947 | MOVED |
+| left 0.60 | 13,772 | MOVED |
+| pitch up 0.60 | 8,619 | MOVED |
+| walk 1.00 | 7,707 | MOVED |
+| idle after | 2,131 | (open ground, more grass in the wind) |
+
+What the game taught: its camera deadzone is at or below 0.20 by this measure (0.20 is marginal, 0.26 is not), lower than Left 4 Dead 2's 0.28, which is worth knowing for the anti-deadzone default; the full-deflection step changed fewer samples than 0.80 because the camera came most of the way round in the second and the frame was compared with something like itself, which is the frame oracle's blind spot and exactly the fold the console oracle had to be taught to unwrap; and with no console there is no reset, no calibration and no primitives for this game until another oracle exists (section 2.1). The unclean-exit notice is the harness's own doing; quitting through the menu would need a scripted path through the System menu, which is a later refinement.
 
 ---
 

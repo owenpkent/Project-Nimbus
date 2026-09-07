@@ -970,26 +970,37 @@ class GameEnv:
                 time.sleep(float(step.get("hold", 0.15)))
                 self.actuator.release()
                 time.sleep(0.25)
-            if step.get("wait_until_control"):
-                action = dict(step["wait_until_control"])
+            if step.get("wait_until_control") or step.get("press_until_control"):
+                # A stick test first: the world answers a stick, menus and
+                # loading screens do not. "Moved" is a twentieth of the
+                # sampled frame, because a menu's shimmer changes a few
+                # hundred samples and a camera turn tens of thousands. With
+                # ``press_until_control`` a failed test is followed by a press
+                # (OK on a notice, "press any button", Continue), so no press
+                # lands in the world once the stick works.
+                action = dict(step.get("wait_until_control") or step.get("action") or {"rx": 1.0})
+                buttons = [int(b) for b in (step.get("press_until_control") or [])]
                 hold = float(step.get("hold", 0.6))
                 interval = float(step.get("interval", 5.0))
                 deadline = time.monotonic() + float(step.get("timeout", 150.0))
-                print(f"[harness] sequence: wait until {action} moves the picture{note}", flush=True)
+                what = f"press {buttons} until" if buttons else "wait until"
+                print(f"[harness] sequence: {what} {action} moves the picture{note}", flush=True)
                 while time.monotonic() < deadline:
                     self.front()
                     a = self.grab()
-                    time.sleep(hold)
-                    b = self.grab()
-                    idle = frame_diff(a, b, skip_top=self.skip_top)
                     self.actuator.apply(action)
                     time.sleep(hold)
-                    c = self.grab()
+                    b = self.grab()
                     self.actuator.release()
-                    moved = frame_diff(b, c, skip_top=self.skip_top)
-                    if moved > max(3 * idle, 150):
-                        print(f"[harness] sequence: the picture moved ({moved} against idle {idle})", flush=True)
+                    moved = frame_diff(a, b, skip_top=self.skip_top)
+                    total = a[self.skip_top::6, ::6].shape[0] * a[self.skip_top::6, ::6].shape[1]
+                    if moved > max(150, total // 20):
+                        print(f"[harness] sequence: the picture moved ({moved} of {total} samples)", flush=True)
                         break
+                    if buttons:
+                        self.actuator.apply({"buttons": buttons})
+                        time.sleep(float(step.get("press_hold", 0.15)))
+                        self.actuator.release()
                     time.sleep(interval)
                 else:
                     print("[harness] sequence: the stick never moved the picture before the timeout", flush=True)
