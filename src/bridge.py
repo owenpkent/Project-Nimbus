@@ -1463,6 +1463,12 @@ class ControllerBridge(QObject):
             # Save as new profile
             success = self._config.save_profile_as(profile_id, profile_data)
             if success:
+                # unique_id never overwrites, so a second "Save As" under a name
+                # that already exists lands on name_1 rather than replacing it.
+                # Say which id was used: silently writing somewhere other than
+                # where the user expected is worse than the old clobber.
+                if profile_id != name:
+                    print(f"Saved custom layout as: {name} (id: {profile_id})")
                 self.profilesListChanged.emit()
             self.profileSaved.emit(success)
         except Exception as e:

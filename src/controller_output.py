@@ -46,8 +46,11 @@ class ControllerOutput:
         prefer_vigem = self._config.get("controller.prefer_vigem", True)
         self.use_vigem = bool(layout_type in ("xbox", "adaptive", "custom")
                               and self.vigem_available and prefer_vigem)
-        if self.use_vigem and self.vigem is None:
-            self.ensure_vigem()
+        if self.use_vigem and self.vigem is None and self.ensure_vigem() is None:
+            # mode must never name a backend that active does not return, or
+            # the status bar and getOutputMode() report ViGEm while input goes
+            # to vJoy.
+            self.use_vigem = False
         if self.vjoy is None:
             self.vjoy = self._vjoy_factory(self._config)
 
@@ -63,8 +66,8 @@ class ControllerOutput:
         if mode == "vigem":
             if not self.vigem_available:
                 return False
-            if self.vigem is None:
-                self.ensure_vigem()
+            if self.vigem is None and self.ensure_vigem() is None:
+                return False   # see initialize(): do not select what was not built
         elif self.vjoy is None:
             self.vjoy = self._vjoy_factory(self._config)
         self.use_vigem = mode == "vigem"

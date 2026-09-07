@@ -441,6 +441,32 @@ class TelemetryClient(QObject):
         except Exception as e:
             logger.warning("Failed to initialise Sentry: %s", e)
 
+    @staticmethod
+    def _fingerprint_source(values: Any) -> str:
+        """A machine-independent identity for a crash, for grouping.
+
+        Only the exception type and the code position of each frame, never a
+        path, a message or a local. Hashing the raw exception values instead
+        would be private (the hash is one way) but useless: they carry
+        ``abs_path``, so the same crash fingerprints differently on every
+        install and Sentry shows one group per user rather than one per bug.
+        """
+        parts: List[str] = []
+        for exception in values:
+            if not isinstance(exception, dict):
+                continue
+            parts.append(str(exception.get("type", "Exception")))
+            frames = (exception.get("stacktrace") or {}).get("frames", []) or []
+            for frame in frames:
+                if not isinstance(frame, dict):
+                    continue
+                # module and function are code identity; abs_path and filename
+                # are install identity and are deliberately left out.
+                parts.append("{0}:{1}:{2}".format(frame.get("module", ""),
+                                                  frame.get("function", ""),
+                                                  frame.get("lineno", "")))
+        return "|".join(parts)
+
     def _scrub_sentry_event(self, event: Dict, hint: Dict) -> Optional[Dict]:
         """Allow only exception types and a hashed fingerprint into Sentry."""
         if not self._crash_reports_enabled:
@@ -450,7 +476,7 @@ class TelemetryClient(QObject):
             return None
         exceptions = []
         for exception in values:
-            name = exception.get("type", "Exception")
+            name = exception.get("type", "Exception") if isinstance(exception, dict) else "Exception"
             if not isinstance(name, str) or not name.isidentifier():
                 name = "Exception"
             exceptions.append({"type": name, "value": "Exception details omitted"})
@@ -458,7 +484,7 @@ class TelemetryClient(QObject):
             "level": "error",
             "release": "nimbus-adaptive-controller@" + self._app_version(),
             "exception": {"values": exceptions},
-            "fingerprint": [_hash(json.dumps(values, sort_keys=True, default=str))],
+            "fingerprint": [_hash(self._fingerprint_source(values))],
         }
 
     def _flush(self) -> None:

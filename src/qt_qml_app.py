@@ -138,10 +138,8 @@ def main() -> int:
         engine.rootContext().setContextProperty("config", config)
         main_qml = qml_path()
         engine.load(QUrl.fromLocalFile(str(main_qml)))
-        if splash:
-            splash.close()
         if not engine.rootObjects():
-            return 1
+            return 1   # the finally below closes the splash
         vjoy_ok = bridge._vjoy.is_connected if bridge._vjoy else False
         vigem_ok = bridge._vigem.is_connected if bridge._vigem else False
         services.telemetry.track_session_start(__version__, bridge.getOutputMode(), vjoy_ok, vigem_ok)

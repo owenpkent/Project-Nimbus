@@ -90,9 +90,27 @@ class ProfileRepositoryTests(unittest.TestCase):
                                  upsert_profile=Mock(return_value=True), profileUpdated=Mock())
         CloudClient._merge_profiles(client, [{"profile_id": "remote", "data": {"name": "Remote"}}])
         self.assertEqual(self.repository.load("remote"), {"name": "Remote"})
-        with self.assertRaises(ValueError):
+        # _merge_profiles now collects per-profile failures and raises once at
+        # the end, so the rest of the sync still runs. A traversal id is still
+        # refused by the repository and still fails the sync, and the message
+        # has to name it rather than failing anonymously.
+        with self.assertRaises(RuntimeError) as caught:
             CloudClient._merge_profiles(client, [{"profile_id": "../escape", "data": {}}])
+        self.assertIn("../escape", str(caught.exception))
         self.assertFalse((self.root / "escape.json").exists())
+        self.assertFalse((self.root.parent / "escape.json").exists())
+
+    def test_merge_finishes_every_profile_before_reporting_failure(self):
+        """One bad profile must not abandon the profiles after it."""
+        from src.cloud_client import CloudClient
+        client = SimpleNamespace(_config=SimpleNamespace(profiles=self.repository),
+                                 upsert_profile=Mock(return_value=True), profileUpdated=Mock())
+        with self.assertRaises(RuntimeError):
+            CloudClient._merge_profiles(client, [
+                {"profile_id": "../escape", "data": {}},
+                {"profile_id": "good_one", "data": {"name": "Good"}},
+            ])
+        self.assertEqual(self.repository.load("good_one"), {"name": "Good"})
 
     def test_failed_upload_reports_failed_sync(self):
         from src.cloud_client import CloudClient
@@ -111,3 +129,25 @@ class ProfileRepositoryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class DeprecatedProfileInvariantTest(unittest.TestCase):
+    """A bundled profile must never also be listed as deprecated.
+
+    ensure_defaults deletes every deprecated id and then copies the bundled
+    ones back, so an id in both sets is deleted and re-copied on every launch,
+    silently reverting whatever the user changed in it. xbox_controller was in
+    both for several releases.
+    """
+
+    def test_no_bundled_profile_is_also_deprecated(self):
+        from src.config import ControllerConfig
+
+        # _get_bundled_profiles_dir is an instance method that only resolves a
+        # path, so it is safe to call unbound without building a config (which
+        # would touch the real user profile directory).
+        bundled_dir = ControllerConfig._get_bundled_profiles_dir(ControllerConfig.__new__(ControllerConfig))
+        bundled = {p.stem for p in bundled_dir.glob("*.json")}
+        overlap = bundled & set(ControllerConfig._DEPRECATED_BUNDLED_PROFILES)
+        self.assertEqual(
+            overlap, set(),
+            f"these are shipped and deprecated at once, so they reset every launch: {sorted(overlap)}")

@@ -3,8 +3,22 @@ import json
 import os
 import shutil
 import tempfile
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Windows device names, which cannot be used as filenames with any extension.
+# Spelled out rather than calling pathlib's is_reserved(), which is deprecated
+# in Python 3.13 and removed in 3.15.
+_RESERVED_NAMES = frozenset(
+    ["CON", "PRN", "AUX", "NUL"]
+    + [f"COM{d}" for d in "123456789"]
+    + [f"LPT{d}" for d in "123456789"]
+)
+
+
+def _is_reserved(name: str) -> bool:
+    """Whether a filename stem is a reserved Windows device name."""
+    return name.split(".", 1)[0].upper() in _RESERVED_NAMES
 
 
 class ProfileRepository:
@@ -28,7 +42,7 @@ class ProfileRepository:
                 or profile_id.endswith((".", " "))
                 or any(character in '<>:"/\\|?*' or ord(character) < 32
                        for character in profile_id)
-                or PureWindowsPath(profile_id).is_reserved()):
+                or _is_reserved(profile_id)):
             raise ValueError("Invalid profile identifier")
         path = directory / (profile_id + ".json")
         if path.resolve().parent != directory.resolve():
@@ -96,7 +110,7 @@ class ProfileRepository:
         """Return an unused, filesystem-safe identifier for a display name."""
         base = "".join(character for character in name.lower().replace(" ", "_")
                        if character.isalnum() or character == "_") or "custom_profile"
-        if PureWindowsPath(base).is_reserved():
+        if _is_reserved(base):
             base = "profile_" + base
         candidate = base
         counter = 1

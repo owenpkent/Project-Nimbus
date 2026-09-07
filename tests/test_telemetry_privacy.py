@@ -79,6 +79,33 @@ class TelemetryPrivacyTests(unittest.TestCase):
         self.telemetry.crash_reports_enabled = False
         self.assertIsNone(self.telemetry._scrub_sentry_event(event, {}))
 
+    def test_fingerprint_groups_the_same_crash_across_installs(self):
+        """Two installs hitting one bug must land in one Sentry group.
+
+        The fingerprint used to hash the whole exception payload, which carries
+        abs_path, so it differed per machine and grouping was per user. It must
+        depend on code position only, and still leak nothing.
+        """
+        def event_from(root, line):
+            return {"exception": {"values": [{
+                "type": "ValueError", "value": "secret detail",
+                "stacktrace": {"frames": [{
+                    "abs_path": root + "/src/bridge.py", "filename": root + "/src/bridge.py",
+                    "module": "src.bridge", "function": "setStickInput", "lineno": line,
+                    "vars": {"token": "secret"}}]}}]}}
+
+        owen = self.telemetry._scrub_sentry_event(event_from("C:/Users/Owen", 700), {})
+        other = self.telemetry._scrub_sentry_event(event_from("/home/someone-else", 700), {})
+        self.assertEqual(owen["fingerprint"], other["fingerprint"])
+
+        # A different bug in the same function must not collapse into it.
+        moved = self.telemetry._scrub_sentry_event(event_from("C:/Users/Owen", 812), {})
+        self.assertNotEqual(owen["fingerprint"], moved["fingerprint"])
+
+        # And the fingerprint is still opaque.
+        for marker in ("Owen", "secret", "bridge.py"):
+            self.assertNotIn(marker, json.dumps(owen))
+
 
 if __name__ == "__main__":
     unittest.main()

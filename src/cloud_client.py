@@ -756,11 +756,21 @@ class CloudClient(QObject):
         - If no remote counterpart exists, push to remote.
         """
         repository = self._config.profiles
-        if not repository.directory.exists():
-            raise OSError("Profile directory is unavailable")
+        # The directory is created during ControllerConfig startup, so a missing
+        # one means something is genuinely wrong with user storage. Creating it
+        # here keeps a first sync from failing over an empty profile set, and a
+        # directory that still cannot be made is a real error.
+        try:
+            repository.directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise OSError("Profile directory is unavailable") from exc
 
         remote_by_id = {p["profile_id"]: p for p in remote_profiles}
-        uploads_succeeded = True
+        # Every profile is attempted, and the failures are collected rather than
+        # thrown at the first one. Raising mid-loop abandoned the remaining
+        # pulls and pushes, so one unreadable file left the set half synced and
+        # reported the whole run as a clean failure.
+        failures: List[str] = []
 
         # Pull newer remote profiles
         for pid, rp in remote_by_id.items():
@@ -773,23 +783,27 @@ class CloudClient(QObject):
                 ).isoformat()
                 if remote_updated > local_mtime:
                     # Remote is newer — pull
-                    if not repository.save(pid, rp["data"]):
-                        raise ValueError("Unable to save remote profile")
-                    self.profileUpdated.emit(pid)
-                    logger.debug("Pulled profile %s (remote newer).", pid)
+                    if repository.save(pid, rp["data"]):
+                        self.profileUpdated.emit(pid)
+                        logger.debug("Pulled profile %s (remote newer).", pid)
+                    else:
+                        failures.append(f"could not save remote profile {pid}")
                 elif local_mtime > remote_updated:
                     # Local is newer — push
                     local_data = repository.load(pid)
                     if local_data is None:
-                        raise ValueError("Unable to load local profile")
-                    uploads_succeeded = self.upsert_profile(pid, local_data) and uploads_succeeded
-                    logger.debug("Pushed profile %s (local newer).", pid)
+                        failures.append(f"could not read local profile {pid}")
+                    elif not self.upsert_profile(pid, local_data):
+                        failures.append(f"upload failed for profile {pid}")
+                    else:
+                        logger.debug("Pushed profile %s (local newer).", pid)
             else:
                 # No local copy — pull
-                if not repository.save(pid, rp["data"]):
-                    raise ValueError("Unable to save remote profile")
-                self.profileUpdated.emit(pid)
-                logger.debug("Pulled new profile %s from cloud.", pid)
+                if repository.save(pid, rp["data"]):
+                    self.profileUpdated.emit(pid)
+                    logger.debug("Pulled new profile %s from cloud.", pid)
+                else:
+                    failures.append(f"could not save remote profile {pid}")
 
         # Push local-only profiles
         for profile in repository.list_profiles():
@@ -797,8 +811,10 @@ class CloudClient(QObject):
             if pid not in remote_by_id:
                 local_data = repository.load(pid)
                 if local_data is None:
-                    raise ValueError("Unable to load local profile")
-                uploads_succeeded = self.upsert_profile(pid, local_data) and uploads_succeeded
-                logger.debug("Pushed local-only profile %s to cloud.", pid)
-        if not uploads_succeeded:
-            raise RuntimeError("One or more profile uploads failed")
+                    failures.append(f"could not read local profile {pid}")
+                elif not self.upsert_profile(pid, local_data):
+                    failures.append(f"upload failed for profile {pid}")
+                else:
+                    logger.debug("Pushed local-only profile %s to cloud.", pid)
+        if failures:
+            raise RuntimeError("Profile sync incomplete: " + "; ".join(failures))
