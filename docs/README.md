@@ -31,7 +31,7 @@
 - [Hardware Integration](vision/HARDWARE_INTEGRATION.md) — wrapping XAC, QuadStick, and other adaptive hardware through vJoy; input pipeline architecture
 - [Keyboard Output](vision/KEYBOARD_OUTPUT.md) — native keystroke/shortcut emission via SendInput; no external dependencies; bundled in installer
 - [Host Mode & Input Isolation](vision/HOST_MODE_ISOLATION.md) — solving the Raw Input tier; VMs, cloud gaming, two-PC streaming, Linux/evdev, and a mouse-class filter driver
-- [Aim Assistance](vision/AIM_ASSISTANCE.md): why aiming is hard, a code audit of the stick pipeline, and the assistance options ranked by effort
+- [Aim Assistance](vision/AIM_ASSISTANCE.md): why aiming is hard, a code audit of the stick pipeline, the assistance options ranked by effort, and the tier 1 build (one radial shaping pass, anti-deadzone, travel, precision modifier) with its five-layer test plan and the measurements against Left 4 Dead 2
 - [Linux Probe Plan](vision/LINUX_PROBE_PLAN.md) — proposed weekend experiment to test EVIOCGRAB + uinput against a real EAC game
 - [Windows Mouse Filter Plan](vision/WINDOWS_MOUSE_FILTER_PLAN.md): the Windows counterpart, a mouclass upper filter that hands the physical mouse to Nimbus, motivated by the Raw Input measurements in section 8 of Host Mode
 - [Nimbus Mouse Filter driver README](../driver/README.md): building, test-signing, and dev-installing the kernel filter (prototype, not in any release)

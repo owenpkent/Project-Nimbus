@@ -342,10 +342,10 @@ Play with the default profile, then the calibration loop of section 4.2: Edit La
 
 ## 13. Open questions
 
-- Should anti-deadzone default to the XInput constants, or to zero with a first-run calibration prompt? Defaulting to 0.265 is right for most games and wrong and confusing for the ones that already compensate.
-- Does the migration in section 11 need to be automatic, or is a changelog note plus a "reset to defaults" button enough?
-- Is `travel_px` the right unit, or should it be expressed as a gain multiplier so it survives DPI changes? Mouse DPI and Windows pointer speed both affect the physical distance a pixel represents.
-- Where does the precision modifier live in a layout that has no spare buttons? A dwell zone, a second pointer button, and a screen-edge region are all candidates.
+- Should anti-deadzone default to the XInput constants, or to zero with a first-run calibration prompt? Defaulting to 0.265 is right for most games and wrong and confusing for the ones that already compensate. **Resolved (section 14):** the constants, per widget, with the dialog's test pad as the calibration loop; Left 4 Dead 2 measured at exactly that constant.
+- Does the migration in section 11 need to be automatic, or is a changelog note plus a "reset to defaults" button enough? **Resolved (section 14):** no migration is needed; with the global block at its defaults the second pass was near linear, so nothing doubles.
+- Is `travel_px` the right unit, or should it be expressed as a gain multiplier so it survives DPI changes? Mouse DPI and Windows pointer speed both affect the physical distance a pixel represents. **Open.** Shipped as pixels, which is what the user can measure on their desk; a gain multiplier on top of the drawn radius would be just as DPI-dependent.
+- Where does the precision modifier live in a layout that has no spare buttons? A dwell zone, a second pointer button, and a screen-edge region are all candidates. **Open.** Shipped as a button widget action (`modifier: "precision"`), momentary or latched; the other candidates are section 6 work.
 
 ## 14. Implementation notes (2026-09-06)
 

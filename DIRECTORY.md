@@ -214,7 +214,7 @@ docs/
 
 | Directory | Purpose |
 |-----------|---------|
-| `tests/` | vJoy diagnostics plus Windows input probes: `probe_rawinput_windows.py` (which countermeasures stop `WM_INPUT`), `probe_game_mouselook_windows.py` (in-game camera motion), `probe_mouse_filter_windows.py` (the kernel filter), `probe_mouse_filter_stress_windows.py` (the filter's battle test: storms, floods, process chaos, CPU starvation, an API fuzz, a soak), `probe_nimbus_relay_windows.py` (the real app in Full Game Mode with the cursor relay), `probe_installer_drivers_windows.ps1` (the installer's vJoy and ViGEmBus bootstrap, unattended after one elevation) |
+| `tests/` | vJoy diagnostics plus Windows input probes: `probe_rawinput_windows.py` (which countermeasures stop `WM_INPUT`), `probe_game_mouselook_windows.py` (in-game camera motion), `probe_mouse_filter_windows.py` (the kernel filter), `probe_mouse_filter_stress_windows.py` (the filter's battle test: storms, floods, process chaos, CPU starvation, an API fuzz, a soak), `probe_nimbus_relay_windows.py` (the real app in Full Game Mode with the cursor relay), `probe_installer_drivers_windows.ps1` (the installer's vJoy and ViGEmBus bootstrap, unattended after one elevation), `test_stick_shaping.py` (property checks on the stick shaping formula, no hardware), `probe_stick_shaping_windows.py` (the real app driven by synthesized pointer events, reading what reached ViGEm), `probe_game_deadzone_windows.py` (a running game's real stick deadzone, and whether a 1 px Nimbus drag clears it) |
 | `research/` | Research notes, reference materials |
 | `build/` | PyInstaller build cache (gitignored) |
 | `dist/` | Built executables and installers (gitignored) |
