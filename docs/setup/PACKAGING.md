@@ -231,6 +231,15 @@ copied to `$INSTDIR\drivers\` and the user is offered the normal GUI installer
 right there. At the end, one summary dialog appears only when a driver is still
 missing, naming what will not work. Nimbus itself starts either way.
 
+**Silent install.** `Setup.exe /S` skips every custom page, so `.onInit` fills in
+the choices a scripted deployment would otherwise never make: install whichever
+driver is missing, leave the ones present alone, create both shortcuts. Every
+`MessageBox` in the script carries a `/SD` default for the same reason, since a
+silent install otherwise stops on a dialog nobody can see. The failure prompts
+default to "do not launch a GUI installer", which is the right answer when
+nobody is watching. This is what `tests\probe_installer_drivers_windows.ps1`
+drives.
+
 Two related notes: `pip install vgamepad` installs **ViGEmBus 1.17.333.0** from
 its own bundled MSI, so dev machines can be on a 2019-era build while the
 installer ships 1.22.0. Keep vgamepad for the client library and let the
@@ -347,9 +356,9 @@ signtool verify /pa /v "dist\Project-Nimbus-Setup-1.2.1.exe"
 
 ### Test
 
+- [ ] Run the driver probe from an **elevated** PowerShell: `tests\probe_installer_drivers_windows.ps1 -Fresh` (11 checks, unattended after the elevation prompt: removes vJoy and ViGEmBus, installs silently, verifies both came back, checks vJoy device 1 for 8 axes and 128 buttons, starts and closes the app, then uninstalls the app and confirms the drivers survive). `-Fresh` removes drivers the machine may be using, so run it where that is acceptable
 - [ ] Run installer on clean Windows VM
-- [ ] On that VM (no vJoy, no ViGEmBus): the drivers page offers both, both install silently, `sc query ViGEmBus` succeeds afterwards and vJoy device 1 reports 8 axes and 128 buttons
-- [ ] On a machine that already has them: the page reads "Already installed" for both and installs neither
+- [ ] On a machine that already has both drivers: the page reads "Already installed" for both and installs neither
 - [ ] Untick both on the drivers page: install completes, the summary dialog names what will not work, and Nimbus still starts
 - [ ] Verify UAC prompt appears
 - [ ] Verify previous version detection works

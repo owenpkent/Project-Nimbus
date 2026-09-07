@@ -214,7 +214,7 @@ docs/
 
 | Directory | Purpose |
 |-----------|---------|
-| `tests/` | vJoy diagnostics plus Windows input probes: `probe_rawinput_windows.py` (which countermeasures stop `WM_INPUT`), `probe_game_mouselook_windows.py` (in-game camera motion), `probe_mouse_filter_windows.py` (the kernel filter), `probe_mouse_filter_stress_windows.py` (the filter's battle test: storms, floods, process chaos, CPU starvation, an API fuzz, a soak), `probe_nimbus_relay_windows.py` (the real app in Full Game Mode with the cursor relay) |
+| `tests/` | vJoy diagnostics plus Windows input probes: `probe_rawinput_windows.py` (which countermeasures stop `WM_INPUT`), `probe_game_mouselook_windows.py` (in-game camera motion), `probe_mouse_filter_windows.py` (the kernel filter), `probe_mouse_filter_stress_windows.py` (the filter's battle test: storms, floods, process chaos, CPU starvation, an API fuzz, a soak), `probe_nimbus_relay_windows.py` (the real app in Full Game Mode with the cursor relay), `probe_installer_drivers_windows.ps1` (the installer's vJoy and ViGEmBus bootstrap, unattended after one elevation) |
 | `research/` | Research notes, reference materials |
 | `build/` | PyInstaller build cache (gitignored) |
 | `dist/` | Built executables and installers (gitignored) |

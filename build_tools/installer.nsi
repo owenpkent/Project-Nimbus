@@ -306,12 +306,32 @@ Function .onInit
     ; Initialize shortcut options to checked (1 = checked in NSIS)
     StrCpy $CreateDesktopShortcut 1
     StrCpy $CreateStartMenuShortcut 1
+
+    ; A silent install (/S) skips every custom page, so nothing would set the
+    ; driver choices and a scripted deployment would end up with the app and no
+    ; drivers. Default to installing whichever driver is missing, and leave the
+    ; ones already present alone. Every MessageBox below carries /SD for the
+    ; same reason: without it a silent install stops on a dialog nobody sees.
+    ${If} ${Silent}
+        Call DetectVJoy
+        Call DetectViGEm
+        ${If} $VJoyInstalled == 1
+            StrCpy $InstallVJoy 0
+        ${Else}
+            StrCpy $InstallVJoy 1
+        ${EndIf}
+        ${If} $ViGEmInstalled == 1
+            StrCpy $InstallViGEm 0
+        ${Else}
+            StrCpy $InstallViGEm 1
+        ${EndIf}
+    ${EndIf}
     
     ; Check if Nimbus Adaptive Controller is currently running
     nsExec::ExecToStack 'cmd /c tasklist /FI "IMAGENAME eq ${PRODUCT_EXE}" /NH | findstr /I "Nimbus-Adaptive"'
     Pop $0
     ${If} $0 == 0
-        MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "${PRODUCT_NAME} is currently running.$\r$\n$\r$\nClick OK to close it and continue, or Cancel to abort." IDOK closeApp IDCANCEL abortInstall
+        MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "${PRODUCT_NAME} is currently running.$\r$\n$\r$\nClick OK to close it and continue, or Cancel to abort." /SD IDOK IDOK closeApp IDCANCEL abortInstall
         abortInstall:
             Abort
         closeApp:
@@ -325,7 +345,7 @@ Function .onInit
     ${If} $0 != ""
     ${AndIf} $2 != ""
         ReadRegStr $1 HKCU "${PRODUCT_UNINST_KEY}" "DisplayVersion"
-        MessageBox MB_YESNO|MB_ICONQUESTION "A previous version of ${PRODUCT_NAME} (v$1) was found at:$\r$\n$2$\r$\n$\r$\nWould you like to remove it before installing the new version?$\r$\n(Recommended: Yes)" IDYES removeUserPrev IDNO skipUserPrev
+        MessageBox MB_YESNO|MB_ICONQUESTION "A previous version of ${PRODUCT_NAME} (v$1) was found at:$\r$\n$2$\r$\n$\r$\nWould you like to remove it before installing the new version?$\r$\n(Recommended: Yes)" /SD IDYES IDYES removeUserPrev IDNO skipUserPrev
         removeUserPrev:
             ExecWait '"$0" /S'
             Sleep 2000
@@ -338,7 +358,7 @@ Function .onInit
     ${If} $0 != ""
     ${AndIf} $2 != ""
         ReadRegStr $1 HKLM "${PRODUCT_UNINST_KEY}" "DisplayVersion"
-        MessageBox MB_YESNO|MB_ICONQUESTION "A system-wide installation of ${PRODUCT_NAME} (v$1) was found at:$\r$\n$2$\r$\n$\r$\nWould you like to remove it before installing the new version?$\r$\n(Recommended: Yes)" IDYES removeMachinePrev IDNO skipMachinePrev
+        MessageBox MB_YESNO|MB_ICONQUESTION "A system-wide installation of ${PRODUCT_NAME} (v$1) was found at:$\r$\n$2$\r$\n$\r$\nWould you like to remove it before installing the new version?$\r$\n(Recommended: Yes)" /SD IDYES IDYES removeMachinePrev IDNO skipMachinePrev
         removeMachinePrev:
             ExecWait '"$0" /S'
             Sleep 2000
@@ -448,7 +468,7 @@ Section "Install"
             DetailPrint "vJoy setup failed (exit code $0)"
             CreateDirectory "$INSTDIR\drivers"
             CopyFiles /SILENT "$PLUGINSDIR\${VJOY_SETUP}" "$INSTDIR\drivers"
-            MessageBox MB_YESNO|MB_ICONEXCLAMATION "The vJoy driver did not install (code $0).$\r$\n$\r$\nNimbus needs it for DirectInput profiles. A copy of the setup was saved here:$\r$\n$INSTDIR\drivers\${VJOY_SETUP}$\r$\n$\r$\nRun it now with its own installer window?" IDYES vjoyManual IDNO vjoyDone
+            MessageBox MB_YESNO|MB_ICONEXCLAMATION "The vJoy driver did not install (code $0).$\r$\n$\r$\nNimbus needs it for DirectInput profiles. A copy of the setup was saved here:$\r$\n$INSTDIR\drivers\${VJOY_SETUP}$\r$\n$\r$\nRun it now with its own installer window?" /SD IDNO IDYES vjoyManual IDNO vjoyDone
             vjoyManual:
                 ExecWait '"$INSTDIR\drivers\${VJOY_SETUP}"'
                 Call DetectVJoy
@@ -482,7 +502,7 @@ Section "Install"
             DetailPrint "ViGEmBus setup failed (exit code $0)"
             CreateDirectory "$INSTDIR\drivers"
             CopyFiles /SILENT "$PLUGINSDIR\${VIGEM_SETUP}" "$INSTDIR\drivers"
-            MessageBox MB_YESNO|MB_ICONEXCLAMATION "The ViGEmBus driver did not install (code $0).$\r$\n$\r$\nGame Mode and the Xbox controller profiles need it. A copy of the setup was saved here:$\r$\n$INSTDIR\drivers\${VIGEM_SETUP}$\r$\n$\r$\nRun it now with its own installer window?" IDYES vigemManual IDNO vigemDone
+            MessageBox MB_YESNO|MB_ICONEXCLAMATION "The ViGEmBus driver did not install (code $0).$\r$\n$\r$\nGame Mode and the Xbox controller profiles need it. A copy of the setup was saved here:$\r$\n$INSTDIR\drivers\${VIGEM_SETUP}$\r$\n$\r$\nRun it now with its own installer window?" /SD IDNO IDYES vigemManual IDNO vigemDone
             vigemManual:
                 ExecWait '"$INSTDIR\drivers\${VIGEM_SETUP}"'
                 Call DetectViGEm
@@ -504,7 +524,7 @@ Section "Install"
             StrCpy $1 "$1$\r$\n  ViGEmBus is missing. Game Mode and Xbox controller profiles will not work."
         ${EndIf}
         DetailPrint "Driver check: one or more drivers are missing"
-        MessageBox MB_OK|MB_ICONINFORMATION "${PRODUCT_NAME} is installed, but not every controller driver is present:$\r$\n$1$\r$\n$\r$\nRun this installer again at any time to add them. Nimbus starts and runs either way."
+        MessageBox MB_OK|MB_ICONINFORMATION "${PRODUCT_NAME} is installed, but not every controller driver is present:$\r$\n$1$\r$\n$\r$\nRun this installer again at any time to add them. Nimbus starts and runs either way." /SD IDOK
     ${Else}
         DetailPrint "Driver check: vJoy and ViGEmBus are both present"
     ${EndIf}
