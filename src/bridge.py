@@ -106,8 +106,13 @@ except Exception:
     MOUSE_ISOLATION_AVAILABLE = False
     _mouse_isolation = None
 
+# evdev button code -> Qt button, for clicks that land on Nimbus's own window.
+# BTN_SIDE and BTN_EXTRA are here too: without them a side-button click over
+# Nimbus fell through to SendInput and a foreground Raw Input game saw it,
+# which is the leak the relay exists to close.
 _ISO_BUTTON_MAP = {0x110: Qt.MouseButton.LeftButton, 0x111: Qt.MouseButton.RightButton,
-                   0x112: Qt.MouseButton.MiddleButton}
+                   0x112: Qt.MouseButton.MiddleButton, 0x113: Qt.MouseButton.BackButton,
+                   0x114: Qt.MouseButton.ForwardButton}
 
 
 class _IsolationRelay(QObject):
