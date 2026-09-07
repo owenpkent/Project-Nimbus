@@ -390,6 +390,44 @@ def run_checks(d: Driver, config: ControllerConfig, profile_path: str) -> None:
            and seq[-1] > seq[0] and after == 0.0,
            f"RX per sample={[round(s, 3) for s in seq]} unfiltered full={full:.3f} after release={after}")
 
+    # S7b a modifier toggle rescales a filtered stick without moving it.
+    # Regression for the review finding that replaying _last_raw through
+    # _drive_stick stepped the EMA again: with precision_gain 1.0 the toggle
+    # should change nothing at all, and the filter state should not advance.
+    c = d.centre_of(trem)
+    d.press_on(trem, c)
+    time.sleep(0.02)
+    on_qt(lambda: move(d.win, QPointF(c.x() + 80, c.y())))
+    time.sleep(0.02)
+    saved_gain = on_qt(lambda: d.bridge._widget_shaping[trem].get("precision_gain"))
+    on_qt(lambda: d.bridge._widget_shaping[trem].__setitem__("precision_gain", 1.0))
+    before = d.pad()["right_x"]
+    ema_before = on_qt(lambda: d.bridge._ema.get(trem))
+    on_qt(lambda: d.bridge.setModifier("precision", True))
+    during = d.pad()["right_x"]
+    on_qt(lambda: d.bridge.setModifier("precision", False))
+    after_toggle = d.pad()["right_x"]
+    ema_after = on_qt(lambda: d.bridge._ema.get(trem))
+    on_qt(lambda: d.bridge._widget_shaping[trem].__setitem__("precision_gain", saved_gain))
+    d.release_at(QPointF(c.x() + 80, c.y()))
+    record("S7b toggling a gain-1.0 modifier leaves a filtered stick and its filter state untouched",
+           near(during, before, 1e-6) and near(after_toggle, before, 1e-6)
+           and ema_before is not None and ema_after is not None
+           and near(ema_before[0], ema_after[0], 1e-9) and near(ema_before[1], ema_after[1], 1e-9),
+           f"RX {before:.4f} -> {during:.4f} -> {after_toggle:.4f}; "
+           f"EMA {tuple(round(v, 6) for v in ema_before)} -> {tuple(round(v, 6) for v in ema_after)}")
+
+    # S7c reloading the widget cache clears latched modifiers. Regression for
+    # the review finding that a latched precision survived a profile switch
+    # into a layout with no button to unlatch it.
+    on_qt(lambda: d.bridge.setModifier("precision", True))
+    latched = on_qt(lambda: d.bridge.isModifierActive("precision"))
+    on_qt(lambda: d.bridge._reload_widget_shaping())
+    still_latched = on_qt(lambda: d.bridge.isModifierActive("precision"))
+    record("S7c a widget-cache reload clears a latched modifier",
+           latched and not still_latched,
+           f"latched before reload={latched} after={still_latched}")
+
     # S8 RT slider (hold mode: presses jump the value; the widget keeps it)
     rt = d.widget("rt")
     right = on_qt(lambda: rt.mapToScene(QPointF(rt.width() - 9, rt.height() - 18)))

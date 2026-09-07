@@ -10,7 +10,6 @@ import shutil
 import sys
 from pathlib import Path
 from typing import Dict, Any, Tuple, List, Optional
-import numpy as np
 
 # App name for user data directory
 APP_NAME = "ProjectNimbus"
@@ -229,10 +228,14 @@ class ControllerConfig:
         return base_path / "profiles"
     
     # Old bundled profile IDs that have been retired and should be cleaned up
-    # from the user profiles directory to avoid confusion.
+    # from the user profiles directory to avoid confusion. Every id here must
+    # be absent from profiles/: an id that is both listed here and still
+    # shipped gets deleted and re-copied on every launch, which silently
+    # reverts whatever the user changed in it. xbox_controller was in this set
+    # while profiles/xbox_controller.json was still being shipped and edited,
+    # so it reset itself at every start.
     _DEPRECATED_BUNDLED_PROFILES = {
         "flight_simulator",
-        "xbox_controller",
         "adaptive_platform_1",
     }
 
@@ -403,34 +406,36 @@ class ControllerConfig:
         
         config_ref[keys[-1]] = value
     
-    def _settings_params(self, section: str, joystick: str = "left",
-                         output_mode: str = "vjoy") -> Dict[str, float]:
+    def _settings_params(self, section: str) -> Dict[str, float]:
         """
         Shaping parameters from a profile-level settings block.
 
         Used by the legacy (non-custom) layouts, whose sticks carry no
         per-widget settings: ``joystick_settings`` for the sticks and
-        ``rudder_settings`` for the rudder axis. The anti-deadzone default
-        follows the output backend and the stick, and may be overridden by
-        ``anti_deadzone`` / ``anti_deadzone_buffer`` keys in the block.
+        ``rudder_settings`` for the rudder axis. Every value comes from the
+        block itself, including ``anti_deadzone``, which is off unless the
+        profile sets it.
 
         Parameters
         ----------
         section : str
             ``"joystick_settings"`` or ``"rudder_settings"``.
-        joystick : str
-            ``"left"`` or ``"right"``; picks the XInput default.
-        output_mode : str
-            ``"vigem"`` or ``"vjoy"``; only ViGEm gets an XInput default.
 
         Returns
         -------
         Dict[str, float]
             Keyword arguments for :func:`shape_magnitude`.
         """
+        # No anti-deadzone by default here, even under ViGEm. The output floor
+        # is a per-widget feature: the custom-layout dialog is the only place
+        # it can be seen, calibrated against a running game, or turned off.
+        # Defaulting it on for the legacy layouts would give an adaptive, xbox
+        # or flight_sim profile a silent ~0.26 floor with no control anywhere
+        # in the UI to lower it, which is wrong for a flight sim whatever it
+        # does for aiming. A profile that wants one can still set
+        # joystick_settings.anti_deadzone explicitly; XINPUT_LEFT_THUMB_DEADZONE
+        # and XINPUT_RIGHT_THUMB_DEADZONE are the values the widget path uses.
         default_adz = 0.0
-        if output_mode == "vigem" and section == "joystick_settings":
-            default_adz = XINPUT_RIGHT_THUMB_DEADZONE if joystick == "right" else XINPUT_LEFT_THUMB_DEADZONE
         return {
             "sensitivity": float(self.get(f"{section}.sensitivity", DEFAULT_SENSITIVITY_PCT)),
             "dead_zone": float(self.get(f"{section}.deadzone", 10.0)),
@@ -454,9 +459,12 @@ class ControllerConfig:
         x, y : float
             Raw normalised deflection from the widget, before any shaping.
         joystick : str
-            ``"left"`` or ``"right"``; selects the anti-deadzone default.
+            Accepted for call-site symmetry with the widget path; the profile
+            block is shared by both sticks, so it does not select anything.
         output_mode : str
-            ``"vigem"`` or ``"vjoy"``, for the anti-deadzone default.
+            Accepted for the same reason. Unlike the per-widget path, this
+            block gets no XInput anti-deadzone default (see
+            :meth:`_settings_params`).
         gain : float
             Multiplier on the post-deadzone magnitude (precision modifier).
 
@@ -465,7 +473,8 @@ class ControllerConfig:
         Tuple[float, float]
             Shaped output in [-1, 1] per axis, magnitude never exceeding 1.
         """
-        params = self._settings_params("joystick_settings", joystick, output_mode)
+        del joystick, output_mode   # documented above: neither selects anything here
+        params = self._settings_params("joystick_settings")
         return shape_vector(x, y, gain=gain, **params)
 
     def apply_joystick_dialog_curve(self, value: float) -> float:
