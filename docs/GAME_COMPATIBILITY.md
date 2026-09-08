@@ -70,9 +70,10 @@ Any game that:
 | Game | Oracle | Right-stick deadzone | Notes |
 |---|---|---|---|
 | Left 4 Dead 2 | console | between 0.26 and 0.28 (the XInput constant the anti-deadzone default assumes) | turn linear in time below the stop, about 480 degrees a second at full deflection (Source's stick acceleration); a 1 px Nimbus drag turns the camera 2.4 degrees a second |
-| Elden Ring | frame differencing | at or below 0.20 | camera moves at every magnitude swept; the default anti-deadzone floor of 0.285 is above this game's threshold, so the smallest Nimbus movement is a little faster than it needs to be here |
+| Elden Ring | frame differencing | at or below 0.20 | camera moves at every magnitude swept; the default anti-deadzone floor is above this game's threshold, so the smallest Nimbus movement is a little faster than it needs to be here |
+| Half-Life 2 | console | **between 0.30 and 0.40** | above the default floor: a 1 px Nimbus drag sends 0.289 and the camera does not move at all, so **raise Anti-DZ to about 40 for this game**. It also acts on the pad's axes and never on its buttons (see below). Turn rates are exact at 0.40 and 0.60 (about 48 and 178 degrees a second) and too fast to measure above that |
 
-A game whose deadzone sits below the default floor can lower Anti-DZ in the widget dialog; one above it (none measured yet) needs it raised. Adding a game is a recipe file; a Source engine game gets numbers, anything else gets moved-or-still verdicts.
+Three games, three thresholds, one of them above the default: the XInput constant is a sound starting point and cannot be right everywhere, which is why Anti-DZ is per widget and the widget dialog has a test pad to calibrate it against the game in front of you. A game whose deadzone sits below the default floor can lower Anti-DZ; one above it, as Half-Life 2 is, needs it raised or the smallest movement does nothing. Adding a game is a recipe file; a Source engine game gets numbers, anything else gets moved-or-still verdicts.
 
 ## Verified Games
 
@@ -86,6 +87,7 @@ These games have been tested and confirmed working with Project Nimbus.
 | **The Elder Scrolls V: Skyrim** | ClipCursor | Set to windowed mode in launcher. Full controller support via ViGEm/vJoy. |
 | **Carrier Command 2** | Controller Mode | Measured on Windows 2026-09-05 (v1.5.18): the `WH_MOUSE_LL` hook stops in-game mouse-look completely (11,945 changed frame samples unhooked, 25 hooked, noise floor 50), so it is not a Raw Input game. Its first-person view does not respond to the gamepad right stick, so drive the carrier through its screens with the mouse rather than expecting stick camera control. |
 | **Left 4 Dead 2** | Controller Mode | Source engine. Measured on Windows 2026-09-06 (windowed, `+exec 360controller`): the right stick turns the camera through ViGEm, and the game's own inner deadzone sits at the XInput constant (still at 0.26, moving at 0.28), which Nimbus's default anti-deadzone clears (a 1 px drag on the aim stick moved the camera). **Start Nimbus before the game**: Source decides at launch whether an Xbox controller is present and never sees one that appears later. Raw Input mouse-look stays on unless `m_rawinput 0`; use the stick for the camera. |
+| **Half-Life 2** (and the episodes) | Controller Mode, sticks only | Source 2013. Measured on Windows 2026-09-07 (20th-anniversary build, windowed): both sticks work through ViGEm, but **the game never acts on the pad's buttons**, so jump, use and reload have to come from the keyboard. That was confirmed by binding all fourteen, reading the binds back from the game with `key_listboundkeys`, and watching the stick still turn the view between one ignored press and the next. Its camera deadzone is higher than most, between 0.30 and 0.40, so **raise Anti-DZ to about 40** or the smallest movement does nothing. **Start Nimbus before the game**, as with any Source title. |
 
 ## Likely Compatible Games
 

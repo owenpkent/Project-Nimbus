@@ -1,6 +1,6 @@
 # Game Test Harness: Automated Tests Against Real Games
 
-> **Status:** designed, built and run 2026-09-07 on `feature/game-test-harness`. The harness is `tests/game_harness.py`, the runner is `tests/probe_game_harness_windows.py`, the recipes are in `tests/games/`, and the first Spectator+ feature it made possible is in `src/spectator/` (section 4.7). Against Left 4 Dead 2 the pad calibration passes 14/14 and the Nimbus end-to-end run 17/17, primitives included; Elden Ring, with no console, passes 11/11 on frame verdicts. The numbers and what the games taught are in section 8.
+> **Status:** designed, built and run 2026-09-07 on `feature/game-test-harness`. The harness is `tests/game_harness.py`, the runner is `tests/probe_game_harness_windows.py`, the recipes are in `tests/games/`, and the first Spectator+ feature it made possible is in `src/spectator/` (section 4.7). Against Left 4 Dead 2 the pad calibration passes 14/14 and the Nimbus end-to-end run 17/17, primitives included; Elden Ring, with no console, passes 11/11 on frame verdicts; Half-Life 2, the second console game, passes 13/13 on the pad and 13/17 through Nimbus, reads its sticks but not its buttons, and is where the anti-deadzone floor turned out to sit under a game's own threshold. The numbers and what the games taught are in section 8.
 >
 > **Relationship to Spectator+:** the loop this harness runs (put the game in a known state, send controller input, read what the game did) is the loop a Spectator+ agent runs. Section 4.7 says what carries over.
 
@@ -97,6 +97,7 @@ One JSON file per game in `tests/games/`. A recipe says how to launch the game i
 - `title` is the window-title substring the harness looks for; `process` is what it kills at the end.
 - `launch_args` is the exact Steam launch line, kept literal so a person can paste it. For a `source_console` recipe the harness checks that `-condebug` and `+exec <cfg_name>` are present.
 - `oracle.type` selects the oracle; `frame_diff` needs no other keys.
+- `pad_buttons_reach_game` (optional, default true) says whether the game acts on the pad's buttons at all. Half-Life 2 does not: it reads the axes and ignores every button, with the binds confirmed present. Setting it false skips the button check with that reason rather than leaving a check that can never pass.
 - `reset_pose` is where `reset()` puts the player: `{"pos": [x, y, z], "ang": [pitch, yaw, roll]}`. When it is `null` the first pose read after the game is ready becomes the session's reset pose, and the runner prints it so it can be written into the recipe. A recipe with a fixed pose is a repeatable test; one without is a first run.
 - `ready_sequence` (optional) is the list of waits and button presses that take a game from its title screen into a map, for games with no `+map`: `{"wait": 25}`, `{"press": [1], "hold": 0.2}`, `{"wait_until_control": {"rx": 1.0}, "interval": 5, "timeout": 150}`, which holds the stick every few seconds until the picture moves, and `{"press_until_control": [1], "action": {"rx": 1.0}, ...}`, which does the same but presses the buttons after each failed test. Menus and loading screens ignore a stick and the world does not, and "moved" is a twentieth of the sampled frame, because a menu's shimmer changes a few hundred samples and a camera turn tens of thousands. The test runs before the press each cycle, so once the stick works nothing more is pressed. Each step takes an optional `note`. `warmup_s` is the fixed wait the `frame_diff` oracle counts as readiness. The Elden Ring recipe is a wait for the logos and one `press_until_control`.
 
@@ -221,7 +222,13 @@ The end-to-end run with the real app, same environment, including the Spectator+
 venv\Scripts\python tests\probe_game_harness_windows.py --game left4dead2 --actuator nimbus
 ```
 
-The primitives need the calibration the pad run writes with `--write-calibration` (checked in as `src/spectator/calibrations/left4dead2.json`; rerun it after a change to the game's controller cfg or to the harness's hold timing). A game with no console, launched through its title screen by the recipe's `ready_sequence`, about six minutes:
+The primitives need the calibration the pad run writes with `--write-calibration` (checked in as `src/spectator/calibrations/left4dead2.json`; rerun it after a change to the game's controller cfg or to the harness's hold timing). The second Source game, which needs no flags and takes about two minutes:
+
+```
+venv\Scripts\python tests\probe_game_harness_windows.py --game halflife2 --actuator pad
+```
+
+A game with no console, launched through its title screen by the recipe's `ready_sequence`, about six minutes:
 
 ```
 venv\Scripts\python tests\probe_game_harness_windows.py --game eldenring --actuator pad
@@ -332,6 +339,76 @@ The second recipe, for a game with no console: verdicts, not numbers. Three runs
 | idle after | 2,131 | (open ground, more grass in the wind) |
 
 What the game taught: its camera deadzone is at or below 0.20 by this measure (0.20 is marginal, 0.26 is not), lower than Left 4 Dead 2's 0.28, which is worth knowing for the anti-deadzone default; the full-deflection step changed fewer samples than 0.80 because the camera came most of the way round in the second and the frame was compared with something like itself, which is the frame oracle's blind spot and exactly the fold the console oracle had to be taught to unwrap; and with no console there is no reset, no calibration and no primitives for this game until another oracle exists (section 2.1). The unclean-exit notice is the harness's own doing; quitting through the menu would need a scripted path through the System menu, which is a later refinement.
+
+### 2026-09-07, dev machine, all three suites rerun back to back
+
+A validation pass over the checked-in harness with nothing changed since the runs above: **Left 4 Dead 2 pad 13/13**, **Left 4 Dead 2 Nimbus 17/17**, **Elden Ring pad 11/11**, run one at a time with the game quit in between. Steam was already running, so both Left 4 Dead 2 launches showed a window in 2 s and were ready in 29 s; Elden Ring took 6 s to a window and 69 s to the world, the same as its run 3.
+
+The pad calibration reproduces itself. Yaw per second at 0.28, 0.30, 0.40, 0.60, 0.80 and 1.00 read -1.5, -3.6, -13.6, -34.2, -54.8 and -466.0 against the -1.5, -3.6, -13.8, -34.4, -55.2 and -464.8 of run 5, the deadzone still falls between 0.26 and 0.28, the walk is 199.7 units in a second, pitch is -21.3 at 0.60 up, the button echo landed in 32 ms and the latency bound was 94 ms. G12's table matched the checked-in calibration everywhere below the stop and to within 7 degrees at the stop (-449.5 against -456.5 for a one-second hold), so `src/spectator/calibrations/left4dead2.json` was left alone.
+
+The Nimbus run repeated its numbers too: 0.950 sent at full drag for 400.4 degrees in the step, the 0.289 floor for 2.4 degrees, 200.0 units on the left stick, 62 ms to the button echo, and the primitives at -83.7 for a 90, +45.2 for a 45, -9.9 for a 10, 105.9 units for a 100, and a clean stop. The throwaway profile was removed and `controller_config.json` restored.
+
+Two things the reruns confirmed about the frame oracle, both already suspected:
+
+- **The Source scene's noise floor is what it is.** This run measured 2960 idle samples, against 100 in run 3 and a quiet scene in run 5, so the frame verdict disagreed with the console at 0.28, 0.30 and 0.40 (STILL, STILL and INCONCLUSIVE where the camera plainly turned). Run 5's agreement at every magnitude was the bots being quiet, not the method improving. The rule stands: on a Source game the verdict is recorded and never trusted.
+- **The floor moves the Elden Ring verdicts near the threshold.** Its idle read 456 samples here against 330 in run 3, which lifts the moved threshold from 990 to 1368 and turns 0.20 from a marginal MOVED (1057) into INCONCLUSIVE (1102). Same picture, different label: the deadzone is at or below 0.26 and 0.20 is the edge, but where the save leaves the character decides which side of the line it lands on. A magnitude this close to the floor needs the console oracle or a longer noise measurement to call. The full-deflection blind spot repeated exactly (1.00 changed 32,388 samples against 0.80's 46,855), and the post-run idle read 3,970 in open grass.
+
+### 2026-09-07, dev machine, Half-Life 2 (20th anniversary), `d1_eli_01`, windowed 1280x720, pad actuator
+
+The second Source recipe, written the same day Half-Life 2 was installed, and the one that separated what the harness knew about Source from what it knew about Left 4 Dead 2. Four runs. The map is Black Mesa East, picked for having no hostiles, so nothing can kill the player or knock it out of the reset pose mid-run. Launch to window 4 s, to ready 12 to 14 s, both faster than Left 4 Dead 2.
+
+Three things the recipe could not have guessed, each of which cost a run and each of which is now fixed in the harness rather than in the recipe:
+
+- **`getpos` writes its two halves separately, and prints between them.** This engine has no `getpos_exact`, and the `getpos` it does have prints a `Map name: <map>` line of its own between `setpos x y z;` and `setang p y r`, landing mid-line about one read in ten: `setpos 149.279999 4453.520020 -1342.167480;Map name: d1_eli_01` and then `setang` on the line after. `POSE_RE` wanted the two adjacent, so 39 of 366 reads returned nothing, no reset pose was ever established, and every check ran from wherever the previous one left the player. The pattern now allows anything without a `;` between the halves, which parses every pairable read and still refuses to pair one read's position with a later read's angle. Checked against the captured log rather than by another launch: 327 matches before, 356 after, and the 10 that remain are two overlapping reads where the first position genuinely has no angle of its own.
+- **A read could take the previous read's answer.** The console writes lag the key press far enough that a read searching from the offset it captured before pressing would match the pose still arriving for the read before it, which pairs a fresh position with a stale one. Every measurement built on two reads was wrong in a way that looked like noise. The pose key now echoes a marker before asking, and the pose is taken from after that marker.
+- **`exec` does not run inline.** The harness cfg's own loaded marker printed at log line 45 and the joystick output that `exec 360controller` triggers at 54 and 62, so binds written after the exec were taken back by the game's own controller cfg, which binds every pad button. The harness now writes its binds to a separate file exec'd after the base cfg, which is correct whether the engine appends the exec'd file or inserts it. Left 4 Dead 2 behaves the other way round and passes either way.
+
+Then the finding that is not a harness bug at all:
+
+- **Half-Life 2 never acts on the pad's buttons, only its axes.** `key_listboundkeys` shows every bind in place (`"JOY5" = "echo NIMBUS_BUTTON_LB"`), the `A_BUTTON` style names Left 4 Dead 2 uses are rejected here as invalid keys, and pressing all fourteen pad buttons puts nothing in the log. The control that makes it conclusive: turning the stick immediately before and after each ignored press moved the view by +68 to +176 degrees every time, so the game was reading the pad throughout. This is worth more than the test: **a Nimbus user driving Half-Life 2 gets the sticks and no buttons.** The recipe records it as `pad_buttons_reach_game: false` so the check is skipped with its reason rather than failing forever.
+
+What the game measures at, and what it cannot:
+
+| `rx` | deg/s | note |
+|---|---|---|
+| 0.20 to 0.30 | 0.0 | still, frame verdict agrees |
+| 0.40 | -47 to -51 | -47.24, -47.26 and -50.68 across three runs |
+| 0.60 | -178 | -178.87, -178.99 and -177.82; left at 0.60 gave +188.2, ratio 1.06 |
+| 0.80, 1.00 | not measurable | see below |
+
+The final run of the recipe as it stands is **12/13**, the one failure being the calibration table, which cannot be built while the full-deflection row folds.
+
+- **The deadzone sits between 0.30 and 0.40**, well above Left 4 Dead 2's 0.26 to 0.28 and above Elden Ring's, which is worth keeping in mind for an anti-deadzone default: a floor tuned to one of these three games is wrong for the other two.
+- **Above about 0.60 the camera outruns the oracle.** The same full-deflection check has read -99.97, -327.78, -167.01 and +41.52 on separate runs of the same recipe, and 0.80 has read -31.13 twice and -45.88 once: the turn passes 180 degrees between pose samples, so it folds, and the sign itself stops being trustworthy. Shortening the hold does not rescue it, because a shorter hold leaves the tracking loop fewer samples, not more. A pose read costs about 50 ms and no hold this harness can set keeps a full-deflection turn under 180 degrees between two of them. Trust this recipe at 0.40 and 0.60; a real number at the stop needs a streaming oracle (`cl_showpos` and a reader), which is section 7's open question arriving with a concrete case behind it.
+- **Walk** is about 220 units in a second (216.6, 219.4 and 239.3 across runs) against Left 4 Dead 2's 200. `--survey-walk` turned the reset pose to yaw 135, the longest clear run at 253 units against 118 at yaw 315.
+- **Reset** lands within 0.87 units. `getpos` prints the eye position and `setpos` sets the origin, so a reset teleports the player up and drops it, and the pose settles; the exact pair on Left 4 Dead 2 lands within 0.00.
+- The install has two game dirs and they disagree: the game writes `config.cfg` into `hl2_complete/cfg` but `-condebug` writes `hl2/console.log`, and a `+exec` finds a cfg in `hl2/cfg` and not one in `hl2_complete/cfg`. Both checked by putting a marker cfg in each and reading the log. `mod_dir` is `hl2`, which is right for the log and the cfg at once.
+- `360controller.cfg` here has no `unbindall`, sets `joy_yawsensitivity -1.25` rather than -1.5, and sets `joy_accelscale 1.4` with no `joy_accelmax` at all.
+
+### 2026-09-07, Half-Life 2, the same map, Nimbus actuator
+
+**13/17**, and the two things it found are worth more than the score. The pad calibration it plans from was written with `--cal-mags 0.4,0.6 --write-calibration`, deliberately leaving out the full-deflection row that folds; with that row gone the pad suite is **13/13**.
+
+The stick path through the real app is sound: a full drag sent the bridge's 0.950 ceiling, a full drag up walked 215.7 units, the release read exactly zero on every axis, and the reset landed within 0.87 units. The full drag's turn is one of the readings this game folds (-242 and -162 deg/s on two runs), so it counts as "the camera moved a lot" and nothing finer.
+
+- **The finding: Nimbus's anti-deadzone floor is below this game's deadzone.** A one-pixel drag sent `RX=+0.289`, which is exactly the floor the bridge should send, and the camera did not move at all (N2). Half-Life 2 does not start turning until 0.30 to 0.40, where the same 0.289 clears Left 4 Dead 2's 0.26 to 0.28 and turns its camera 2.4 degrees a second. So the smallest movement a Nimbus user can make is invisible in this game. Three games now bracket the default from both sides, and the write-up lives in [AIM_ASSISTANCE.md](AIM_ASSISTANCE.md) section 12.3, because it is an argument about the product's default rather than about the harness.
+- **A planner bug, found and fixed.** Asked to turn 10 degrees, the Spectator+ planner answered `0.60 held 0.013 s` and the game turned 73. `GameCalibration._plan` walked the magnitudes upward and, when none fitted the hold window, returned the last one tried, the largest. That is right for a request too big for the table and wrong for one too small, where the largest magnitude is the worst possible answer. Left 4 Dead 2 never showed it because its slowest calibrated row is 1.2 degrees; Half-Life 2's is 12.6, so anything finer degenerated. It now takes the smallest magnitude at `min_hold` when that lands within a quarter of what was asked, and otherwise refuses, since a caller can act on "no plan" and cannot act on a turn twice the size it wanted. The clamp is what keeps a walk of 100 units, which needs 0.199 s against a 0.2 s floor, from being failed over one millisecond.
+
+| Primitive | Plan | Result |
+|---|---|---|
+| turn right 90 | `rx` +0.60 for 0.252 s | -130.3 degrees (tolerance 14) |
+| turn left 45 | `rx` -0.40 for 1.246 s | +42.4 degrees (tolerance 7) |
+| turn right 10 | refused | no plan: finer than the calibration can command |
+| walk 100 units | `y` +1.00 for 0.200 s | 59.8 units |
+| stop a 400-unit walk | | 79.8 units before the stop, 0.0 in the next second |
+
+**The misses are repeatable, and they are the calibration not transferring.** The turn of 90 read -132.7, -130.3 and -127.6 on three runs, and the walk of 100 read 59.8 twice to the tenth of a unit, so this is not jitter: the game is deterministic from the same reset pose, and the primitives are consistently long on the turn and short on the walk. What differs is the path. The calibration was measured with the harness's own pad, and the primitives drive the same axes through the bridge, where the same nominal hold does not put the stick on the game for the same length of time. That matters here and not on Left 4 Dead 2 because of how front-loaded this game's response is: 0.60 gives 79 of its 141 degrees in the first tenth of a second, and the walk averages 500 units a second over the first quarter second against 210 over a full one. Where most of the movement happens in the first fraction of the hold, a few milliseconds of difference between the two paths is worth tens of degrees or units; where the response is close to linear, as it is on Left 4 Dead 2 below the stop, it is worth almost nothing. The fix, when it matters, is to write the calibration from the actuator the primitives will use rather than from the pad.
+
+**Regression.** Left 4 Dead 2's Nimbus suite was rerun after the planner change and passed **17/17**, with all three planned turns choosing exactly the plans they chose before (`1.00` for 0.403 s, `0.60` for 1.370 s, `0.40` for 0.741 s) and landing at -84.2, +45.7 and -10.0 degrees against -86.4, +45.7 and -9.9, and the walk at 104.8 units.
+
+**Leave the machine alone while a run is going.** Two runs before that one scored 16/17 and 12/17, with a pose read returning nothing in the first and a 90 degree turn reading +24.9 in the second, and the cause was a person moving the mouse: these games read the mouse for look, the harness puts the game in the foreground for each step, and a hand on the mouse turns the camera inside the window the measurement is taken across. Nothing in the harness distinguishes that from the pad's own input. The runs are unattended in the sense that they need no help, not in the sense that the machine can be used while they run. It is also why `front()` is called before the first pose of a delta and never between the two: it warps the cursor to the middle of the game window, so asserting the foreground mid-measurement would inject exactly the same disturbance. `pose()` now tries three times rather than two, which is worth having anyway.
+
+Left 4 Dead 2's pad suite was also rerun with all three harness changes in and passed **13/13** with the numbers unmoved: 0.28 gave -1.52 deg/s, 0.40 gave -13.79, 0.60 gave -34.20, 0.80 gave -54.61, the walk 199.7 units, the button echo 31 ms, and G12 matched the checked-in calibration, so `src/spectator/calibrations/left4dead2.json` was left alone.
 
 ---
 
