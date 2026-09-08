@@ -32,6 +32,22 @@ from typing import Any, Dict, List, Optional, Tuple
 CALIBRATIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calibrations")
 
 
+def amount_for(samples: List[List[float]], hold: float) -> Optional[float]:
+    """The absolute amount a hold of ``hold`` yields, the inverse of
+    :func:`hold_for` and read off the same ``(0, 0)``-anchored line."""
+    if hold <= 0:
+        return None
+    pts: List[Tuple[float, float]] = [(0.0, 0.0)]
+    pts += sorted((float(t), abs(float(a))) for t, a in samples if float(t) > 0)
+    if len(pts) < 2:
+        return None
+    for (t0, a0), (t1, a1) in zip(pts, pts[1:]):
+        if t1 >= hold:
+            return a0 + (hold - t0) * (a1 - a0) / (t1 - t0)
+    (t0, a0), (t1, a1) = pts[-2], pts[-1]
+    return a1 + (hold - t1) * (a1 - a0) / (t1 - t0)
+
+
 def hold_for(samples: List[List[float]], amount: float) -> Optional[float]:
     """The hold time that yields ``amount`` from ``(hold, amount)`` samples.
 
@@ -81,19 +97,45 @@ class GameCalibration:
     def _plan(table: Dict[float, List[List[float]]], amount: float, max_hold: float,
               min_hold: float) -> Optional[Tuple[float, float]]:
         """The (magnitude, hold) that yields ``amount``: the smallest magnitude
-        whose hold fits under ``max_hold`` and over ``min_hold``, else the
-        largest magnitude with whatever hold it needs."""
+        whose hold fits under ``max_hold`` and over ``min_hold``.
+
+        When nothing fits, the two ways of not fitting are not the same. An
+        amount too large for every magnitude still has a best answer, the
+        largest magnitude, which reaches furthest per second. An amount too
+        small is different: the shortest hold worth commanding is
+        ``min_hold``, so the finest thing the game can be asked to do is the
+        smallest magnitude held for exactly that, and anything below it is
+        beyond the calibration. The old code answered such requests with the
+        *largest* magnitude, the worst available choice: asked for 10 degrees
+        of Half-Life 2, whose slowest calibrated row is 12.6 degrees in a
+        tenth of a second, it planned 0.60 held 0.013 s and the game turned 73.
+
+        A hold a shade under ``min_hold`` is not a real miss, so it is clamped
+        rather than refused: Half-Life 2 walks 100 units in 0.199 s, and a
+        rule that failed it for one millisecond would say nothing true. The
+        clamp is kept only while it lands within a quarter of what was asked,
+        which the walk does (100.4 units for 100) and a 10 degree turn does
+        not (about 20 degrees for 10). Past that there is no plan, and saying
+        so is more use to the caller than a turn twice the size it wanted.
+        """
         if amount <= 0 or not table:
             return None
-        best: Optional[Tuple[float, float]] = None
+        too_long: Optional[Tuple[float, float]] = None
         for m in sorted(table):
             h = hold_for(table[m], amount)
             if h is None:
                 continue
-            best = (m, h)
-            if min_hold <= h <= max_hold:
-                return best
-        return best
+            if h < min_hold:
+                # Too fine for this magnitude, and every larger one is coarser
+                # still, so this is the closest the calibration comes.
+                got = amount_for(table[m], min_hold)
+                if got is not None and abs(got - amount) <= 0.25 * amount:
+                    return (m, min_hold)
+                return too_long
+            if h <= max_hold:
+                return (m, h)
+            too_long = (m, h)
+        return too_long
 
     def plan_turn(self, degrees: float, max_hold: float = 2.0, min_hold: float = 0.2) -> Optional[Tuple[float, float]]:
         """Signed right-stick magnitude and hold for a turn of ``degrees``

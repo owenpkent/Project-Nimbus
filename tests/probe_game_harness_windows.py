@@ -291,7 +291,14 @@ def pad_checks(env: GameEnv, args: argparse.Namespace) -> None:
 
     # G9 button
     echo = env.oracle.echo_buttons()
-    if not echo:
+    if not recipe.get("pad_buttons_reach_game", True):
+        # A measured property of the game, not a fault in the run: Half-Life 2
+        # acts on the pad's axes and never on its buttons, with the binds
+        # confirmed in place by key_listboundkeys and the stick turning the view
+        # between one ignored press and the next.
+        record("G9 button", True, "this game does not read the pad's buttons at all; skipped")
+        echo = []
+    elif not echo:
         record("G9 button", not console, "no console oracle, skipped" if not console else "the recipe binds no echo button")
     for bid, marker in echo:
         env.front()
@@ -428,7 +435,12 @@ def nimbus_checks(env: GameEnv, act: NimbusActuator, args: argparse.Namespace) -
 
     # N4 button
     echo = env.oracle.echo_buttons()
-    if not echo:
+    if not recipe.get("pad_buttons_reach_game", True):
+        # The same measured property G9 skips on: no widget click can produce a
+        # button the game never reads, so this says nothing about the bridge.
+        record("N4 button", True, "this game does not read the pad's buttons at all; skipped")
+        echo = []
+    elif not echo:
         record("N4 button", not console, "no console oracle, skipped" if not console else "the recipe binds no echo button")
     for bid, marker in echo:
         if bid not in act.buttons:
@@ -503,6 +515,13 @@ def primitive_checks(env: GameEnv, act: NimbusActuator, args: argparse.Namespace
             time.sleep(0.03)
         done = not on_qt(lambda: runner.busy)
         time.sleep(0.4)
+        # Deliberately no front() between the two reads of a delta. It warps
+        # the cursor to the middle of the game window, and a game reading the
+        # mouse for look takes that as a turn, so the one case where it would
+        # help (the foreground was lost, and the pose key went elsewhere) is
+        # also the case where it corrupts the measurement rather than just
+        # failing to take it. front() belongs before p0, where anything it
+        # disturbs lands ahead of the baseline.
         p1 = env.oracle.pose()
         d = pose_delta(p0, p1)
         env.reset()
