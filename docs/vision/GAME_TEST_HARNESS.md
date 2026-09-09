@@ -1,6 +1,6 @@
 # Game Test Harness: Automated Tests Against Real Games
 
-> **Status:** designed, built and run 2026-09-07 on `feature/game-test-harness`. The harness is `tests/game_harness.py`, the runner is `tests/probe_game_harness_windows.py`, the recipes are in `tests/games/`, and the first Spectator+ feature it made possible is in `src/spectator/` (section 4.7). Against Left 4 Dead 2 the pad calibration passes 14/14 and the Nimbus end-to-end run 17/17, primitives included; Elden Ring, with no console, passes 11/11 on frame verdicts; Half-Life 2, the second console game, passes 13/13 on the pad and 13/17 through Nimbus, reads its sticks but not its buttons, and is where the anti-deadzone floor turned out to sit under a game's own threshold. The numbers and what the games taught are in section 8.
+> **Status:** designed, built and run 2026-09-07 on `feature/game-test-harness`. The harness is `tests/game_harness.py`, the runner is `tests/probe_game_harness_windows.py`, the recipes are in `tests/games/`, and the first Spectator+ feature it made possible is in `src/spectator/` (section 4.7). Against Left 4 Dead 2 the pad calibration passes 14/14 and the Nimbus end-to-end run 17/17, primitives included; Elden Ring, with no console, passes 11/11 on frame verdicts; Half-Life 2, the second console game, passes 13/13 on the pad and 13/17 through Nimbus, reads its sticks but not its buttons, and is where the anti-deadzone floor turned out to sit under a game's own threshold; PowerWash Simulator, added 2026-09-08, passes 11/11 on both actuators and is the game whose menus are driven by a virtual pointer rather than a highlight. The numbers and what the games taught are in section 8.
 >
 > **Relationship to Spectator+:** the loop this harness runs (put the game in a known state, send controller input, read what the game did) is the loop a Spectator+ agent runs. Section 4.7 says what carries over.
 
@@ -100,6 +100,7 @@ One JSON file per game in `tests/games/`. A recipe says how to launch the game i
 - `pad_buttons_reach_game` (optional, default true) says whether the game acts on the pad's buttons at all. Half-Life 2 does not: it reads the axes and ignores every button, with the binds confirmed present. Setting it false skips the button check with that reason rather than leaving a check that can never pass.
 - `reset_pose` is where `reset()` puts the player: `{"pos": [x, y, z], "ang": [pitch, yaw, roll]}`. When it is `null` the first pose read after the game is ready becomes the session's reset pose, and the runner prints it so it can be written into the recipe. A recipe with a fixed pose is a repeatable test; one without is a first run.
 - `ready_sequence` (optional) is the list of waits and button presses that take a game from its title screen into a map, for games with no `+map`: `{"wait": 25}`, `{"press": [1], "hold": 0.2}`, `{"wait_until_control": {"rx": 1.0}, "interval": 5, "timeout": 150}`, which holds the stick every few seconds until the picture moves, and `{"press_until_control": [1], "action": {"rx": 1.0}, ...}`, which does the same but presses the buttons after each failed test. Menus and loading screens ignore a stick and the world does not, and "moved" is a twentieth of the sampled frame, because a menu's shimmer changes a few hundred samples and a camera turn tens of thousands. The test runs before the press each cycle, so once the stick works nothing more is pressed. Each step takes an optional `note`. `warmup_s` is the fixed wait the `frame_diff` oracle counts as readiness. The Elden Ring recipe is a wait for the logos and one `press_until_control`.
+- `{"pointer": [x fraction, y fraction], "press": [1]}` is for the other kind of menu: one driven by a virtual pointer the left stick moves, where A clicks whatever is under the pointer and does nothing at all when the pointer is over nothing. There is no highlight to walk with a d-pad and no way to place the pointer directly, so the step parks it in the top left corner, where it clamps against the screen edge, and then moves one axis at a time by time at the recipe's `pointer_px_per_s` (`pointer_park_s`, default 2.5 s, is the park hold, which has to be long enough to cross the screen from anywhere). Fractions are of the client rect, so they survive a resolution change while the speed is in screen pixels. It lands within about 50 px over a half-second move, which is well inside a menu card. PowerWash Simulator is the recipe that needed it, and its pointer ignores `SetCursorPos` and synthesized clicks, so the mouse is not an alternative.
 
 ### 4.2 The launcher, and the launch-order rule
 
@@ -409,6 +410,42 @@ The stick path through the real app is sound: a full drag sent the bridge's 0.95
 **Leave the machine alone while a run is going.** Two runs before that one scored 16/17 and 12/17, with a pose read returning nothing in the first and a 90 degree turn reading +24.9 in the second, and the cause was a person moving the mouse: these games read the mouse for look, the harness puts the game in the foreground for each step, and a hand on the mouse turns the camera inside the window the measurement is taken across. Nothing in the harness distinguishes that from the pad's own input. The runs are unattended in the sense that they need no help, not in the sense that the machine can be used while they run. It is also why `front()` is called before the first pose of a delta and never between the two: it warps the cursor to the middle of the game window, so asserting the foreground mid-measurement would inject exactly the same disturbance. `pose()` now tries three times rather than two, which is worth having anyway.
 
 Left 4 Dead 2's pad suite was also rerun with all three harness changes in and passed **13/13** with the numbers unmoved: 0.28 gave -1.52 deg/s, 0.40 gave -13.79, 0.60 gave -34.20, 0.80 gave -54.61, the walk 199.7 units, the button echo 31 ms, and G12 matched the checked-in calibration, so `src/spectator/calibrations/left4dead2.json` was left alone.
+
+### 2026-09-08, dev machine, PowerWash Simulator, career job `Clean the Back Garden`, borderless fullscreen 2560x1440, both actuators
+
+The fourth game and the second with no console. **Pad 11/11, Nimbus 11/11**, both after one failed run that was entirely about the menus.
+
+**Run 1 (1/2) never got into a job**, and the recipe's own UNVERIFIED note had guessed the right failure for the wrong reason. It reached the career screen and then sat there for 240 s of A presses, because this game's menus are driven by a *virtual pointer*, not by a highlight: A clicks whatever the pointer is over, and over empty space it does nothing at all. The pointer had been left at the middle of the window, in the gap between two cards. A live desktop capture during the run is what showed it; nothing in the log could have.
+
+What an hour of poking at the live menus with a pad established, all of it now in the recipe:
+
+- **The left stick moves the pointer, at about 1570 px/s at full deflection**, measured at 2560x1440 (786 px in 0.5 s, 1257 px in 0.8 s), and it **clamps at the screen edges**. That clamp is the only fixed reference the menu offers, so the new `pointer` step parks in the top left corner and moves one axis at a time by time. Predicted (813, 576) landed (859, 554), inside 50 px, which is nothing against a menu card.
+- **The right stick does not move the pointer**, so the readiness stick test is safe to run inside a menu and cannot disturb it.
+- **The mouse is not a way in.** `SetCursorPos` moved the OS cursor with the game's pointer staying exactly where the stick had left it, and a synthesized click did nothing. That is the same finding as the cursor relay's, from the other side: this game reads the mouse through Raw Input, which `SetCursorPos` never produces.
+- **The last two screens aim themselves.** On the job details screen and on the DEFAULT CONTROLS screen the game snaps its pointer onto RESUME JOB and CONTINUE, so those two are left to `press_until_control`, which stops the moment the stick turns the camera.
+- **The launch args were fiction and are gone.** `-screen-fullscreen 0 -screen-width 1280 -screen-height 720` gives a 1280x720 window for a few seconds and then the game applies its own saved preference and goes borderless fullscreen at the desktop resolution. Captures survive it because `grab()` re-reads the client rect every time, but the recipe can no longer claim a deterministic window size, and `place_beside` has nowhere to put the Nimbus window beside a fullscreen game (it goes off screen, which turns out to be harmless: the actuator posts its events to the QML window rather than clicking the screen).
+
+Launch to window 4 s with Steam warm (26 s cold), launch to the world 72 s, of which about 45 s is the menu walk. Frame noise floor 1259 in the garden, well above Elden Ring's 330 to 456, because the washer wand and the foliage never stop moving; moved above 3777, still at or below 2518.
+
+| Step | changed samples | verdict |
+|---|---|---|
+| control `rx` 1.00 | 54,639 | MOVED |
+| 0.20 | 3,119 | INCONCLUSIVE |
+| 0.26 | 5,834 | MOVED |
+| 0.28 | 9,659 | MOVED |
+| 0.30 | 13,132 | MOVED |
+| 0.40 | 20,247 | MOVED |
+| 0.60 | 30,141 | MOVED |
+| 0.80 | 48,741 | MOVED |
+| 1.00 | 61,995 | MOVED |
+| left 0.60 | 64,773 | MOVED |
+| pitch up 0.60 | 70,702 | MOVED |
+| walk 1.00 | 51,861 | MOVED |
+| idle after | 577 | |
+
+Two things the table says. **The deadzone is below 0.26**, with 0.20 the marginal one, so this game sits with Elden Ring at the low end and nowhere near Half-Life 2's 0.30 to 0.40: four games now and the spread is the whole argument for the per-profile anti-deadzone rather than a constant. And **there is no full-deflection blind spot here**: 1.00 changed the most samples of any magnitude, where Elden Ring's 1.00 changed fewer than its 0.80 because the camera came most of the way round inside the second. A slow camera is easier to measure by frame differencing than a fast one.
+
+The Nimbus run repeated all of it through the real app on the throwaway `nimbus_harness` profile, including the menu walk, which the app's own left-stick widget drove at its 0.95 ceiling without the aimed clicks missing. Ready in 75 s, idle floor 1202. The full drag sent RX +0.950 for 53,496 samples, the left stick +0.950 for 42,901, the release read zero on every axis, and **the 0.289 anti-deadzone floor cleared this game's threshold**, 10,516 samples MOVED, where the same floor sits *under* Half-Life 2's own deadzone and moves nothing. The button check and the primitives skip themselves for want of a console, as they do on Elden Ring, so 11 checks rather than 17. `controller_config.json` came back byte for byte and the throwaway profile was removed.
 
 ---
 
