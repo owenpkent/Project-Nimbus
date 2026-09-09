@@ -3,9 +3,10 @@
 Forking and modernizing **ViGEmBus** into a Nimbus-owned virtual gamepad bus
 driver, and what has to be true before that is a good idea.
 
-**Status:** nothing built, nothing decided. This is the decision document plus
-the work breakdown behind it. Everything below was checked against upstream
-sources and a fresh clone of `nefarius/ViGEmBus@master` on 2026-09-09.
+**Status:** phase 0 built and measured on 2026-09-09 (section 17); nothing
+past it is built or decided. This is the decision document plus the work
+breakdown behind it. Everything below was checked against upstream sources
+and a fresh clone of `nefarius/ViGEmBus@master` on 2026-09-09.
 
 **Related docs:** [VDROID_DRIVER_BRAINSTORM.md](../architecture/VDROID_DRIVER_BRAINSTORM.md)
 (this plan is that document's Option C, carried out, and it corrects one of its
@@ -15,10 +16,11 @@ machinery all reuse patterns already proven by
 [WINDOWS_MOUSE_FILTER_PLAN.md](WINDOWS_MOUSE_FILTER_PLAN.md).
 [docs/setup/PACKAGING.md](../setup/PACKAGING.md) owns the installer side.
 
-**The recommendation in one paragraph.** Do phase 0 now: replace `vgamepad`
-with a ~300 line pure-Python client that speaks the bus protocol directly. It
-removes a dependency that runs an MSI at pip time, it deletes the CI
-workaround, it costs a few days, and it carries zero kernel risk. Do phases 1
+**The recommendation in one paragraph.** Phase 0 is done (2026-09-09,
+section 17): `vgamepad` is replaced by a pure-Python client that speaks the
+bus protocol directly. It removed a dependency that ran an MSI at pip time and
+the CI workaround, took a day, carried zero kernel risk, and found a silent
+dead-pad bug in the library it replaced on the way. Do phases 1
 and 2 (fork, modernize, build, test-sign, validate on the game harness) as a
 funded side project, because upstream is archived and unmaintained and our
 entire XInput path currently rests on a binary nobody will fix. Do **not**
@@ -70,8 +72,17 @@ a replacement has to honor.
    (interface v4, 250 ms ticks). The pad has no equivalent, and a stuck stick
    in a game is the same category of accessibility failure as a stuck mouse.
 
+6. **The client library hides dead pads.** Found while building phase 0
+   (section 17): `ViGEmClient`'s `vigem_target_x360_update` returns
+   `VIGEM_ERROR_NONE` for every failed report submit except access denied.
+   The bus has a replug gap in which reports fail with
+   `ERROR_NO_MORE_ITEMS`, and under vgamepad those failures were swallowed,
+   so a pad could go silently dead after a replug and Nimbus would keep
+   reporting it connected. Our client surfaces and heals it; the fork's
+   IOCTL audit (section 9, item 6) should cover the client contract too.
+
 None of these is breaking anything today. Item 1 is the one that is a matter of
-when rather than whether.
+when rather than whether; item 6 was breaking things silently.
 
 ## 3. Upstream, as of 2026-09-09
 
@@ -193,13 +204,24 @@ bundled DLL, no MSI.
 
 **What it does**
 
+*Built 2026-09-09; the list below is the spec, with what changed in building
+it marked. Section 17 has the measurements.*
+
 1. Find the bus. `SetupDiGetClassDevs` + `SetupDiEnumDeviceInterfaces` +
    `SetupDiGetDeviceInterfaceDetail` on the interface GUID, then `CreateFileW`
    with `FILE_FLAG_OVERLAPPED | FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH`,
    which is what `ViGEmClient.cpp` does. Probe our own GUID first, then
-   ViGEmBus's `{96E42B22-F5E9-42F8-B043-ED0F932F014F}`.
+   ViGEmBus's `{96E42B22-F5E9-42F8-B043-ED0F932F014F}`. *As built: the
+   device interface list comes from cfgmgr32 (`CM_Get_Device_Interface_ListW`,
+   the same result in a tenth of the code), and the handle is opened with
+   `FILE_FLAG_OVERLAPPED` alone; the two buffering flags mean nothing on a
+   device IOCTL path.*
 2. `CHECK_VERSION`, then `PLUGIN_TARGET` with a random serial, then
-   `WAIT_DEVICE_READY`.
+   `WAIT_DEVICE_READY`. *As built: not a random serial. Every distinct serial
+   leaves a phantom devnode behind, so the client walks 1 to 16 like
+   ViGEmClient, skips serials whose child device is still present, and proves
+   readiness with real reports, because the ready wait can complete on a
+   child that is being removed (section 17, finding 1).*
 3. `SUBMIT_REPORT` on every update, from a 12-byte `ctypes.Structure`.
 4. Optional: a daemon thread parked on `REQUEST_NOTIFICATION` for rumble and
    the LED slot index. We do not use rumble today, but `LedNumber` is the
@@ -226,7 +248,8 @@ its existing expected values, and
 passes inside its existing `expect` bands. If the harness numbers move, the
 client is wrong, and that is exactly the signal we built the harness to give.
 
-**Effort:** 2 to 4 days including the probe work. **Risk:** low, and fully
+**Effort:** 2 to 4 days including the probe work; it took one, most of it on
+the replug gap. **Risk:** low, and fully
 reversible (keep `vigem_interface.py` on the `vgamepad` path behind a config
 flag for one release).
 
@@ -461,8 +484,8 @@ real-game harness that drives a pad and measures what the game did.
 
 | Layer | Suite | Notes |
 |---|---|---|
-| Protocol, no driver | new `tests/test_padbus_client.py` | Struct packing, IOCTL code derivation, button mapping. Pure Python, joins `run_fast_tests.py`. |
-| Client against stock ViGEmBus | `tests/probe_padbus_windows.py` | Plug, submit, unplug, handle-death unplug, rapid replug. Run before any driver exists. |
+| Protocol, no driver | `tests/test_padbus_client.py` (built 2026-09-09, 53 checks) | Struct packing, IOCTL code derivation, button mapping. Pure Python, joins `run_fast_tests.py`. |
+| Client against stock ViGEmBus | `tests/probe_padbus_windows.py` (built 2026-09-09, 14 checks) | Plug, submit, unplug, handle-death unplug, rapid replug, timing, notifications, the app path. Run before any driver exists. Its P7 and P9 are what found the replug gap. |
 | Shaping unchanged | `tests/probe_stick_shaping_windows.py` | Existing expected values must not move. This is the regression gate for phase 0. |
 | Real games | `tests/probe_game_harness_windows.py --actuator nimbus` | **The strongest tool we have.** Run L4D2 and Half-Life 2 against stock ViGEmBus, record `--write-expect` bands, then run the same recipes against the fork. If the measured turn rates fall inside the bands, the fork is behavior-compatible with the thing it replaces, measured in a real game rather than asserted. |
 | Driver robustness | new `tests/probe_padbus_stress_windows.py` | Port `probe_mouse_filter_stress_windows.py`: IOCTL storms, plug/unplug storms across processes with random kills, inherited-handle leak, the file-API fuzz, a soak. That suite found real bugs in the filter and the shape transfers directly. |
@@ -491,11 +514,27 @@ EAC title and a BattlEye title have been tested with it loaded, and (c) the
 mouse filter's own attestation submission has completed, so we have done this
 once before doing it twice.
 
+**Which titles, and one confound (added 2026-09-09).** Elden Ring is already
+in the harness and is the EAC title. For BattlEye, **Arma 3**: Steam, single
+player works offline, BattlEye is a launcher toggle so the same session can
+be run with and without it, it has an Xbox controller preset, and its editor
+has a scripting console that can read the player's heading, which makes a
+pose oracle of the kind the Source games give us. **Unturned** is the free
+smoke test (BattlEye on by default, single player, a few gigabytes) for "does
+the pad still work with the driver loaded". Neither exercises a server join,
+which is where BattlEye kicks; a short manual join covers that. The confound:
+the gate says test-signed builds, but Vanguard refuses to run at all with
+test signing enabled, and EAC and BattlEye may treat that mode as suspicious
+too, so a test-signed build cannot answer the question cleanly. The way round
+it is to attestation-sign a build we do not ship, which is exactly the "for
+testing scenarios" use Microsoft now files attestation under, test with that,
+and ship only if it passes. That splits phase 3 into "submit" and "ship".
+
 ## 14. Order of work
 
 | Phase | Work | Effort | Gate to start |
 |---|---|---|---|
-| **0** | `src/padbus_client.py`, drop `vgamepad`, delete the CI workaround, protocol tests, `probe_padbus_windows.py`, regression through the shaping probe and one game recipe | 2 to 4 days | None. Start now. |
+| **0** | `src/padbus_client.py`, drop `vgamepad`, delete the CI workaround, protocol tests, `probe_padbus_windows.py`, regression through the shaping probe and one game recipe | 2 to 4 days (took one) | **Done 2026-09-09**, section 17 |
 | **1** | Create `nimbus-padbus`, strip dead infrastructure, retarget to VS2022 + WDK 26100, unpin DMF, delete DS4, fix the INF, rename everything in section 8, build and test-sign, `install-dev.ps1` | 1 to 2 weeks | Phase 0 done |
 | **2** | Harden the IOCTL surface, kernel failsafe, Code Analysis + CodeQL + Verifier, port the stress probe, full game-harness comparison against stock ViGEmBus, anti-cheat testing | 2 to 3 weeks | Phase 1 builds and loads |
 | **3** | Attestation submission, installer integration, staged rollout with ViGEmBus fallback | 1 week plus Partner Center latency | **Section 13's gate** |
@@ -520,8 +559,104 @@ it.
    or only axes?) before writing it.
 4. **x86.** Upstream ships it; we would not. Does any Nimbus user run 32-bit
    Windows? Almost certainly not, and dropping it halves the submission matrix.
-5. **Does phase 0 keep a `vgamepad` fallback path**, or is the cut clean? A
-   config flag for one release is cheap insurance.
+5. **Does phase 0 keep a `vgamepad` fallback path**, or is the cut clean?
+   Answered 2026-09-09: clean cut. `X360Pad` keeps vgamepad's method names,
+   so the fallback is one import away if ever needed, and the previous
+   commit is the other fallback.
+6. **A user-mode failsafe before the kernel one.** The review of 2026-09-09
+   argued that most of section 9 item 7 can be had against stock ViGEmBus in
+   user mode: an in-process watchdog thread that submits a neutral report
+   when the main thread stops calling update (the pattern that already
+   exists, disabled, in `src/vjoy_interface.py`), and a supervisor process
+   that terminates Nimbus when its heartbeat stops, which closes the handle
+   and unplugs the pad. Decide that before designing the kernel one; it is
+   the same "when to ask" item.
+
+## 17. Phase 0 log
+
+**2026-09-09, built and measured.** `src/padbus_client.py`,
+`tests/test_padbus_client.py` (53 checks, in the fast suite) and
+`tests/probe_padbus_windows.py` (14 checks against the real bus). `vgamepad`
+is out of `requirements.txt`, the CI filter and the PyInstaller DLL block are
+gone, `ViGEmInterface`'s public methods are unchanged, and the harness,
+`mouse_hider` and the installer probe use the same `X360Pad`. The bus was
+found through cfgmgr32's device interface list rather than SetupDi (same
+result, less code), and the IOCTL codes were re-derived from `CTL_CODE` and
+confirmed against the bus: the user index query is `0x801 + 0x206`, not
+`0x207` as first guessed (`0x207` is the DualShock output wait, which
+answered "buffer too small" and then pended).
+
+**The machine.** `ViGEmBus.sys` here is **1.21.442.0**, the file inside the
+1.22.0 setup the installer bundles, not the 1.17.333.0 that SIGNING.md
+recorded on the 6th; the installer probe's reinstall had already replaced it.
+Item 2 of section 2 was true of dev machines in general, and this one had
+already crossed over.
+
+**Measured** (the probe, 14/14; `update` numbers over 2,000 reports):
+
+| What | Result |
+|---|---|
+| Plug and ready wait | 3 to 7 ms on a recently used serial, about 40 ms on a fresh one |
+| XInput reads the submitted report back, field for field | within 7 to 26 ms |
+| `update()` | median 22 us, p99 46 us, max 289 us |
+| Unplug, or the handle closing | gone from XInput in 10 to 22 ms |
+| A killed process's pad | gone in 10 to 20 ms, three of three |
+| 20 x plug, report, close | 0 failures after the fix below; 4 reports needed a retry |
+| User index query | accepted, nothing written back (0 bytes returned, sentinel intact), so `None` |
+| Output notifications | a fresh pad hands over 4 queued reports, then the call pends; rumble 30000/10000 from `XInputSetState` arrives as 117/39 |
+
+**Finding 1, the replug gap.** The bus finds a pad by serial with
+`WdfChildListRetrievePdo`, which returns nothing while a serial's device
+object is between an old child dying and its replacement starting, and every
+report in that gap fails with `ERROR_NO_MORE_ITEMS` (259). The gap opens when
+a serial released a moment ago is plugged again: PnP removes the old child
+asynchronously (its devnode stays present for about 20 ms, longer while an
+XInput reader that has not re-polled holds it), the plug lands on it, and the
+ready wait completes on it, so it proves nothing. A first report can even
+succeed and the next one fail. Measured: 5 to 12 dead pads in a 20-iteration
+close-and-plug storm with XInput loaded in the process, and the pad of a
+process started right after another one unplugged (which is the shape of
+"Nimbus restarted while the game was running"). A deliberate same-serial
+replug with a pause lived; the timing decides. What the client does about it,
+in three layers: skip serials whose child devnode is still present
+(`present_child_serials`, cfgmgr32), prove readiness with real reports for up
+to the ready timeout instead of trusting the ready wait, and in `update()`
+retry a failed report for 150 ms and re-plug on another serial if the pad is
+really gone, so a game sees a brief reconnect rather than a stick that never
+moves again. With that the storm passes with 0 failures (4 reports recovered
+by retry, no re-plug needed), and the killed-process pad is gone in 10 ms
+every time.
+
+**Finding 2, ViGEmClient hides it.** vgamepad survived the same storm with
+"0 errors", which looked like a regression in our client until the reference
+source explained it: `vigem_target_x360_update` returns `VIGEM_ERROR_NONE`
+for every failed submit except access denied. The failed reports were
+dropped silently. So under vgamepad the same dead pads happened and Nimbus
+kept saying "connected". Recorded as section 2 item 6.
+
+**Finding 3, serials leave devnodes.** Every distinct serial leaves a
+phantom devnode under `Enum\USB\VID_045E&PID_028E` (the instance id is the
+serial, `%02d`; three test serials from today are there: 12345, 2147483647
+and -1). So the client keeps serials in 1 to 16 and walks them like
+ViGEmClient does; the "random serial" in section 6 is withdrawn.
+
+**Not done, on purpose:** the user-mode failsafe (section 15, question 6)
+and the SetupDi enumeration the plan specified (cfgmgr32 does the same job).
+`request_notification` and `user_index` exist for the harness and the probe;
+Nimbus uses neither.
+
+**Regression gate, all passed on the first run (2026-09-09):**
+
+| Gate | Result |
+|---|---|
+| Fast suite | 10/10 files (the nine before plus `test_padbus_client.py`), about four seconds |
+| `probe_stick_shaping_windows.py` | 19/19; every expected value unchanged (2 px drag RX=0.293 expected 0.293, full drag 0.950, diagonal 0.638, RT slider 0.995 and 0.005) |
+| `probe_game_harness_windows.py --game left4dead2 --actuator nimbus` | 19/19; full drag -404.4 deg/s, 1 px drag -2.4 deg/s against an expected -2.4 within 1.0, walk 200.0 units/s against an expected 200.9 within 40.2, all five Spectator+ primitives within tolerance |
+| `probe_game_harness_windows.py --game left4dead2 --actuator pad` | 17/17; the harness's own pad is now an `X360Pad` too: yaw at 0.40 measured -13.8 deg/s against an expected -13.8 within 2.1, at 0.60 -34.3 against -34.2, pitch -20.9 against -21.3, walk 199.7 units/s against 199.7, deadzone first moved at 0.28 as before, button latency 31 ms |
+
+The harness numbers did not move, which is what the plan's "done when" asked
+for: the client is behaviour-compatible with the library it replaced, measured
+in a real game.
 
 ## 16. Sources
 

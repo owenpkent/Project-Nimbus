@@ -280,16 +280,15 @@ default to "do not launch a GUI installer", which is the right answer when
 nobody is watching. This is what `tests\probe_installer_drivers_windows.ps1`
 drives.
 
-Two related notes: `pip install vgamepad` installs **ViGEmBus 1.17.333.0** from
-its own bundled MSI, so dev machines can be on a 2019-era build while the
-installer ships 1.22.0. Keep vgamepad for the client library and let the
-installer own the driver. (Phase 0 of
-[PAD_BUS_FORK_PLAN.md](../vision/PAD_BUS_FORK_PLAN.md) proposes retiring
-vgamepad for a pure-Python client that speaks the bus protocol directly, which
-would end this version split and delete the CI workaround that filters vgamepad
-out of `requirements.txt`. Nothing here changes until that is done.) And the
-uninstaller never removes vJoy or ViGEmBus: DS4Windows, Steam and other mappers
-share them.
+Two related notes: the installer alone decides which ViGEmBus a machine gets.
+Since 2026-09-09 the app speaks the bus protocol directly through
+`src/padbus_client.py` (phase 0 of
+[PAD_BUS_FORK_PLAN.md](../vision/PAD_BUS_FORK_PLAN.md)), so nothing at
+`pip install` time touches a driver; the `vgamepad` package, which used to
+install its own **ViGEmBus 1.17.333.0** from a bundled MSI and left dev
+machines on a 2019-era build while the installer shipped 1.22.0, is gone. And
+the uninstaller never removes vJoy or ViGEmBus: DS4Windows, Steam and other
+mappers share them.
 
 ---
 
@@ -401,7 +400,7 @@ signtool verify /pa /v "dist\Project-Nimbus-Setup-1.2.1.exe"
 
 ### Test
 
-- [ ] Run the driver probe from an **elevated** PowerShell, in two steps with a reboot between: `tests\probe_installer_drivers_windows.ps1 -Teardown` (removes vJoy and ViGEmBus), reboot, then `tests\probe_installer_drivers_windows.ps1` (11 checks, unattended: installs silently, verifies both drivers came back with devices attached, checks vJoy device 1 for 8 axes and 128 buttons, opens a ViGEm pad from vgamepad, starts and closes the app, then uninstalls the app and confirms the drivers survive). The teardown removes drivers the machine may be using, so run it where that is acceptable
+- [ ] Run the driver probe from an **elevated** PowerShell, in two steps with a reboot between: `tests\probe_installer_drivers_windows.ps1 -Teardown` (removes vJoy and ViGEmBus), reboot, then `tests\probe_installer_drivers_windows.ps1` (11 checks, unattended: installs silently, verifies both drivers came back with devices attached, checks vJoy device 1 for 8 axes and 128 buttons, opens a ViGEm pad through the app's own client (`src/padbus_client.py`), starts and closes the app, then uninstalls the app and confirms the drivers survive). The teardown removes drivers the machine may be using, so run it where that is acceptable
 - [ ] Run installer on clean Windows VM
 - [ ] On a machine that already has both drivers: the page reads "Already installed" for both and installs neither
 - [ ] Untick both on the drivers page: install completes, the summary dialog names what will not work, and Nimbus still starts

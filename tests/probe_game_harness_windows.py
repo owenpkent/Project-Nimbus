@@ -56,7 +56,7 @@ nimbus
     P4  walk 100 units: within 20 percent or 10 units
     P5  stop: a long walk cut short releases the stick and the player stops
 
-Run (from the repo root, venv with PySide6 and vgamepad; ViGEmBus installed;
+Run (from the repo root, venv with PySide6; ViGEmBus installed;
 Steam able to sign in without a prompt)::
 
     venv\\Scripts\\python tests\\probe_game_harness_windows.py --game left4dead2 --actuator pad

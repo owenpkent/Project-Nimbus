@@ -594,14 +594,9 @@ def on_qt(fn: Callable[[], Any], timeout: float = 10.0) -> Any:
 
 # ---- actuators -------------------------------------------------------------------
 def _xusb_by_id() -> Dict[int, Any]:
-    import vgamepad as vg
-    b = vg.XUSB_BUTTON
-    return {1: b.XUSB_GAMEPAD_A, 2: b.XUSB_GAMEPAD_B, 3: b.XUSB_GAMEPAD_X, 4: b.XUSB_GAMEPAD_Y,
-            5: b.XUSB_GAMEPAD_LEFT_SHOULDER, 6: b.XUSB_GAMEPAD_RIGHT_SHOULDER,
-            7: b.XUSB_GAMEPAD_BACK, 8: b.XUSB_GAMEPAD_START,
-            9: b.XUSB_GAMEPAD_LEFT_THUMB, 10: b.XUSB_GAMEPAD_RIGHT_THUMB,
-            11: b.XUSB_GAMEPAD_DPAD_UP, 12: b.XUSB_GAMEPAD_DPAD_DOWN,
-            13: b.XUSB_GAMEPAD_DPAD_LEFT, 14: b.XUSB_GAMEPAD_DPAD_RIGHT}
+    # The app's own id-to-mask table, so the pad actuator presses what the app presses.
+    from src.vigem_interface import XUSB_BY_ID
+    return dict(XUSB_BY_ID)
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -614,8 +609,8 @@ class PadActuator:
     name = "pad"
 
     def __init__(self) -> None:
-        import vgamepad as vg
-        self.pad = vg.VX360Gamepad()
+        from src.padbus_client import X360Pad
+        self.pad = X360Pad()
         self.pad.update()
         self._xusb = _xusb_by_id()
         self._held: set = set()

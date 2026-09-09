@@ -198,7 +198,10 @@ The real gap is a packaging one, and it belongs with the installer work rather
 than here. Three facts, all checked on 2026-09-06:
 
 - `pip install vgamepad` silently installs **ViGEmBus 1.17.333.0** from a
-  bundled MSI, which is what this dev machine is running.
+  bundled MSI, which is what this dev machine was running. (Since 2026-09-09
+  neither holds: the app speaks the bus protocol itself through
+  `src/padbus_client.py` and `vgamepad` is gone from `requirements.txt`, and
+  this machine runs the installer's build, `ViGEmBus.sys` 1.21.442.0.)
 - The last and final release is **1.22.0** (2023-11-02). The project was
   archived that day after a trademark dispute; it is BSD-3-Clause and ships an
   all-in-one signed setup.
