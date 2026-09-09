@@ -1017,13 +1017,49 @@ class GameEnv:
     def refresh_rect(self) -> None:
         self.x, self.y, self.w, self.h = client_rect_on_screen(self.hwnd)
 
+    def pointer_to(self, xf: float, yf: float) -> None:
+        """Put a game's own pad pointer at a fraction of the client rect.
+
+        Some menus are driven by a virtual pointer that the left stick moves
+        and A clicks on, rather than by a highlight the d-pad walks.
+        PowerWash Simulator is one, and its pointer ignores ``SetCursorPos``
+        (measured 2026-09-08: the pointer did not follow the cursor and a
+        synthesized click did nothing), so the only way to aim it is to park
+        it in a corner, where it clamps, and then move by time at the
+        recipe's measured ``pointer_px_per_s``. One axis at a time, because a
+        diagonal may be normalized and the speed is only known along an axis.
+        """
+        speed = float(self.recipe.get("pointer_px_per_s", 0.0) or 0.0)
+        if speed <= 0:
+            print("[harness] sequence: the recipe has no pointer_px_per_s, so the pointer cannot be aimed",
+                  flush=True)
+            return
+        self.front()
+        self.refresh_rect()
+        self.actuator.apply({"lx": -1.0, "ly": 1.0})
+        time.sleep(float(self.recipe.get("pointer_park_s", 2.5)))
+        self.actuator.release()
+        time.sleep(0.15)
+        for axis, sign, dist in (("lx", 1.0, xf * self.w), ("ly", -1.0, yf * self.h)):
+            hold = dist / speed
+            if hold <= 0.01:
+                continue
+            self.actuator.apply({axis: sign})
+            time.sleep(hold)
+            self.actuator.release()
+            time.sleep(0.15)
+        print(f"[harness] sequence: pointer parked top left, then to ({xf:.3f}, {yf:.3f}) "
+              f"of {self.w}x{self.h}", flush=True)
+
     def run_sequence(self) -> None:
         """Play the recipe's ``ready_sequence`` after the window appears: the
         button presses that take a game from its title screen into a map.
 
         Each step is ``{"wait": seconds}``, ``{"press": [button ids], "hold":
-        seconds}``, or ``{"wait_until_control": {action}, "hold": s,
-        "interval": s, "timeout": s}``, which holds the action (a right stick,
+        seconds}``, ``{"pointer": [x fraction, y fraction]}``, which aims a
+        pad-pointer menu (``pointer_to``) and is usually given with a
+        ``press`` in the same step, or ``{"wait_until_control": {action},
+        "hold": s, "interval": s, "timeout": s}``, which holds the action (a right stick,
         say) every ``interval`` seconds until the picture moves against an
         idle capture: the world is loaded and the stick steers it. Menus and
         loading screens ignore a stick, so this is the readiness test for a
@@ -1036,6 +1072,9 @@ class GameEnv:
             if step.get("wait"):
                 print(f"[harness] sequence: wait {float(step['wait']):.0f}s{note}", flush=True)
                 time.sleep(float(step["wait"]))
+            if step.get("pointer"):
+                xf, yf = (float(v) for v in list(step["pointer"])[:2])
+                self.pointer_to(xf, yf)
             if step.get("press"):
                 print(f"[harness] sequence: press {list(step['press'])}{note}", flush=True)
                 self.front()
