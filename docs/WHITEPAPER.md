@@ -296,7 +296,7 @@ The platform is positioned to extend in four directions, each preserving the sam
 
 **Voice command integration.** Buttons, axes, and macros triggered by speech, using Faster-Whisper or Vosk for offline low-latency execution. Time-critical commands act on interim recognition results.
 
-**Spectator+ — AI-assisted execution.** A trained agent translates high-level intent (issued by voice, dwell, or switch) into precise sequences of axis and button events through the existing virtual driver bridge. The user remains the cognitive and tactical authority; the AI executes the motor sequence.
+**Spectator+, AI-assisted execution.** A trained agent translates high-level intent (issued by voice, dwell, or switch) into precise sequences of axis and button events through the existing virtual driver bridge. The user remains the cognitive and tactical authority; the AI executes the motor sequence. The first step is in the tree without a model: scripted primitives (turn by an angle, walk for a distance, press a button) executed by the bridge from a per-game calibration that a game test harness measures from the game's own console. In Left 4 Dead 2 they land within a few degrees of the angle asked for; in Half-Life 2, whose stick response puts more than half the turn into the first tenth of a second, the same primitives are repeatably long, which is the honest measure of how far open-loop execution goes and why the closed loop is the next step (`docs/vision/GAME_TEST_HARNESS.md`, section 4.7).
 
 **Keyboard-output mode.** Any widget emits native keyboard shortcuts. This re-purposes the platform as a Stream Deck replacement, drawing-tablet express-key surface, or DAW controller, and re-uses the entire layout / persistence stack.
 

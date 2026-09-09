@@ -271,6 +271,7 @@ class ControllerBridge(QObject):
         self._ema: Dict[str, Tuple[float, float]] = {}
         self._last_raw: Dict[str, Tuple[float, float]] = {}
         self._modifiers: Dict[str, bool] = {}
+        self._spectator = None   # Spectator+ primitive runner, created on first use (get_spectator)
         self._reload_widget_shaping()
         # Timer to apply smoothing at vJoy update rate
         self._smooth_timer = QTimer(self)
@@ -320,6 +321,34 @@ class ControllerBridge(QObject):
     def _get_active_interface(self):
         """Get the currently active controller interface."""
         return self._output.active
+
+    # ----- Spectator+ -----
+    def get_spectator(self):
+        """The Spectator+ primitive runner bound to this bridge's output.
+
+        Created on first use. Its primitives (turn by an angle, walk for a
+        distance, press a button) write through :meth:`setAxis` and
+        :meth:`setButton`, so they go through the active driver interface
+        and its limits, and bypass the widget shaping on purpose: that
+        shaping is for the user's own hand, and a turn of 90 degrees has to
+        be the same turn whatever curve the user has. A profile switch or
+        Ctrl+Alt+F12 stops a running primitive. See ``src/spectator``.
+
+        Returns:
+            The :class:`~src.spectator.primitives.PrimitiveRunner`.
+        """
+        if self._spectator is None:
+            from .spectator.primitives import PrimitiveRunner
+            self._spectator = PrimitiveRunner(self.setAxis, self.setButton, parent=self)
+        return self._spectator
+
+    def _stop_spectator(self) -> None:
+        """Cancel a running primitive, if any, and zero what it touched."""
+        if self._spectator is not None:
+            try:
+                self._spectator.stop()
+            except Exception:
+                pass
 
     # ----- Scale factor property -----
     def _get_scale(self) -> float:
@@ -1298,6 +1327,7 @@ class ControllerBridge(QObject):
     @Slot(str, result=bool)
     def switchProfile(self, profile_id: str) -> bool:  # noqa: N802
         """Switch to a different profile."""
+        self._stop_spectator()
         success = self._config.switch_profile(profile_id)
         if success:
             self._refresh_active_profile()
@@ -1809,6 +1839,7 @@ class ControllerBridge(QObject):
     @Slot()
     def stopControllerMode(self) -> None:  # noqa: N802
         """Stop Controller Mode Enforcement."""
+        self._stop_spectator()   # Ctrl+Alt+F12 also cancels a running primitive
         if not MOUSE_HIDER_AVAILABLE or not _mouse_hider:
             return
         try:

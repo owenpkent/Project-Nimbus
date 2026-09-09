@@ -114,6 +114,33 @@ Item {
             }
         }
 
+        // Overlap warning: a widget whose centre a later widget covers cannot
+        // be pressed there, because the later one is on top and takes the press.
+        Rectangle {
+            id: overlapBanner
+            readonly property var pairs: root._overlappingWidgets(root.widgetModel)
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.topMargin: 42
+            width: overlapBannerText.width + 30
+            height: 28
+            radius: 14
+            color: "#3a2a1a"
+            border.color: "#ffb74d"
+            border.width: 1
+            visible: editMode && pairs.length > 0
+            z: 200
+
+            Text {
+                id: overlapBannerText
+                anchors.centerIn: parent
+                text: "Overlapping widgets: " + overlapBanner.pairs.join(", ") + ". The one on top takes the press."
+                color: "#ffb74d"
+                font.pixelSize: 11
+                font.bold: true
+            }
+        }
+
         // ==================== WIDGET REPEATER ====================
         Repeater {
             id: widgetRepeater
@@ -1794,6 +1821,29 @@ Item {
             }
         }
         return { x: 10, y: 10 }  // fallback
+    }
+
+    // Widgets whose centre lies inside a later widget's rectangle. The later
+    // one is drawn on top, so a press at that centre lands on it instead of
+    // the widget underneath; the editor shows these in a banner.
+    function _overlappingWidgets(model) {
+        var out = []
+        if (!model) return out
+        for (var i = 0; i < model.length; i++) {
+            var a = model[i]
+            var cx = (a.x || 0) + (a.width || 0) / 2
+            var cy = (a.y || 0) + (a.height || 0) / 2
+            for (var j = i + 1; j < model.length; j++) {
+                var b = model[j]
+                var bx = b.x || 0
+                var by = b.y || 0
+                if (cx >= bx && cx <= bx + (b.width || 0) && cy >= by && cy <= by + (b.height || 0)) {
+                    out.push((a.label || a.id) + " under " + (b.label || b.id))
+                    break
+                }
+            }
+        }
+        return out
     }
 
     function _addWidget(data) {
