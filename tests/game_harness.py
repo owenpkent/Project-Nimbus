@@ -68,10 +68,19 @@ sys.path.insert(0, TESTS)
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPointF, QRectF, QTimer, QUrl, Qt, Signal, Slot  # noqa: E402
 from PySide6.QtGui import QMouseEvent  # noqa: E402
 
+from frame_motion import Thresholds, describe, measure, verdict as motion_verdict  # noqa: E402
 from probe_game_mouselook_windows import client_rect_on_screen, frame_diff, grab, save_frame  # noqa: E402
 from probe_rawinput_windows import (  # noqa: E402
     INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, _hwnd_int, bring_to_front, kernel32, user32,
 )
+
+try:
+    # The app's own window management, so a recipe's ``window`` key exercises
+    # it against a real game (it has no other test).
+    from src.borderless import make_borderless, resize_window, restore_window
+    BORDERLESS_AVAILABLE = True
+except Exception:  # noqa: BLE001
+    BORDERLESS_AVAILABLE = False
 
 # ---- Win32 -----------------------------------------------------------------------
 EnumWindowsProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -222,6 +231,22 @@ def write_reset_pose(recipe: Dict[str, Any], pose: Dict[str, Any]) -> None:
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     data["reset_pose"] = {"pos": [round(v, 3) for v in pose["pos"]], "ang": [round(v, 3) for v in pose["ang"]]}
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=4)
+        fh.write("\n")
+
+
+def write_expect(recipe: Dict[str, Any], expect: Dict[str, Any]) -> None:
+    """Merge ``expect`` into the recipe file's ``expect`` block, check by
+    check (``--write-expect``): a pad run writes the G checks it measured, a
+    Nimbus run the N checks, and neither touches the other's."""
+    path = recipe["_path"]
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    block = dict(data.get("expect") or {})
+    block.update(expect)
+    data["expect"] = block
+    recipe["expect"] = block
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=4)
         fh.write("\n")
@@ -664,6 +689,7 @@ class NimbusActuator:
         self._centre: Dict[str, QPointF] = {}
         self._held_sticks: set = set()
         self._held_buttons: set = set()
+        self._bridge_only: set = set()    # buttons pressed at the bridge for want of a widget
         self._last_press: Dict[str, float] = {}
         self._telemetry = None
 
@@ -874,6 +900,26 @@ class NimbusActuator:
         on_qt(lambda: self._send(QEvent.Type.MouseButtonRelease, pos, Qt.MouseButton.LeftButton,
                                  Qt.MouseButton.NoButton))
 
+    def _bridge_button(self, button_id: int, pressed: bool) -> None:
+        """Press a button the profile draws no widget for, straight at the bridge.
+
+        Only a ``ready_sequence`` needs this. A game's menus may be walked
+        with buttons the bundled layout does not draw (Halo Wars needs the
+        d-pad to move the highlight and Start to begin the match, and the
+        layout has A, B, X, Y and the bumpers), and the menu walk is how the
+        game is reached rather than any part of what is measured: every
+        check that produces a number drives a real widget. Without this the
+        press was silently dropped, the game sat in whatever menu the walk
+        had reached, and the in-world checks read a menu as a still picture.
+        It says so the first time each button takes this path, so no result
+        is ever read as a widget press it was not.
+        """
+        if pressed and button_id not in self._bridge_only:
+            self._bridge_only.add(button_id)
+            print(f"[harness] button {button_id} has no widget in this profile; pressing it at the "
+                  f"bridge for the menu walk (the measured checks all drive widgets)", flush=True)
+        on_qt(lambda: self.bridge.setButton(int(button_id), bool(pressed)))
+
     def _drive_stick(self, side: str, dx: float, dy: float) -> None:
         wid = self.sticks.get(side)
         if wid is None:
@@ -911,11 +957,15 @@ class NimbusActuator:
             wid = self.buttons.get(b)
             if wid:
                 self._release(self._centre[wid])
+            else:
+                self._bridge_button(b, False)
         for b in want - self._held_buttons:
             wid = self.buttons.get(b)
             if wid:
                 self._press(wid, self._centre[wid])
-        self._held_buttons = {b for b in want if b in self.buttons}
+            else:
+                self._bridge_button(b, True)
+        self._held_buttons = set(want)
         time.sleep(0.05)
 
     def release(self) -> None:
@@ -987,6 +1037,15 @@ class GameEnv:
         self.hwnd = 0
         self.x = self.y = self.w = self.h = 0
         self.noise = 0
+        self.thresholds = Thresholds()
+        self.motion_kind = str((recipe.get("motion") or {}).get("kind", "shift"))
+        self.reference = None                 # the frame a reset should bring the view back to
+        self.reference_at = 0.0
+        self.last_reset: Optional[Dict[str, Any]] = None
+        self.window_wanted: Dict[str, Any] = dict(recipe.get("window") or {})
+        self.window_log: List[Dict[str, Any]] = []
+        self._window_stages: set = set()
+        self.measured: Dict[str, Dict[str, Dict[str, Any]]] = {}   # check -> key -> {unit, value}
         self.records: List[Dict[str, Any]] = []
         self.launched_at = 0.0
         self.window_at = 0.0
@@ -1010,12 +1069,72 @@ class GameEnv:
                 self.refresh_rect()
                 print(f"[harness] game window {hwnd} after {self.window_at - self.launched_at:.0f}s, "
                       f"client=({self.x},{self.y}) {self.w}x{self.h}", flush=True)
+                self.apply_window("launch")
                 return True
             time.sleep(2.0)
         return False
 
     def refresh_rect(self) -> None:
         self.x, self.y, self.w, self.h = client_rect_on_screen(self.hwnd)
+
+    # the recipe's window
+    def window_holds(self) -> bool:
+        """Whether the client rect is the recipe's ``window`` size, within 8 px."""
+        if not self.window_wanted or not self.hwnd:
+            return True
+        self.refresh_rect()
+        return (abs(self.w - int(self.window_wanted.get("w", self.w))) <= 8
+                and abs(self.h - int(self.window_wanted.get("h", self.h))) <= 8)
+
+    def apply_window(self, stage: str) -> bool:
+        """Put the game into the recipe's ``window``, once per ``stage``, and
+        record whether it took.
+
+        ``{"w": 1280, "h": 720, "x": 0, "y": 0, "borderless": true}`` is
+        applied with the app's own ``src.borderless`` (``make_borderless``
+        strips the frame and sizes the window; ``resize_window`` sizes a
+        framed one, corrected once for the frame it keeps). It is applied
+        when the window is found, again before the ready sequence and again
+        at readiness if it did not hold, because a game re-asserts its own
+        mode while it loads: Halo Wars shows a framed window at 2 s and a
+        borderless full-screen one at 4 s. The window is looked up again
+        each time, since a game may have replaced it. A game in exclusive
+        full screen ignores ``SetWindowPos``; that is recorded as a
+        property of the game, in the log and the results JSON, not a
+        failure of the run.
+        """
+        want = self.window_wanted
+        if not want or not self.hwnd or stage in self._window_stages:
+            return True
+        self._window_stages.add(stage)
+        if not BORDERLESS_AVAILABLE:
+            print("[harness] window: src.borderless is not importable, leaving the game as it is", flush=True)
+            return False
+        hwnd = find_game_window(self.recipe["title"], self.recipe.get("process"))
+        if hwnd:
+            self.hwnd = hwnd
+        self.refresh_rect()
+        before = [self.x, self.y, self.w, self.h]
+        x, y = int(want.get("x", 0)), int(want.get("y", 0))
+        w, h = int(want["w"]), int(want["h"])
+        borderless = bool(want.get("borderless", True))
+        if borderless:
+            make_borderless(self.hwnd, x, y, w, h)
+        else:
+            resize_window(self.hwnd, x, y, w, h)
+        time.sleep(0.6)
+        self.refresh_rect()
+        if not borderless and (self.w != w or self.h != h) and 0 < self.w < w and 0 < self.h < h:
+            resize_window(self.hwnd, x, y, w + (w - self.w), h + (h - self.h))
+            time.sleep(0.6)
+            self.refresh_rect()
+        took = abs(self.w - w) <= 8 and abs(self.h - h) <= 8
+        self.window_log.append({"stage": stage, "before": before, "after": [self.x, self.y, self.w, self.h],
+                                "took": took, "at_s": round(time.time() - self.launched_at, 1)})
+        print(f"[harness] window ({stage}): client was ({before[0]},{before[1]}) {before[2]}x{before[3]}, "
+              f"asked for {w}x{h}{' borderless' if borderless else ''}, now ({self.x},{self.y}) {self.w}x{self.h}: "
+              f"{'took' if took else 'the game did not accept it'}", flush=True)
+        return took
 
     def pointer_to(self, xf: float, yf: float) -> None:
         """Put a game's own pad pointer at a fraction of the client rect.
@@ -1028,6 +1147,10 @@ class GameEnv:
         it in a corner, where it clamps, and then move by time at the
         recipe's measured ``pointer_px_per_s``. One axis at a time, because a
         diagonal may be normalized and the speed is only known along an axis.
+        The speed was measured at one window width, ``pointer_ref_w``; a
+        pointer drawn by a UI canvas that scales with the window moves in
+        proportion, so the speed is scaled by the current client width over
+        that reference when the recipe gives one.
         """
         speed = float(self.recipe.get("pointer_px_per_s", 0.0) or 0.0)
         if speed <= 0:
@@ -1036,6 +1159,11 @@ class GameEnv:
             return
         self.front()
         self.refresh_rect()
+        ref_w = float(self.recipe.get("pointer_ref_w", 0.0) or 0.0)
+        if ref_w > 0 and self.w > 0 and abs(self.w - ref_w) > 1:
+            speed *= self.w / ref_w
+            print(f"[harness] sequence: pointer speed scaled to {speed:.0f} px/s for a {self.w} px wide window",
+                  flush=True)
         self.actuator.apply({"lx": -1.0, "ly": 1.0})
         time.sleep(float(self.recipe.get("pointer_park_s", 2.5)))
         self.actuator.release()
@@ -1067,6 +1195,8 @@ class GameEnv:
         optional ``note``. Games with a console oracle usually need none of
         this, because ``+map`` does the work.
         """
+        if self.window_wanted and not self.window_holds():
+            self.apply_window("sequence")
         for step in self.recipe.get("ready_sequence", []) or []:
             note = f" ({step['note']})" if step.get("note") else ""
             if step.get("wait"):
@@ -1137,6 +1267,8 @@ class GameEnv:
                 return False
             self.front()
             if self.oracle.ready():
+                if self.window_wanted and not self.window_holds():
+                    self.apply_window("ready")
                 a = self.grab()
                 time.sleep(0.5)
                 b = self.grab()
@@ -1166,6 +1298,8 @@ class GameEnv:
             self.actuator.release()
         except Exception:
             pass
+        if keep_game and self.window_log and BORDERLESS_AVAILABLE and self.hwnd and user32.IsWindow(self.hwnd):
+            restore_window(self.hwnd)
         if not keep_game and self.recipe.get("process"):
             if process_running(self.recipe["process"]):
                 print(f"[harness] killing {self.recipe['process']}", flush=True)
@@ -1185,14 +1319,34 @@ class GameEnv:
     def grab(self):
         return self._call(lambda: grab(self.hwnd))
 
-    def thresholds(self) -> Tuple[int, int]:
-        return max(3 * self.noise, 150), max(2 * self.noise, 60)
+    def set_noise(self, idle: List[Dict[str, Any]]) -> None:
+        """Set the noise floor and the motion thresholds from several idle
+        steps, and re-verdict those steps with them.
 
-    def verdict(self, changed: Optional[int]) -> str:
-        if changed is None:
+        One idle second was too thin a floor: Halo Wars measured 802 on one
+        run and 87 on the next for the same scene, which moved the old
+        MOVED threshold fourfold and turned a HUD flicker into a camera
+        move. The floor is now the largest changed count over the samples,
+        and the shift threshold twice the largest coherent idle shift, so a
+        scene with a swinging flashlight (Left 4 Dead 2) or a bobbing wand
+        (PowerWash Simulator) sets its own bar.
+        """
+        motions = [r["motion"] for r in idle if r.get("motion")]
+        changed = [int(r["changed"]) for r in idle if r.get("changed") is not None]
+        self.thresholds = Thresholds.from_idle(motions, changed)
+        self.noise = self.thresholds.noise
+        for r in idle:
+            r["verdict"] = self.verdict(r)
+
+    def verdict(self, rec: Dict[str, Any]) -> str:
+        """MOVED, STILL or INCONCLUSIVE for a step record, from its motion measurement."""
+        if rec.get("changed") is None:
             return "n/a"
-        hi, lo = self.thresholds()
-        return "MOVED" if changed > hi else ("STILL" if changed <= lo else "INCONCLUSIVE")
+        return motion_verdict(rec.get("motion"), self.thresholds, rec.get("changed"))
+
+    def motion_note(self, rec: Dict[str, Any]) -> str:
+        """The frame side of a results line: changed count, the measured motion, the verdict."""
+        return f"changed={rec.get('changed')} {describe(rec.get('motion'))} -> {rec.get('verdict') or self.verdict(rec)}"
 
     # observations
     def pose(self, **kw) -> Optional[Dict[str, Any]]:
@@ -1209,9 +1363,49 @@ class GameEnv:
     def set_reset_pose(self, pose: Dict[str, Any]) -> None:
         self.oracle.set_reset_pose(pose)
 
+    def can_reset(self) -> bool:
+        """Whether ``reset`` does anything: a console to teleport through, or
+        ``reset_buttons`` the game answers."""
+        return self.oracle.kind == "source_console" or bool(self.recipe.get("reset_buttons"))
+
+    def capture_reference(self) -> None:
+        """Keep the current picture as what a reset should bring the view back to."""
+        self.reference = self.grab()
+        self.reference_at = time.time()
+
     def reset(self) -> bool:
+        """Put the game back at its start: the console's teleport where there
+        is one, else the recipe's ``reset_buttons`` pressed in turn.
+
+        Halo Wars has no console but does have a reset: d-pad left jumps the
+        camera to the base and right-stick click puts the rotation back to
+        north, so ``[13, 10]`` restores the opening view from anywhere on
+        the map. With a reference frame captured after the first reset, the
+        landing is measured the way a step is: the motion from the reference
+        to the picture now has to read STILL. ``reset_press_s``,
+        ``reset_gap_s`` and ``reset_settle_s`` tune the presses and the wait
+        for the camera to arrive.
+        """
         self.front()
-        return self.oracle.reset()
+        if self.oracle.kind == "source_console":
+            return self.oracle.reset()
+        buttons = [int(b) for b in (self.recipe.get("reset_buttons") or [])]
+        if not buttons:
+            return True
+        for b in buttons:
+            self.actuator.apply({"buttons": [b]})
+            time.sleep(float(self.recipe.get("reset_press_s", 0.15)))
+            self.actuator.release()
+            time.sleep(float(self.recipe.get("reset_gap_s", 0.4)))
+        time.sleep(float(self.recipe.get("reset_settle_s", 1.5)))
+        if self.reference is None:
+            return True
+        now = self.grab()
+        m = measure(self.reference, now, kind=self.motion_kind, skip_top=self.skip_top)
+        changed = frame_diff(self.reference, now, skip_top=self.skip_top)
+        v = motion_verdict(m, self.thresholds, changed)
+        self.last_reset = {"motion": m, "changed": changed, "verdict": v}
+        return v == "STILL"
 
     def step(self, action: Dict[str, Any], hold: float, label: str, settle: float = 0.4,
              with_frame: bool = True) -> Dict[str, Any]:
@@ -1254,6 +1448,7 @@ class GameEnv:
         time.sleep(settle)
         p1 = self.oracle.pose()
         changed = frame_diff(a, b, skip_top=self.skip_top) if with_frame else None
+        motion = measure(a, b, kind=self.motion_kind, skip_top=self.skip_top) if with_frame else None
         deltas = pose_delta(p0, p1)
         if track and p1:
             total_yaw += wrap_deg(p1["ang"][1] - last_yaw)
@@ -1262,7 +1457,8 @@ class GameEnv:
             deltas["yaw_samples"] = samples
         rec: Dict[str, Any] = {"label": label, "action": action, "hold": hold, "apply_s": round(t_applied, 3),
                                "sent": sent, "pose_before": p0, "pose_after": p1, "changed": changed,
-                               "log_offset": off, **deltas}
+                               "motion": motion, "log_offset": off, **deltas}
+        rec["verdict"] = self.verdict(rec)
         if with_frame and self.save_frames:
             safe = re.sub(r"[^A-Za-z0-9_]+", "_", label)
             save_frame(a, os.path.join(self.frames_dir, f"harness_{self.tag}_{safe}_before.png"))
@@ -1275,7 +1471,11 @@ class GameEnv:
         with open(out, "w", encoding="utf-8") as fh:
             json.dump({"game": self.recipe["name"], "actuator": getattr(self.actuator, "name", "?"),
                        "oracle": self.oracle.kind, "hwnd": self.hwnd, "client": [self.x, self.y, self.w, self.h],
-                       "noise": self.noise, "when": time.strftime("%Y-%m-%d %H:%M:%S"),
+                       "noise": self.noise, "thresholds": self.thresholds.as_dict(), "motion_kind": self.motion_kind,
+                       "window": {"wanted": self.window_wanted, "log": self.window_log},
+                       "reference_at_s": round(self.reference_at - self.launched_at, 1) if self.reference_at else None,
+                       "last_reset": self.last_reset, "measured": self.measured,
+                       "expect": self.recipe.get("expect"), "when": time.strftime("%Y-%m-%d %H:%M:%S"),
                        "launch_to_window_s": round(self.window_at - self.launched_at, 1) if self.window_at else None,
                        "launch_to_ready_s": round(self.ready_at - self.launched_at, 1) if self.ready_at else None,
                        "reset_pose": self.oracle.reset_pose, "steps": self.records, **extra}, fh, indent=2)

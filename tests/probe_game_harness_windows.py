@@ -11,13 +11,19 @@ Actuators
 pad (default)
     A ViGEm pad of the harness's own. Calibrates the game:
 
-    G0  launch: the game window appears within the recipe's timeout
+    G0  launch: the game window appears within the recipe's timeout, and the
+        recipe's ``window`` (size, position, borderless) is applied and re-applied
+        as the game loads, recording whether it took
     G1  ready: the oracle answers (a pose is read from the console log)
-    G2  reset: the player is put back within 2 units and 1 degree
-    G3  idle: one second of nothing leaves the pose alone; frame noise floor
+    G2  reset: the player is put back within 2 units and 1 degree; with no
+        console but ``reset_buttons`` in the recipe, a second of left stick
+        then the buttons brings the picture back to a reference frame
+    G3  idle: several seconds of nothing leave the pose alone; the noise
+        floor and the motion thresholds come from all of them
     G4  yaw control: right stick full right turns more than 10 degrees, the recipe's way
     G5  yaw sweep: degrees per second at each magnitude; the game's deadzone;
-        the frame-difference verdict beside the ground truth for each step
+        the frame verdict beside the ground truth for each step, from the
+        measured motion (tests/frame_motion.py) rather than a changed count
     G6  yaw left: opposite sign, rate within 25 percent of the right turn
     G7  pitch: right stick up changes the pitch by more than 1 degree
     G8  move: left stick up for a second moves the player more than 20 units
@@ -60,6 +66,15 @@ Run them one at a time: each session's pad has to be player one, and the
 runner quits the game at the end unless ``--keep-game`` is given. A recipe
 whose ``reset_pose`` is null takes the first pose read as the session's reset
 pose and prints it; ``--write-reset-pose`` writes it into the recipe.
+
+Expected values. A recipe's ``expect`` block bands what a check measured
+last time (degrees, units or pixels per second, with a tolerance), and the
+runner records a ``<check>e`` line for each band, so a run fails when the
+game's answer changed and not only when it stopped answering.
+``--write-expect`` fills the block from a good run for the checks in
+``--expect-checks`` (G5 at ``--expect-mags``, G7, G8, N2, N5 by default),
+merging with what is there, so the pad run and the Nimbus run each keep
+their own.
 """
 from __future__ import annotations
 
@@ -79,15 +94,20 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "tests"))
 
+from frame_motion import describe, moving_peak, rot_coherent  # noqa: E402
 from game_harness import (  # noqa: E402
     FRAMES_DIR, GameEnv, NimbusActuator, PadActuator, load_recipe, on_qt, pose_delta, pose_error, wrap_deg,
-    write_reset_pose,
+    write_expect, write_reset_pose,
 )
 
 DEFAULT_SWEEP = "0.20,0.26,0.28,0.30,0.40,0.60,0.80,1.00"
 DEFAULT_CAL_MAGS = "0.40,0.60,1.00"
 DEFAULT_CAL_HOLDS = "0.10,0.25,0.50,1.00"
 DEFAULT_WALK_HOLDS = "0.25,0.50,1.00"
+DEFAULT_EXPECT_MAGS = "0.40,0.60"
+DEFAULT_EXPECT_CHECKS = "G5,G7,G8,N2,N5"
+# The default band per unit when --write-expect fills a recipe: (percent, absolute floor).
+EXPECT_TOL = {"deg_per_s": (15.0, 1.0), "units_per_s": (20.0, 10.0), "px_per_s": (25.0, 10.0)}
 RESULTS: List[Dict[str, Any]] = []
 
 
@@ -106,6 +126,93 @@ def fmt_pose(p: Optional[Dict[str, Any]]) -> str:
 
 def sgn(v: float) -> int:
     return (v > 0) - (v < 0)
+
+
+# ---- expected values ------------------------------------------------------------
+def measured_rate(env: GameEnv, r: Dict[str, Any], axis: str) -> Optional[tuple]:
+    """``(unit, value)`` for a step: degrees, units or pixels per second.
+
+    From the console where there is one (``deg_per_s`` for yaw and pitch,
+    ``units_per_s`` for a walk). Otherwise from the frames: the rotation for
+    a ``rotate`` kind when it was believed, else the believed moving peak,
+    signed along the axis the stick drives (``px_per_s``, horizontal for
+    yaw, vertical for pitch, the magnitude for a walk). ``None`` when nothing
+    believable was measured, which is what a picture that changed wholesale
+    or a turn too far to correlate gives.
+    """
+    hold = float(r.get("hold") or 1.0)
+    if axis == "yaw" and "d_yaw" in r:
+        return "deg_per_s", float(r["d_yaw"]) / hold
+    if axis == "pitch" and "d_pitch" in r:
+        return "deg_per_s", float(r["d_pitch"]) / hold
+    if axis == "walk" and "d_horiz" in r:
+        return "units_per_s", float(r["d_horiz"]) / hold
+    m = r.get("motion")
+    if not m:
+        return None
+    if env.motion_kind == "rotate" and axis == "yaw" and rot_coherent(m, env.thresholds):
+        return "deg_per_s", float(m["deg"]) / hold
+    p = moving_peak(m, env.thresholds)
+    if p is None:
+        return None
+    if axis == "yaw":
+        return "px_per_s", float(p["dx"]) / hold
+    if axis == "pitch":
+        return "px_per_s", float(p["dy"]) / hold
+    return "px_per_s", float(p["px"]) / hold
+
+
+def note_measured(env: GameEnv, check: str, key: str, rate: Optional[tuple]) -> None:
+    """Keep a measured rate for ``--write-expect``."""
+    if rate is None:
+        return
+    env.measured.setdefault(check, {})[key] = {"unit": rate[0], "value": round(float(rate[1]), 3)}
+
+
+def expect_check(env: GameEnv, check: str, key: str, rate: Optional[tuple]) -> None:
+    """Compare a measured rate with the recipe's ``expect`` block for
+    ``check`` (and ``key``, a magnitude, or ``-`` for a check with one
+    value), recording a line only where the recipe has an expectation.
+
+    This is what turns a run into a regression test: the pass rules say
+    the game answered, the band says it answered the way it did last time.
+    """
+    block = (env.recipe.get("expect") or {}).get(check)
+    if not block:
+        return
+    exp = block if key == "-" else block.get(key)
+    if not isinstance(exp, dict):
+        return
+    unit = next((u for u in EXPECT_TOL if u in exp), None)
+    if unit is None:
+        return
+    target = float(exp[unit])
+    tol_pct = float(exp.get("tol_pct", EXPECT_TOL[unit][0]))
+    tol_abs = float(exp.get("tol_abs", EXPECT_TOL[unit][1]))
+    tol = max(abs(target) * tol_pct / 100.0, tol_abs)
+    label = f"{check}e {'' if key == '-' else key + ' '}expected {unit} {target:+.1f} within {tol:.1f}"
+    if rate is None:
+        record(label, False, "nothing comparable was measured")
+    elif rate[0] != unit:
+        record(label, False, f"measured {rate[0]} {rate[1]:+.1f}, a different unit")
+    else:
+        record(label, abs(rate[1] - target) <= tol, f"measured {rate[1]:+.1f}")
+
+
+def build_expect(env: GameEnv, args: argparse.Namespace) -> Dict[str, Any]:
+    """The ``expect`` block ``--write-expect`` writes: what this run measured
+    for the checks in ``--expect-checks``, with the default bands."""
+    wanted = {c.strip() for c in args.expect_checks.split(",") if c.strip()}
+
+    def band(e: Dict[str, Any]) -> Dict[str, Any]:
+        return {e["unit"]: e["value"], "tol_pct": EXPECT_TOL[e["unit"]][0], "tol_abs": EXPECT_TOL[e["unit"]][1]}
+
+    out: Dict[str, Any] = {}
+    for check, keys in env.measured.items():
+        if check not in wanted or not keys:
+            continue
+        out[check] = band(keys["-"]) if "-" in keys else {k: band(e) for k, e in keys.items()}
+    return out
 
 
 # ---- shared checks -------------------------------------------------------------
@@ -138,6 +245,12 @@ def establish_reset_pose(env: GameEnv, args: argparse.Namespace) -> Optional[Dic
         if args.write_reset_pose:
             write_reset_pose(env.recipe, p)
             print(f"[harness] wrote reset_pose into {env.recipe['_path']}", flush=True)
+    if env.oracle.kind != "source_console" and env.can_reset():
+        # A game with reset buttons: press them once, and what they leave on
+        # screen is the reference every later reset has to reproduce.
+        env.reset()
+        env.capture_reference()
+        print("[harness] reset buttons pressed and the reference frame captured", flush=True)
     return p
 
 
@@ -150,24 +263,57 @@ def check_reset(env: GameEnv, name: str) -> None:
            ok and dist < 2.0 and dang < 1.0, f"dist={dist:.2f} dang={dang:.2f} {fmt_pose(q)}")
 
 
-def check_idle(env: GameEnv, name: str, label: str, set_noise: bool) -> None:
-    r = env.step({}, 1.0, label)
-    if set_noise:
-        env.noise = int(r.get("changed") or 0)
-    if r.get("pose_before") and r.get("pose_after"):
-        stable = abs(r["d_yaw"]) < 0.5 and r["d_horiz"] < 1.0
-        note = f"d_yaw={r['d_yaw']:+.2f} d_horiz={r['d_horiz']:.2f} changed={r['changed']}"
+def check_reset_frames(env: GameEnv, name: str) -> None:
+    """The reset check for a game with no console: a second of left stick
+    moves the view off the reference, the recipe's reset buttons are pressed,
+    and the picture has to be back on the reference frame (its motion from
+    the reference reads STILL). Measured before it was built: on Halo Wars
+    the pair landed 40 percent of samples from the stored view against 71
+    for a lost camera, which is why the rule is a motion verdict and not a
+    percentage."""
+    drift = env.step({"ly": 1.0}, 1.0, "reset_drift")
+    ok = env.reset()
+    lr = env.last_reset or {}
+    record(f"{name} reset: the reset buttons bring the view back to the reference after a second of left stick",
+           ok, f"drift {env.motion_note(drift)}; landing changed={lr.get('changed')} "
+               f"{describe(lr.get('motion'))} -> {lr.get('verdict')}")
+
+
+def measure_idle(env: GameEnv, label: str, samples: int) -> List[Dict[str, Any]]:
+    """``samples`` idle seconds; the noise floor and the motion thresholds come from all of them."""
+    recs = [env.step({}, 1.0, label if i == 0 else f"{label}_{i + 1}") for i in range(max(1, int(samples)))]
+    env.set_noise(recs)
+    return recs
+
+
+def record_idle(env: GameEnv, name: str, recs: List[Dict[str, Any]], with_thresholds: bool) -> None:
+    posed = [r for r in recs if r.get("pose_before") and r.get("pose_after")]
+    if posed:
+        stable = all(abs(r["d_yaw"]) < 0.5 and r["d_horiz"] < 1.0 for r in posed)
+        note = "; ".join(f"d_yaw={r['d_yaw']:+.2f} d_horiz={r['d_horiz']:.2f}" for r in posed)
     else:
         stable = env.oracle.kind != "source_console"
-        note = f"changed={r['changed']} (no pose)"
-    record(f"{name} idle: one second of nothing leaves the pose alone", stable, note)
+        note = "no pose"
+    note += f"; changed={[r['changed'] for r in recs]}; " + describe(recs[0].get("motion"))
+    if with_thresholds:
+        t = env.thresholds.as_dict()
+        note += (f"; floor {env.noise}, a move is a coherent shift past {t['min_px']:.0f} px"
+                 + (f" or a rotation past {t['min_deg']:.1f} deg" if env.motion_kind == "rotate" else ""))
+    seconds = "one second" if len(recs) == 1 else f"{len(recs)} seconds"
+    record(f"{name} idle: {seconds} of nothing leaves the pose alone", stable, note)
+
+
+def check_idle(env: GameEnv, name: str, label: str, set_noise: bool, samples: int = 1) -> List[Dict[str, Any]]:
+    recs = measure_idle(env, label, samples) if set_noise else [env.step({}, 1.0, label)]
+    record_idle(env, name, recs, set_noise)
+    return recs
 
 
 def yaw_note(r: Dict[str, Any], env: GameEnv) -> str:
     if "d_yaw" not in r:
-        return f"changed={r['changed']} {env.verdict(r['changed'])} (no pose)"
+        return env.motion_note(r) + " (no pose)"
     return (f"d_yaw={r['d_yaw']:+.2f} deg in {r['hold']:.2f}s = {r['d_yaw'] / r['hold']:+.1f} deg/s; "
-            f"changed={r['changed']} {env.verdict(r['changed'])}")
+            + env.motion_note(r))
 
 
 # ---- pad -----------------------------------------------------------------------
@@ -178,11 +324,17 @@ def pad_checks(env: GameEnv, args: argparse.Namespace) -> None:
     mags = [float(m) for m in args.sweep.split(",") if m.strip()]
     console = env.oracle.kind == "source_console"
 
+    expect_mags = {f"{float(m):.2f}" for m in args.expect_mags.split(",") if m.strip()}
     establish_reset_pose(env, args)
+    idle_recs: Optional[List[Dict[str, Any]]] = None
     if console:
         check_reset(env, "G2")
+    elif env.can_reset():
+        # the floor first, because the reset's landing is judged with it
+        idle_recs = measure_idle(env, "idle", args.idle_samples)
+        check_reset_frames(env, "G2")
     else:
-        record("G2 reset", True, "frame_diff oracle: no reset available, skipped")
+        record("G2 reset", True, "frame_diff oracle and no reset_buttons in the recipe, skipped")
 
     # GS walk survey: turn the reset pose to face the longest clear run, so
     # the walk checks and the walk calibration are not capped by a wall
@@ -204,16 +356,21 @@ def pad_checks(env: GameEnv, args: argparse.Namespace) -> None:
         if args.write_reset_pose:
             write_reset_pose(env.recipe, chosen)
             print(f"[harness] wrote the surveyed reset_pose into {env.recipe['_path']}", flush=True)
-    check_idle(env, "G3", "idle", set_noise=True)
-    print(f"[harness] frame noise floor {env.noise}; moved if > {env.thresholds()[0]}, still if <= {env.thresholds()[1]}",
-          flush=True)
+    if idle_recs is None:
+        idle_recs = measure_idle(env, "idle", args.idle_samples)
+    record_idle(env, "G3", idle_recs, True)
+    t = env.thresholds.as_dict()
+    print(f"[harness] idle floor {env.noise} over {len(idle_recs)} samples; a move is a coherent shift past "
+          f"{t['min_px']:.0f} px" + (f", a rotation past {t['min_deg']:.1f} deg" if env.motion_kind == "rotate" else "")
+          + f", {t['whole_cells']} of 16 cells changed, or {t['spread_cells']} cells and "
+          f"{t['spread_factor']:.0f}x the floor", flush=True)
 
     # G4 control
     r = env.step({"rx": 1.0}, hold, "rx_1.00")
     if console and "d_yaw" in r:
         ok = abs(r["d_yaw"]) > 10.0 and sgn(r["d_yaw"]) == sign
     else:
-        ok = env.verdict(r["changed"]) == "MOVED"
+        ok = r["verdict"] == "MOVED"
     record("G4 yaw control: right stick full right turns more than 10 degrees, the recipe's way", ok, yaw_note(r, env))
     env.reset()
     if not ok:
@@ -226,10 +383,15 @@ def pad_checks(env: GameEnv, args: argparse.Namespace) -> None:
         r = env.step({"rx": m}, hold, f"rx_{m:.2f}")
         env.reset()
         dyaw = r.get("d_yaw")
+        key = f"{m:.2f}"
+        rate = measured_rate(env, r, "yaw")
+        if key in expect_mags:
+            note_measured(env, "G5", key, rate)
         rows.append({"magnitude": m, "d_yaw": dyaw, "rate": (dyaw / hold) if dyaw is not None else None,
-                     "changed": r["changed"], "verdict": env.verdict(r["changed"])})
+                     "changed": r["changed"], "verdict": r["verdict"], "motion": r.get("motion"), "measured": rate})
         print(f"    rx={m:.2f}  " + (f"d_yaw={dyaw:+8.2f}  {dyaw / hold:+7.1f} deg/s  " if dyaw is not None else "")
-              + f"changed={r['changed']:>6}  {rows[-1]['verdict']}", flush=True)
+              + f"changed={r['changed']:>6}  {describe(r.get('motion'))} -> {r['verdict']}", flush=True)
+        expect_check(env, "G5", key, rate)
     moved = [row for row in rows if row["d_yaw"] is not None and abs(row["d_yaw"]) > 1.0]
     first = min((row["magnitude"] for row in moved), default=None)
     still = [row["magnitude"] for row in rows if row["d_yaw"] is not None and abs(row["d_yaw"]) <= 1.0
@@ -261,33 +423,38 @@ def pad_checks(env: GameEnv, args: argparse.Namespace) -> None:
         ok = sgn(r["d_yaw"]) == -sgn(right["d_yaw"]) and 0.75 <= ratio <= 1.25
         note = yaw_note(r, env) + f"; right turn at 0.60 was {right['d_yaw']:+.2f}, ratio {ratio:.2f}"
     else:
-        ok = env.verdict(r["changed"]) == "MOVED"
+        ok = r["verdict"] == "MOVED"
         note = yaw_note(r, env)
     record("G6 yaw left: opposite sign, rate within 25 percent of the right turn", ok, note)
 
     # G7 pitch
     r = env.step({"ry": 0.6}, hold, "ry_0.60")
     env.reset()
+    rate = measured_rate(env, r, "pitch")
+    note_measured(env, "G7", "-", rate)
     if console and "d_pitch" in r:
         ok = abs(r["d_pitch"]) > 1.0
         note = (f"d_pitch={r['d_pitch']:+.2f} deg ({'up' if r['d_pitch'] < 0 else 'down'} for stick up); "
-                f"changed={r['changed']} {env.verdict(r['changed'])}")
+                + env.motion_note(r))
     else:
-        ok = env.verdict(r["changed"]) == "MOVED"
-        note = f"changed={r['changed']} {env.verdict(r['changed'])}"
+        ok = r["verdict"] == "MOVED"
+        note = env.motion_note(r)
     record("G7 pitch: right stick up changes the pitch by more than 1 degree", ok, note)
+    expect_check(env, "G7", "-", rate)
 
     # G8 move
     r = env.step({"ly": 1.0}, 1.0, "ly_1.00")
     env.reset()
+    rate = measured_rate(env, r, "walk")
+    note_measured(env, "G8", "-", rate)
     if console and "d_horiz" in r:
         ok = r["d_horiz"] > 20.0
-        note = (f"d_horiz={r['d_horiz']:.1f} units in 1.0s, d_z={r['d_z']:+.1f}; "
-                f"changed={r['changed']} {env.verdict(r['changed'])}")
+        note = f"d_horiz={r['d_horiz']:.1f} units in 1.0s, d_z={r['d_z']:+.1f}; " + env.motion_note(r)
     else:
-        ok = env.verdict(r["changed"]) == "MOVED"
-        note = f"changed={r['changed']} {env.verdict(r['changed'])}"
+        ok = r["verdict"] == "MOVED"
+        note = env.motion_note(r)
     record("G8 move: left stick up for a second moves the player more than 20 units", ok, note)
+    expect_check(env, "G8", "-", rate)
 
     # G9 button
     echo = env.oracle.echo_buttons()
@@ -390,7 +557,13 @@ def nimbus_checks(env: GameEnv, act: NimbusActuator, args: argparse.Namespace) -
     establish_reset_pose(env, args)
     if console:
         check_reset(env, "N0b")
-    check_idle(env, "N0c", "nimbus_idle", set_noise=True)
+        check_idle(env, "N0c", "nimbus_idle", set_noise=True, samples=args.idle_samples)
+    elif env.can_reset():
+        idle_recs = measure_idle(env, "nimbus_idle", args.idle_samples)
+        check_reset_frames(env, "N0b")
+        record_idle(env, "N0c", idle_recs, True)
+    else:
+        check_idle(env, "N0c", "nimbus_idle", set_noise=True, samples=args.idle_samples)
 
     # N1 full drag. The expected value is the bridge's own ceiling for this
     # stick (0.95 on the bundled profile; a user's copy may differ), so the
@@ -399,33 +572,60 @@ def nimbus_checks(env: GameEnv, act: NimbusActuator, args: argparse.Namespace) -
     exp_full = act.expected("right", 1.0)
     r = env.step({"rx": 1.0}, hold, "nimbus_rx_full")
     env.reset()
+    rate = measured_rate(env, r, "yaw")
+    note_measured(env, "N1", "-", rate)
     sent = float((r.get("sent") or {}).get("right_x", 0.0))
     sent_ok = abs(sent - exp_full) <= 0.02
     if console and "d_yaw" in r:
         ok = abs(r["d_yaw"]) > 10.0 and sgn(r["d_yaw"]) == sign and sent_ok
     else:
-        ok = env.verdict(r["changed"]) == "MOVED" and sent_ok
+        ok = r["verdict"] == "MOVED" and sent_ok
     record("N1 full drag turns more than 10 degrees and the bridge sent its ceiling", ok,
            f"sent RX={sent:+.3f} (bridge ceiling {exp_full:.3f}, travel {act.travel('right'):.0f} px); "
            + yaw_note(r, env))
+    expect_check(env, "N1", "-", rate)
     if not ok and not sent_ok:
         print("[harness] the bridge did not send its own ceiling: the drag missed the stick or hit another widget",
               flush=True)
     elif not ok:
-        print("[harness] the game is not reading Nimbus's pad (is it player one?)", flush=True)
+        # The bridge sent the right value and the game did nothing with it.
+        # Two causes, and the frames say which: the game is not reading this
+        # pad (is it player one?), or the ready sequence never reached the
+        # world and the checks are being run against a menu, which a game
+        # with an animated menu background passes the live-picture test in.
+        print("[harness] the bridge sent its ceiling and the game did not move: either the game is not "
+              "reading Nimbus's pad (is it player one?) or the ready sequence stopped in a menu; "
+              "check the saved before/after frames", flush=True)
 
     # N2 one-pixel drag: the anti-deadzone floor, in degrees
     exp_nudge = act.expected("right", float(args.nudge) / act.travel("right"))
     r = env.step({"rx_px": float(args.nudge)}, hold, "nimbus_rx_1px")
     env.reset()
+    rate = measured_rate(env, r, "yaw")
+    note_measured(env, "N2", "-", rate)
     sent = float((r.get("sent") or {}).get("right_x", 0.0))
     sent_ok = abs(sent - exp_nudge) <= 0.02
     if console and "d_yaw" in r:
-        ok = abs(r["d_yaw"]) > 1.0 and sgn(r["d_yaw"]) == sign and sent_ok
+        moved = abs(r["d_yaw"]) > 1.0 and sgn(r["d_yaw"]) == sign
     else:
-        ok = env.verdict(r["changed"]) == "MOVED" and sent_ok
-    record(f"N2 a {args.nudge:g} px drag turns the camera by more than 1 degree", ok,
-           f"sent RX={sent:+.3f} (bridge floor {exp_nudge:.3f}); " + yaw_note(r, env))
+        moved = r["verdict"] == "MOVED"
+    # A game whose own threshold sits above the bridge's floor (Half-Life 2
+    # at 0.30 to 0.40, Halo Wars at 0.40 to 0.60, both measured by the pad
+    # sweep) can never pass "the camera turned", and a check that can never
+    # pass tests nothing. Such a recipe says so with floor_moves_camera
+    # false, and the check becomes: the bridge sent its floor and the game,
+    # as measured, did not act on it. A game that starts moving would fail
+    # it, which is the regression worth catching there.
+    if recipe.get("floor_moves_camera", True):
+        ok = moved and sent_ok
+        record(f"N2 a {args.nudge:g} px drag turns the camera by more than 1 degree", ok,
+               f"sent RX={sent:+.3f} (bridge floor {exp_nudge:.3f}); " + yaw_note(r, env))
+    else:
+        ok = (not moved) and sent_ok
+        record(f"N2 a {args.nudge:g} px drag sends the bridge's floor and, this game's threshold sitting above it "
+               f"(measured), the camera stays still", ok,
+               f"sent RX={sent:+.3f} (bridge floor {exp_nudge:.3f}); " + yaw_note(r, env))
+    expect_check(env, "N2", "-", rate)
 
     # N3 release
     sent_now = act.sent()
@@ -465,18 +665,21 @@ def nimbus_checks(env: GameEnv, act: NimbusActuator, args: argparse.Namespace) -
     exp_left = act.expected("left", 1.0)
     r = env.step({"ly": 1.0}, 1.0, "nimbus_ly_full")
     env.reset()
+    rate = measured_rate(env, r, "walk")
+    note_measured(env, "N5", "-", rate)
     sent = (r.get("sent") or {})
     ly = float(sent.get("left_y", 0.0))
     sent_ok = abs(ly - exp_left) <= 0.02
     if console and "d_horiz" in r:
         ok = r["d_horiz"] > 20.0 and sent_ok
         note = (f"sent LX={float(sent.get('left_x', 0)):+.3f} LY={ly:+.3f} (bridge ceiling {exp_left:.3f}); "
-                f"d_horiz={r['d_horiz']:.1f} units in 1.0s; changed={r['changed']} {env.verdict(r['changed'])}")
+                f"d_horiz={r['d_horiz']:.1f} units in 1.0s; " + env.motion_note(r))
     else:
-        ok = env.verdict(r["changed"]) == "MOVED" and sent_ok
-        note = f"sent LY={ly:+.3f} (bridge ceiling {exp_left:.3f}); changed={r['changed']} {env.verdict(r['changed'])}"
+        ok = r["verdict"] == "MOVED" and sent_ok
+        note = f"sent LY={ly:+.3f} (bridge ceiling {exp_left:.3f}); " + env.motion_note(r)
     record("N5 left stick: a full drag up moves the player more than 20 units and the bridge sent its ceiling",
            ok, note)
+    expect_check(env, "N5", "-", rate)
 
     primitive_checks(env, act, args)
 
@@ -552,13 +755,20 @@ def primitive_checks(env: GameEnv, act: NimbusActuator, args: argparse.Namespace
 
 
 # ---- drivers -------------------------------------------------------------------
-def summary(env: Optional[GameEnv]) -> int:
+def summary(env: Optional[GameEnv], args: argparse.Namespace) -> int:
     failed = [r for r in RESULTS if not r["ok"]]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed", flush=True)
     if env is not None:
         out = env.write({"checks": RESULTS, "sweep": getattr(env, "sweep_rows", None),
                          "calibration": getattr(env, "calibration", None)})
         print(f"wrote {out}", flush=True)
+        if args.write_expect:
+            exp = build_expect(env, args)
+            if exp:
+                write_expect(env.recipe, exp)
+                print(f"[harness] wrote expect for {sorted(exp)} into {env.recipe['_path']}", flush=True)
+            else:
+                print("[harness] nothing this run measured could be banded; expect not written", flush=True)
     return 1 if failed or not RESULTS else 0
 
 
@@ -580,7 +790,7 @@ def run_pad(args: argparse.Namespace, recipe: Dict[str, Any]) -> int:
     finally:
         env.close(keep_game=args.keep_game)
         act.close()
-    return summary(env)
+    return summary(env, args)
 
 
 def run_nimbus(args: argparse.Namespace, recipe: Dict[str, Any]) -> int:
@@ -609,7 +819,7 @@ def run_nimbus(args: argparse.Namespace, recipe: Dict[str, Any]) -> int:
             env.close(keep_game=args.keep_game)
 
     act.run(scenario)
-    return summary(holder.get("env"))
+    return summary(holder.get("env"), args)
 
 
 def main() -> int:
@@ -632,6 +842,14 @@ def main() -> int:
     ap.add_argument("--survey-walk", action="store_true",
                     help="after G2, walk a second in eight directions and turn the reset pose to the clearest one "
                          "(with --write-reset-pose, into the recipe)")
+    ap.add_argument("--idle-samples", type=int, default=3,
+                    help="idle seconds the noise floor and the motion thresholds are taken from")
+    ap.add_argument("--expect-mags", default=DEFAULT_EXPECT_MAGS,
+                    help="G5 magnitudes --write-expect bands (the stable ones, not the folding stop)")
+    ap.add_argument("--expect-checks", default=DEFAULT_EXPECT_CHECKS,
+                    help="checks --write-expect bands; add N1 for the full drag where it is repeatable")
+    ap.add_argument("--write-expect", action="store_true",
+                    help="write what this run measured into the recipe's expect block, with the default bands")
     ap.add_argument("--skip-top", type=int, default=0)
     ap.add_argument("--no-frames", action="store_true", help="do not save before/after frames")
     ap.add_argument("--frames", default=FRAMES_DIR)
