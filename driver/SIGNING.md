@@ -222,6 +222,17 @@ virtual gamepad bus driver is a much larger project than this filter and is not
 on the table now, but it is the thing to reconsider if attestation signing ever
 closes and we end up building an HLK pipeline anyway.
 
+**Since 2026-09-09 there is a plan for that reconsideration:**
+[docs/vision/PAD_BUS_FORK_PLAN.md](../docs/vision/PAD_BUS_FORK_PLAN.md) works
+out what forking ViGEmBus would take, and it argues against this section on two
+of its three points. The collision argument is answered by a rename and new
+GUIDs (its section 8). The "not our code" and Code Signing Agreement arguments
+are accepted, and become the reason it makes hardening, static analysis and
+Driver Verifier mandatory before any submission: we would have to actually own
+the code, not merely rename it. Nothing changes here until that plan is
+accepted, and it is gated on an anti-cheat question that has not been asked
+yet. If it is accepted, this section gets rewritten rather than deleted.
+
 ## Sources
 
 - [Attestation sign Windows drivers](https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/code-signing-attestation)

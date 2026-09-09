@@ -232,7 +232,16 @@ the same way as of April 2026. Justin Shafer's 2019 build of the original
 `vJoy.sys` and catalog are signed by the Microsoft Windows Hardware
 Compatibility Publisher, so it survives the April 2026 driver policy, which the
 2016 SourceForge original would not. It is the only vJoy worth bundling today,
-and vJoy as a whole is on borrowed time; ViGEmBus is the path that has a future.
+and vJoy as a whole is on borrowed time.
+
+ViGEmBus is the healthier of the two, but it is not a future either, and this
+document used to claim it was. It was archived on 2023-11-02 after a trademark
+conflict, 1.22.0 is its final release, the announced successor has never
+appeared, and a survey of all 403 forks on 2026-09-09 found no maintained one:
+the most active is two commits ahead on an audio experiment its author marked
+"bad stability". Both of our virtual controller drivers are now frozen
+third-party binaries. What to do about that is
+[docs/vision/PAD_BUS_FORK_PLAN.md](../vision/PAD_BUS_FORK_PLAN.md).
 
 **What counts as installed.** Neither driver is trusted on the strength of its
 files, uninstall key or service entry, because all three survive a removal or a
@@ -274,8 +283,13 @@ drives.
 Two related notes: `pip install vgamepad` installs **ViGEmBus 1.17.333.0** from
 its own bundled MSI, so dev machines can be on a 2019-era build while the
 installer ships 1.22.0. Keep vgamepad for the client library and let the
-installer own the driver. And the uninstaller never removes vJoy or ViGEmBus:
-DS4Windows, Steam and other mappers share them.
+installer own the driver. (Phase 0 of
+[PAD_BUS_FORK_PLAN.md](../vision/PAD_BUS_FORK_PLAN.md) proposes retiring
+vgamepad for a pure-Python client that speaks the bus protocol directly, which
+would end this version split and delete the CI workaround that filters vgamepad
+out of `requirements.txt`. Nothing here changes until that is done.) And the
+uninstaller never removes vJoy or ViGEmBus: DS4Windows, Steam and other mappers
+share them.
 
 ---
 
