@@ -113,7 +113,7 @@ Left 4 Dead 2 and Half-Life 2 avoid all of this with `-windowed -noborder -w 128
 
 ### 4.1 A runner for the fast tests, and CI
 
-`tests/run_fast_tests.py`: discover `tests/test_*.py`, skip the two that match the pattern and are not tests (`test_vjoy.py`, a vJoy driver diagnostic; `test_dialog.py`, which turned out to be an interactive pygame loop for the legacy shell whose imports no longer resolve, so it is skipped for good), run each as `python -m tests.<name>` in a subprocess from the repo root, print one line per file and a total, exit non-zero on any failure. A subprocess per file rather than importing them all keeps one file's `QApplication` or `sys.exit` from taking the runner with it. Built 2026-09-09: nine files run (the eight above plus `test_frame_motion.py` from section 4.3), all pass, in about four seconds, and they pass again with `vgamepad` hidden from the interpreter, which is what a CI runner sees.
+`tests/run_fast_tests.py`: discover `tests/test_*.py`, skip the two that match the pattern and are not tests (`test_vjoy.py`, a vJoy driver diagnostic; `test_dialog.py`, which turned out to be an interactive pygame loop for the legacy shell whose imports no longer resolve, so it is skipped for good), run each as `python -m tests.<name>` in a subprocess from the repo root, print one line per file and a total, exit non-zero on any failure. A subprocess per file rather than importing them all keeps one file's `QApplication` or `sys.exit` from taking the runner with it. Built 2026-09-09: nine files run (the eight above plus `test_frame_motion.py` from section 4.3), all pass, in about four seconds, and they pass again with `vgamepad` hidden from the interpreter, which is what a CI runner sees; the first GitHub run agreed, 9/9 in 58 seconds.
 
 CI is a `windows-latest` GitHub Actions job (`.github/workflows/fast-tests.yml`): install `requirements.txt` less `vgamepad` and `pyinstaller`, set `QT_QPA_PLATFORM=offscreen`, run the runner. `vgamepad` is left out on purpose: it ships as an sdist only, and its `setup.py` runs the ViGEmBus MSI installer when the driver is missing, which a CI runner must not attempt and the app does not need, because it imports the package behind a try/except. The game harness stays out of CI permanently: it needs Steam, a signed-in account, a GPU and a virtual pad driver. The split to state plainly is that **CI covers the fast suite and a person runs the game suite**, which is the same split the driver probes already have.
 
@@ -193,7 +193,7 @@ venv\Scripts\python tests\probe_game_harness_windows.py --game halowars --actuat
 - **Does `SetWindowPos` hold on the three fullscreen games?** Answered per game in section 8. Halo Wars took it at launch (2560x1440 to 1280x720 borderless in one call) and held it through the menu walk and the match.
 - **Is `test_dialog.py` interactive?** Yes: a pygame event loop for the legacy shell, importing modules that no longer exist at that path. It is skipped by name for good, beside `test_vjoy.py`; `simple_vjoy_test.py` does not match the pattern.
 - **Does `requirements.txt` install on a runner with no drivers?** `pyvjoy` does (a wheel, a DLL loaded at import that only talks to the driver on device open). `vgamepad` does not safely: it is an sdist whose `setup.py` runs the ViGEmBus MSI installer when the driver is absent. CI installs everything but it, and the suite was checked to pass with the package hidden.
-- **The workflow file has not run on GitHub yet.** It was written and its steps rehearsed locally (the requirements filter, the runner, the offscreen platform), but the branch has not been pushed with it; the first push will say whether `windows-latest` agrees.
+- **Does the workflow run on GitHub?** Yes. The first push ran it twice (the push and the branch's pull request), and the job passed 9/9 in 58 seconds on `windows-latest`, so the requirements filter, the offscreen platform and the runner all hold on a machine with no driver. The one annotation was the checkout and setup-python actions targeting a deprecated Node, fixed by taking their current majors.
 - **Phase correlation assumes a rigid shift.** A camera that rotates, a scene with moving actors in it, or a zoom breaks that assumption to different degrees. Log-polar covers rotation and scale about the image centre; a scene like Left 4 Dead 2's, with bots walking through the view, will still have a lower confidence than an RTS base. The console stays the better oracle wherever there is one.
 - **Tolerance bands need a stable machine.** Half-Life 2's primitives were repeatable to a tenth of a unit and its full-deflection turn was not repeatable at all. Bands should be written from the checks that are stable and left off the ones that are not, exactly as `--cal-mags 0.4,0.6` already does for that game's calibration.
 - **None of this tests the QML layer.** Every fast test is Python. The widget geometry, the drag handling and the dialogs are covered only by the Nimbus actuator's synthesized presses in a game run. A Qt Quick test harness is a separate question and not in this plan.
@@ -217,7 +217,7 @@ Everything in section 4, in the order of section 7, on 2026-09-09. The pieces:
 | Piece | Where | State |
 |---|---|---|
 | Fast runner | `tests/run_fast_tests.py` | nine files, about four seconds, all pass, also with `vgamepad` hidden |
-| CI | `.github/workflows/fast-tests.yml` | written and rehearsed locally; not yet run on GitHub |
+| CI | `.github/workflows/fast-tests.yml` | passed on GitHub on the first push, 9/9 in 58 seconds on `windows-latest` |
 | Motion measurement | `tests/frame_motion.py`, `tests/test_frame_motion.py` | 47 synthetic checks; wired into every step, every reset and the idle floor |
 | `window` key | `GameEnv.apply_window`, three recipes | took on Halo Wars and Elden Ring, refused by PowerWash Simulator |
 | Expect bands | `expect` in recipes, `--write-expect`, `<check>e` lines | seeded for the console games from their 2026-09-07 runs; both held on rerun |
@@ -242,7 +242,6 @@ The results are in [GAME_TEST_HARNESS.md](GAME_TEST_HARNESS.md) section 8, entry
 
 ### 8.3 Still open
 
-- The workflow has not run on GitHub.
 - Nothing bands a Halo Wars rate: the rotation estimate needs holds short enough to keep a swing inside the overlap, and nobody has measured what hold that is.
 - PowerWash Simulator's window. The only way in is its saved preference file, which section 3 rejected; running it full screen costs capture time and nothing else.
 - The pixel shift is a rate to band only where it repeats. Two magnitudes on one game repeat so far; the rest of the console-less checks stay liveness checks with a much better idea of what "moved" means.
