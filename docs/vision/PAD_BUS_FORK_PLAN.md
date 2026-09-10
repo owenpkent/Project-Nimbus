@@ -530,6 +530,18 @@ it is to attestation-sign a build we do not ship, which is exactly the "for
 testing scenarios" use Microsoft now files attestation under, test with that,
 and ship only if it passes. That splits phase 3 into "submit" and "ship".
 
+**The BattlEye baseline exists (2026-09-09, later the same day).** Arma 3 is
+in the harness (`tests/games/arma3.json` with BattlEye, `arma3_nobe.json`
+without; the `arma3` oracle in `tests/game_harness.py`; the results entry in
+`GAME_TEST_HARNESS.md` section 8). With stock ViGEmBus and the pure-Python
+client, BattlEye on and off measure the same to the decimal: 305 degrees a
+second at full stick either way, 36.7 at 0.6, the deadzone between 0.30 and
+0.40, 5.1 m/s walking, a 32 ms button; pad run 13/13 and Nimbus run 17/17
+with BattlEye running. So the gate's question for the fork is now concrete:
+run the same two recipes with the fork loaded and compare against these
+bands (`expect` in the recipes). A server join, where BattlEye actually kicks,
+is still a manual step.
+
 ## 14. Order of work
 
 | Phase | Work | Effort | Gate to start |
