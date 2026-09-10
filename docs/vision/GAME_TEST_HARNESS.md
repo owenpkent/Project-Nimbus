@@ -13,7 +13,7 @@ Nimbus is tested against real games by hand, and once by script: `tests/probe_ga
 This document is the plan and the record for a harness that makes those measurements unattended, in numbers, from the game itself:
 
 - **Recipes** (`tests/games/<game>.json`): how to launch a game into a playable state, what window to look for, which oracle reads its state, and where to put the player for a repeatable start.
-- **Oracles**: the Source engine's own console (`getpos`, `setpos`, `setang`, echoes, all through a console log on disk) for ground truth in degrees and units, and the existing frame differencing for games with no console.
+- **Oracles**: the Source engine's own console (`getpos`, `setpos`, `setang`, echoes, all through a console log on disk) for ground truth in degrees and units; Arma 3's own scripting (a generated mission that publishes the pose through the clipboard and takes commands back from it, since 2026-09-09); and the existing frame differencing for games with neither.
 - **Actuators**: a ViGEm pad the harness owns (fast, exact, for calibrating the game), and the real Nimbus app in-process, driven by synthesized pointer events on its widgets (the thing being tested).
 - **An environment** with `launch`, `wait_ready`, `reset`, `step`, `observe` and `close`: the environment shape Spectator+ needs, delivered first as a test fixture.
 - **A runner** that produces a results table per game and per actuator, in the style of the driver probes.
@@ -38,12 +38,13 @@ Spectator+ adds a fourth: **can a scripted or learned action reach a goal?** "Tu
 |---|---|---|---|
 | Frame differencing (exists) | any | none | moved / still against a noise floor |
 | Game console log (Source: `-condebug`, `getpos`, `setpos`, `setang`, `echo`) | Source engine titles (Left 4 Dead 2, Half-Life 2, Portal 2, Team Fortress 2, Counter-Strike: Source) | a cfg file and a key bind | position, view angles, button echoes, deterministic resets |
+| Game scripting (Arma 3: SQF in a generated mission, the clipboard as the channel both ways) | Arma 3, and any game with a script language, a clipboard command and a way to auto-start a mission | a mission folder and a launch parameter | position, view angles, held actions, resets and arbitrary script, streamed (added 2026-09-09) |
 | HUD reading (OpenCV template matching, OCR) | any with a readable HUD | opencv, easyocr; per-game templates | compass, ammo, health, crosshair state |
 | Vision-language judge (a model asked a yes or no question about two frames) | any | an API key or a local model; seconds per answer | coarse semantic verdicts, no numbers |
 | Memory reading, hooks | any without anti-cheat | Cheat Engine style tooling | exact state; fragile, and the wrong side of the line for an accessibility project |
 | A purpose-built test game | none real | a small pygame or Godot target | exact state over a socket; says nothing about real games |
 
-The console log is the only one that is both exact and cheap. It is limited to Source games, which is acceptable: Left 4 Dead 2 is already the reference title for everything that cannot run under anti-cheat, and the harness is built so a second oracle slots in per recipe.
+The console log is the only one that is both exact and cheap. It is limited to Source games, which is acceptable: Left 4 Dead 2 is already the reference title for everything that cannot run under anti-cheat, and the harness is built so a second oracle slots in per recipe. That second oracle exists since 2026-09-09: Arma 3 has no console the harness can type into but runs scripts, and a mission of the harness's own publishes the pose and takes commands over the clipboard (section 4.3, `arma3`), which is exact, cheap and streamed rather than sampled.
 
 ---
 
@@ -179,7 +180,7 @@ Sign conventions, so numbers in the results log read the same way everywhere: `r
 | `<check>e` expected | for every band in the recipe's `expect` block (G5 per magnitude, G7, G8, and N1, N2, N5 on the Nimbus run): the measured rate is within the band; a check with a band and nothing comparable measured fails |
 | G6 yaw left | `rx` at minus 0.6: the opposite sign, and a rate within 25 percent of the right turn at 0.6 |
 | G7 pitch | `ry` at 0.6: more than 1 degree of pitch; the sign is recorded |
-| G8 move | `ly` at 1.0 for one second: more than 20 units of horizontal travel; units per second recorded |
+| G8 move | `ly` at 1.0 for one second: more than the recipe's `walk_min_units` of horizontal travel (20 by default, Source units; 2.5 on Arma 3, in metres); units per second recorded |
 | G9 button | the pad button bound to the echo marker: the marker appears in the log within two seconds |
 | G10 release | after everything: one second idle, pose unchanged (nothing is stuck) |
 | G11 latency | `rx` at 1.0 with the pose polled every 60 ms: the first sample whose yaw moved, as a coarse latency bound |
@@ -194,7 +195,7 @@ With `--actuator nimbus` the same environment runs with the real app, and the ch
 | N2 one-pixel drag | a 1 px drag turns the camera by more than 1 degree, and the bridge sent its own floor for that stick: the anti-deadzone clears the game's threshold, now in degrees. On a recipe with `floor_moves_camera` false the rule inverts: the floor was sent and the camera stayed still |
 | N3 release | the stick released reads exactly zero at the bridge and the pose is stable |
 | N4 button | a click on the LB widget produces the echo marker in the log |
-| N5 left stick | a full drag up on the left stick moves the player more than 20 units, and the bridge sent its ceiling |
+| N5 left stick | a full drag up on the left stick moves the player more than the recipe's `walk_min_units`, and the bridge sent its ceiling |
 
 then the Spectator+ primitives (section 4.7) through the bridge's own runner, measured by the game:
 
@@ -290,8 +291,8 @@ Run them in separate invocations, with the game quit in between (the runner does
 
 ## 7. Limits and open questions
 
-- **Anti-cheat titles** cannot be launched by this harness under test signing, and their state cannot be read from a console anyway. Elden Ring stays on frame differencing, launched by hand.
-- **The pose is sampled, not streamed.** Each pose read costs a key press and a log read, about 47 ms on the dev machine, so `observe()` is good to about 50 to 100 ms and the latency check is a bound, not a measurement. Fine for tests and for scripted primitives; a learned agent at frame rate would need `cl_showpos` on screen and a reader, or a plugin.
+- **Anti-cheat titles** run when test signing is off: Elden Ring (Easy Anti-Cheat) on frame differencing, and since 2026-09-09 Arma 3 (BattlEye) with a pose from its own scripting, launched by the harness through BattlEye's launcher. Under test signing EAC refuses to start; whether BattlEye does is untested. Neither run touches a server, which is where BattlEye's kicks happen.
+- **The pose is sampled, not streamed, on Source.** Each pose read there costs a key press and a log read, about 47 ms on the dev machine, so `observe()` is good to about 50 to 100 ms and the latency check is a bound, not a measurement. Arma 3's oracle streams it instead, about thirty poses a second on the clipboard, and a read costs a few milliseconds. Fine for tests and for scripted primitives; a learned agent at frame rate would need `cl_showpos` on screen and a reader, or a plugin.
 - **The safe room** has walls within 114 to 140 units in three of eight headings from the reset spot. `--survey-walk` measures all eight and turns the reset pose to the clearest (200 units at yaw 135); a game or map change should rerun it with `--write-reset-pose`.
 - **The frame oracle is not trustworthy in the Source scenes, and now says so itself.** The survivor bots walk through Left 4 Dead 2's safe room and the flashlight beam sways while idle: the idle second measures a coherent 54 px sway of the beam, so the run's shift threshold is 108 px and a 1.5 degree turn reads STILL against a console that saw it. The verdict is recorded beside the ground truth and never used for a pass on a Source game. A recipe for a game with no console should pick a scene without moving actors.
 - **A repeating texture aliases the shift.** Phase correlation finds the true shift modulo the texture's period: the safe room's wallpaper is striped every 56 px, and every turn in the saved sweep measured its true shift less a whole number of stripes, sign and all (34 degrees, about 480 px, read as +80). The verdict survives, because any coherent move past the threshold is a move; the pixel figure is a number to band only where a run shows it repeats.

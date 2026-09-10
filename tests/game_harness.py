@@ -22,6 +22,9 @@ Oracles
     button rebound to ``echo <marker>`` gives a ground-truth button check.
     ``FrameDiffOracle``: no pose, a fixed warm-up; only the frame
     differencing every step records anyway.
+    ``Arma3Oracle``: ground truth for Arma 3 through a generated mission
+    whose script publishes the pose over the clipboard and takes reset
+    and script commands back from it (section 4.3 of the plan).
 Actuators
     ``PadActuator``: a ViGEm pad the harness owns, exact and fast, for
     calibrating a game. ``NimbusActuator``: the real QML app in-process,

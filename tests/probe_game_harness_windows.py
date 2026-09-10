@@ -14,7 +14,8 @@ pad (default)
     G0  launch: the game window appears within the recipe's timeout, and the
         recipe's ``window`` (size, position, borderless) is applied and re-applied
         as the game loads, recording whether it took
-    G1  ready: the oracle answers (a pose is read from the console log)
+    G1  ready: the oracle answers (a pose is read: from the console log on
+        Source, from the clipboard on Arma 3)
     G2  reset: the player is put back within 2 units and 1 degree; with no
         console but ``reset_buttons`` in the recipe, a second of left stick
         then the buttons brings the picture back to a reference frame
@@ -28,7 +29,7 @@ pad (default)
     G7  pitch: right stick up changes the pitch by more than 1 degree
     G8  move: left stick up for a second moves the player more than the recipe's
         walk_min_units (20 by default; metres on Arma 3)
-    G9  button: the pad button bound to an echo marker lands in the console log
+    G9  button: the pad button bound to an echo marker reaches the oracle
     G10 release: nothing is stuck afterwards
     G11 latency: the first pose sample whose yaw moved after the stick went on
     G12 calibration: yaw against hold time at several magnitudes, and walk
@@ -232,7 +233,7 @@ def launch_and_ready(env: GameEnv, launch_name: str, ready_name: str) -> bool:
     log_ok = (not console) or log is None or log.exists()
     record(ready_name, ready and log_ok and (not console or p is not None),
            (f"ready after {env.ready_at - env.launched_at:.0f}s; " if ready else "not ready in time; ")
-           + (f"console log {'present' if log_ok else 'missing'}; " if console else "")
+           + (f"console log {'present' if log_ok else 'missing'}; " if log is not None else "")
            + fmt_pose(p))
     return ready and log_ok
 
@@ -485,7 +486,7 @@ def pad_checks(env: GameEnv, args: argparse.Namespace) -> None:
         dt = (time.monotonic() - t0) * 1000.0
         time.sleep(0.1)
         env.actuator.release()
-        record(f"G9 button: pad button {bid} lands in the console log as {marker}", ok,
+        record(f"G9 button: pad button {bid} reaches the oracle as {marker}", ok,
                f"{dt:.0f} ms" if ok else "no echo within 2 s")
     time.sleep(0.3)
 
